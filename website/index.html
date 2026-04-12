@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CURS3D — Quantum-Resistant Blockchain</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #050507;
+            --bg2: #0a0a10;
+            --card: rgba(255,255,255,0.03);
+            --card-hover: rgba(255,255,255,0.06);
+            --border: rgba(255,255,255,0.06);
+            --border-hover: rgba(139,92,246,0.3);
+            --text: #f0f0f5;
+            --text2: #94949e;
+            --purple: #8b5cf6;
+            --purple2: #a78bfa;
+            --blue: #3b82f6;
+            --cyan: #06b6d4;
+            --pink: #ec4899;
+            --green: #10b981;
+        }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ===== CANVAS & BACKGROUND ===== */
+        #particles { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+
+        .glow-orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.15;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .glow-orb.purple { width: 600px; height: 600px; background: var(--purple); top: -200px; left: -100px; }
+        .glow-orb.blue { width: 500px; height: 500px; background: var(--blue); top: 40%; right: -150px; }
+        .glow-orb.pink { width: 400px; height: 400px; background: var(--pink); bottom: -100px; left: 30%; opacity: 0.1; }
+
+        /* ===== NAV ===== */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+            padding: 0 2rem; height: 72px;
+            display: flex; align-items: center;
+            background: rgba(5,5,7,0.6);
+            backdrop-filter: blur(24px) saturate(180%);
+            border-bottom: 1px solid var(--border);
+            transition: all 0.3s;
+        }
+        .nav-inner {
+            max-width: 1280px; width: 100%; margin: 0 auto;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .logo {
+            font-size: 1.25rem; font-weight: 800; letter-spacing: 3px;
+            text-decoration: none; color: var(--text);
+            display: flex; align-items: center; gap: 10px;
+        }
+        .logo-diamond {
+            width: 32px; height: 32px;
+            background: linear-gradient(135deg, var(--purple), var(--cyan));
+            clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+            animation: rotateDiamond 8s linear infinite;
+        }
+        @keyframes rotateDiamond { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        .nav-links { display: flex; gap: 2rem; align-items: center; }
+        .nav-links a {
+            color: var(--text2); text-decoration: none; font-size: 0.875rem;
+            font-weight: 500; transition: color 0.3s; position: relative;
+        }
+        .nav-links a:hover { color: var(--text); }
+        .nav-links a::after {
+            content: ''; position: absolute; bottom: -4px; left: 0; right: 0;
+            height: 1px; background: var(--purple); transform: scaleX(0);
+            transition: transform 0.3s;
+        }
+        .nav-links a:hover::after { transform: scaleX(1); }
+
+        .btn-github {
+            padding: 8px 20px; border-radius: 8px; font-size: 0.875rem;
+            font-weight: 600; text-decoration: none;
+            background: rgba(139,92,246,0.15); color: var(--purple2);
+            border: 1px solid rgba(139,92,246,0.25);
+            transition: all 0.3s;
+        }
+        .btn-github:hover {
+            background: rgba(139,92,246,0.25);
+            border-color: rgba(139,92,246,0.5);
+            box-shadow: 0 0 20px rgba(139,92,246,0.2);
+        }
+
+        /* ===== HERO ===== */
+        .hero {
+            position: relative; z-index: 1;
+            min-height: 100vh; display: flex; align-items: center; justify-content: center;
+            padding: 120px 2rem 80px; text-align: center;
+        }
+        .hero-inner { max-width: 900px; }
+
+        .hero-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 6px 16px 6px 8px;
+            background: rgba(139,92,246,0.1);
+            border: 1px solid rgba(139,92,246,0.2);
+            border-radius: 100px; font-size: 0.75rem; font-weight: 600;
+            letter-spacing: 1.5px; color: var(--purple2);
+            margin-bottom: 2rem;
+            animation: fadeInDown 0.8s ease both;
+        }
+        .hero-badge .dot-live {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--green); animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.4); }
+            50% { box-shadow: 0 0 0 6px rgba(16,185,129,0); }
+        }
+
+        .hero h1 {
+            font-size: clamp(3rem, 7vw, 5.5rem);
+            font-weight: 900; line-height: 1.05;
+            letter-spacing: -2px; margin-bottom: 1.5rem;
+            animation: fadeInUp 0.8s ease 0.1s both;
+        }
+        .hero h1 .grad {
+            background: linear-gradient(135deg, var(--purple) 0%, var(--cyan) 50%, var(--pink) 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; background-size: 200% 200%;
+            animation: gradientShift 5s ease infinite;
+        }
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        .hero-desc {
+            font-size: 1.2rem; color: var(--text2); line-height: 1.7;
+            max-width: 620px; margin: 0 auto 2.5rem;
+            animation: fadeInUp 0.8s ease 0.2s both;
+        }
+
+        .hero-cta {
+            display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;
+            animation: fadeInUp 0.8s ease 0.3s both;
+        }
+        .cta-primary {
+            padding: 14px 32px; border-radius: 12px; font-size: 1rem;
+            font-weight: 700; text-decoration: none; color: white;
+            background: linear-gradient(135deg, var(--purple), var(--blue));
+            border: none; cursor: pointer; position: relative; overflow: hidden;
+            transition: all 0.4s; font-family: 'Inter', sans-serif;
+        }
+        .cta-primary::before {
+            content: ''; position: absolute; inset: 0;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            opacity: 0; transition: opacity 0.4s;
+        }
+        .cta-primary:hover::before { opacity: 1; }
+        .cta-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(139,92,246,0.4);
+        }
+        .cta-primary span { position: relative; z-index: 1; }
+
+        .cta-secondary {
+            padding: 14px 32px; border-radius: 12px; font-size: 1rem;
+            font-weight: 600; text-decoration: none; color: var(--text);
+            background: var(--card); border: 1px solid var(--border);
+            transition: all 0.3s; font-family: 'Inter', sans-serif;
+        }
+        .cta-secondary:hover {
+            border-color: var(--border-hover);
+            background: var(--card-hover);
+        }
+
+        /* ===== TERMINAL ===== */
+        .terminal-wrapper {
+            margin-top: 4rem; max-width: 680px; margin-left: auto; margin-right: auto;
+            animation: fadeInUp 0.8s ease 0.5s both;
+        }
+        .terminal {
+            background: rgba(10,10,16,0.8); border: 1px solid var(--border);
+            border-radius: 16px; overflow: hidden;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(139,92,246,0.05);
+        }
+        .term-bar {
+            display: flex; align-items: center; gap: 8px;
+            padding: 14px 18px;
+            background: rgba(255,255,255,0.02);
+            border-bottom: 1px solid var(--border);
+        }
+        .term-dot { width: 12px; height: 12px; border-radius: 50%; }
+        .term-dot.r { background: #ff5f57; }
+        .term-dot.y { background: #febc2e; }
+        .term-dot.g { background: #28c840; }
+        .term-title {
+            margin-left: auto; font-size: 0.7rem; color: var(--text2);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .term-body {
+            padding: 20px; font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem; line-height: 2; text-align: left;
+        }
+        .term-body .p { color: var(--green); }
+        .term-body .c { color: var(--cyan); }
+        .term-body .o { color: var(--text2); }
+        .term-body .v { color: var(--purple2); }
+        .blink { animation: blink 1s step-end infinite; color: var(--purple); }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+        /* ===== STATS BAR ===== */
+        .stats {
+            position: relative; z-index: 1;
+            padding: 0 2rem; margin-top: -40px;
+        }
+        .stats-inner {
+            max-width: 1000px; margin: 0 auto;
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+            background: var(--border); border-radius: 20px; overflow: hidden;
+            border: 1px solid var(--border);
+        }
+        .stat {
+            background: rgba(10,10,16,0.9); padding: 2rem;
+            text-align: center; backdrop-filter: blur(20px);
+        }
+        .stat-val {
+            font-size: 2rem; font-weight: 800;
+            background: linear-gradient(135deg, var(--purple2), var(--cyan));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .stat-label { font-size: 0.75rem; color: var(--text2); margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+
+        /* ===== SECTION HEADINGS ===== */
+        .section { position: relative; z-index: 1; padding: 100px 2rem; max-width: 1280px; margin: 0 auto; }
+        .section-head { text-align: center; margin-bottom: 4rem; }
+        .section-head .label {
+            font-size: 0.75rem; font-weight: 700; letter-spacing: 3px;
+            text-transform: uppercase; color: var(--purple2); margin-bottom: 1rem;
+        }
+        .section-head h2 { font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 800; letter-spacing: -1px; }
+        .section-head p { color: var(--text2); max-width: 550px; margin: 1rem auto 0; font-size: 1.05rem; line-height: 1.7; }
+
+        /* ===== FEATURES GRID ===== */
+        .features-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;
+        }
+        .f-card {
+            background: var(--card); border: 1px solid var(--border);
+            border-radius: 20px; padding: 2.5rem 2rem;
+            transition: all 0.4s; position: relative; overflow: hidden;
+        }
+        .f-card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0;
+            height: 2px; background: linear-gradient(90deg, transparent, var(--purple), transparent);
+            opacity: 0; transition: opacity 0.4s;
+        }
+        .f-card:hover {
+            border-color: var(--border-hover);
+            background: var(--card-hover);
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(139,92,246,0.08);
+        }
+        .f-card:hover::before { opacity: 1; }
+
+        .f-icon {
+            width: 48px; height: 48px; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.3rem; margin-bottom: 1.2rem;
+            background: linear-gradient(135deg, rgba(139,92,246,0.15), rgba(6,182,212,0.1));
+            border: 1px solid rgba(139,92,246,0.15);
+        }
+        .f-card h3 { font-size: 1.15rem; font-weight: 700; margin-bottom: 0.6rem; }
+        .f-card p { color: var(--text2); font-size: 0.9rem; line-height: 1.6; }
+
+        /* ===== TECH STACK ===== */
+        .tech-grid {
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;
+            max-width: 800px; margin: 0 auto;
+        }
+        .t-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 1.2rem 1.5rem; background: var(--card);
+            border: 1px solid var(--border); border-radius: 14px;
+            transition: all 0.3s;
+        }
+        .t-row:hover { border-color: var(--border-hover); background: var(--card-hover); }
+        .t-label { font-size: 0.8rem; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
+        .t-val { font-size: 1rem; font-weight: 600; color: var(--purple2); font-family: 'JetBrains Mono', monospace; }
+
+        /* ===== CODE BLOCK ===== */
+        .code-section { max-width: 700px; margin: 0 auto; }
+        .code-block {
+            background: rgba(10,10,16,0.9); border: 1px solid var(--border);
+            border-radius: 16px; overflow: hidden; margin-top: 2rem;
+        }
+        .code-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 18px; background: rgba(255,255,255,0.02);
+            border-bottom: 1px solid var(--border);
+        }
+        .code-lang { font-size: 0.7rem; color: var(--text2); font-family: 'JetBrains Mono', monospace; }
+        .code-copy {
+            padding: 4px 12px; border-radius: 6px; font-size: 0.7rem;
+            background: rgba(255,255,255,0.05); color: var(--text2);
+            border: 1px solid var(--border); cursor: pointer;
+            font-family: 'JetBrains Mono', monospace; transition: all 0.3s;
+        }
+        .code-copy:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+        .code-body {
+            padding: 20px; font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem; line-height: 2; overflow-x: auto;
+        }
+        .code-body .kw { color: var(--purple2); }
+        .code-body .fn { color: var(--cyan); }
+        .code-body .str { color: var(--green); }
+        .code-body .cm { color: #555; }
+
+        /* ===== TOKENOMICS ===== */
+        .token-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; }
+        .tk-card {
+            background: var(--card); border: 1px solid var(--border);
+            border-radius: 20px; padding: 2.5rem 1.5rem; text-align: center;
+            transition: all 0.4s; position: relative;
+        }
+        .tk-card:hover { border-color: var(--border-hover); transform: translateY(-4px); }
+        .tk-num {
+            font-size: 2.5rem; font-weight: 900;
+            background: linear-gradient(135deg, var(--purple), var(--cyan));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .tk-label { margin-top: 0.5rem; font-size: 0.8rem; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
+
+        /* ===== ROADMAP ===== */
+        .roadmap { max-width: 700px; margin: 0 auto; }
+        .rm-item {
+            display: flex; gap: 1.5rem; padding: 1.5rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .rm-item:last-child { border-bottom: none; }
+        .rm-phase {
+            font-size: 0.7rem; font-weight: 700; letter-spacing: 2px;
+            color: var(--purple2); min-width: 60px; padding-top: 2px;
+        }
+        .rm-content h4 { font-size: 1rem; font-weight: 700; margin-bottom: 0.3rem; }
+        .rm-content p { font-size: 0.875rem; color: var(--text2); line-height: 1.6; }
+
+        /* ===== CTA BOTTOM ===== */
+        .cta-section {
+            position: relative; z-index: 1;
+            padding: 100px 2rem; text-align: center;
+        }
+        .cta-box {
+            max-width: 700px; margin: 0 auto; padding: 4rem;
+            background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(6,182,212,0.05));
+            border: 1px solid rgba(139,92,246,0.15);
+            border-radius: 24px; position: relative; overflow: hidden;
+        }
+        .cta-box::before {
+            content: ''; position: absolute; top: -1px; left: 20%; right: 20%;
+            height: 2px; background: linear-gradient(90deg, transparent, var(--purple), transparent);
+        }
+        .cta-box h2 { font-size: 2.2rem; font-weight: 800; margin-bottom: 1rem; }
+        .cta-box p { color: var(--text2); margin-bottom: 2rem; font-size: 1.05rem; }
+
+        /* ===== FOOTER ===== */
+        footer {
+            position: relative; z-index: 1;
+            padding: 3rem 2rem; border-top: 1px solid var(--border);
+            text-align: center;
+        }
+        footer .f-logo { font-size: 1rem; font-weight: 800; letter-spacing: 3px; margin-bottom: 0.5rem; }
+        footer p { color: var(--text2); font-size: 0.8rem; }
+        footer .f-links { display: flex; gap: 2rem; justify-content: center; margin: 1rem 0; }
+        footer .f-links a { color: var(--text2); text-decoration: none; font-size: 0.85rem; transition: color 0.3s; }
+        footer .f-links a:hover { color: var(--purple2); }
+
+        /* ===== ANIMATIONS ===== */
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+
+        .reveal { opacity: 0; transform: translateY(30px); transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+        .reveal.visible { opacity: 1; transform: translateY(0); }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 900px) {
+            .features-grid { grid-template-columns: 1fr; }
+            .token-grid { grid-template-columns: repeat(2, 1fr); }
+            .tech-grid { grid-template-columns: 1fr; }
+            .stats-inner { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 600px) {
+            .nav-links { display: none; }
+            .hero h1 { letter-spacing: -1px; }
+            .stats-inner { grid-template-columns: 1fr; }
+            .token-grid { grid-template-columns: 1fr; }
+            .cta-box { padding: 2rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Glow orbs -->
+    <div class="glow-orb purple"></div>
+    <div class="glow-orb blue"></div>
+    <div class="glow-orb pink"></div>
+
+    <!-- Particles -->
+    <canvas id="particles"></canvas>
+
+    <!-- Nav -->
+    <nav>
+        <div class="nav-inner">
+            <a href="#" class="logo">
+                <div class="logo-diamond"></div>
+                CURS3D
+            </a>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#tech">Technology</a>
+                <a href="#tokenomics">Tokenomics</a>
+                <a href="#roadmap">Roadmap</a>
+                <a href="https://github.com/your-username/curs3d" target="_blank" class="btn-github">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero -->
+    <section class="hero">
+        <div class="hero-inner">
+            <div class="hero-badge">
+                <span class="dot-live"></span>
+                MAINNET COMING SOON
+            </div>
+            <h1>The blockchain<br>built to <span class="grad">survive quantum.</span></h1>
+            <p class="hero-desc">A Layer 1 blockchain written in Rust from scratch. Post-quantum cryptography. Proof of Stake consensus. Ready for what's next.</p>
+            <div class="hero-cta">
+                <a href="https://github.com/your-username/curs3d" class="cta-primary" target="_blank"><span>Explore the Code</span></a>
+                <a href="#tech" class="cta-secondary">How it Works</a>
+            </div>
+
+            <div class="terminal-wrapper">
+                <div class="terminal">
+                    <div class="term-bar">
+                        <span class="term-dot r"></span>
+                        <span class="term-dot y"></span>
+                        <span class="term-dot g"></span>
+                        <span class="term-title">curs3d-node</span>
+                    </div>
+                    <div class="term-body">
+                        <span class="p">$</span> <span class="c">curs3d</span> wallet --output keys.json<br>
+                        <span class="o">=== CURS3D Wallet Created ===</span><br>
+                        <span class="o">Address:</span> <span class="v">CUR7a3f8b2c1d9e4f6a8b...</span><br>
+                        <span class="o">Algorithm:</span> <span class="v">CRYSTALS-Dilithium (Level 5)</span><br><br>
+                        <span class="p">$</span> <span class="c">curs3d</span> node --port 4337<br>
+                        <span class="v">Listening on /ip4/0.0.0.0/tcp/4337</span><br>
+                        <span class="v">Peer discovered: 12D3KooW...</span><br>
+                        <span class="o">Block #1 validated</span> <span class="p">[OK]</span><br>
+                        <span class="blink">_</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats -->
+    <div class="stats">
+        <div class="stats-inner">
+            <div class="stat">
+                <div class="stat-val">SHA-3</div>
+                <div class="stat-label">Hash Function</div>
+            </div>
+            <div class="stat">
+                <div class="stat-val">Dilithium 5</div>
+                <div class="stat-label">Signatures</div>
+            </div>
+            <div class="stat">
+                <div class="stat-val">PoS</div>
+                <div class="stat-label">Consensus</div>
+            </div>
+            <div class="stat">
+                <div class="stat-val">Rust</div>
+                <div class="stat-label">Language</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Features -->
+    <section id="features" class="section">
+        <div class="section-head">
+            <div class="label">Why CURS3D</div>
+            <h2>Built for the post-quantum era</h2>
+            <p>Every component designed from scratch to resist quantum computing attacks while maintaining blazing performance.</p>
+        </div>
+        <div class="features-grid">
+            <div class="f-card reveal">
+                <div class="f-icon">&#128274;</div>
+                <h3>Quantum Resistant</h3>
+                <p>CRYSTALS-Dilithium Level 5 signatures standardized by NIST. Mathematically proven secure against Shor's algorithm.</p>
+            </div>
+            <div class="f-card reveal">
+                <div class="f-icon">&#9889;</div>
+                <h3>Rust Performance</h3>
+                <p>Zero-cost abstractions, no garbage collector, async runtime. Built for throughput that scales.</p>
+            </div>
+            <div class="f-card reveal">
+                <div class="f-icon">&#127760;</div>
+                <h3>P2P Network</h3>
+                <p>libp2p with Gossipsub protocol and mDNS peer discovery. Battle-tested networking stack.</p>
+            </div>
+            <div class="f-card reveal">
+                <div class="f-icon">&#127793;</div>
+                <h3>Proof of Stake</h3>
+                <p>Energy-efficient consensus with stake-weighted validator selection and slashing for bad actors.</p>
+            </div>
+            <div class="f-card reveal">
+                <div class="f-icon">&#128737;</div>
+                <h3>SHA-3 Integrity</h3>
+                <p>Keccak-based hashing with double-hash blocks and Merkle tree verification. Quantum-safe from byte to block.</p>
+            </div>
+            <div class="f-card reveal">
+                <div class="f-icon">&#128736;</div>
+                <h3>Open Source</h3>
+                <p>MIT licensed. Fully auditable. Transparent development. Community-driven from day one.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Tech -->
+    <section id="tech" class="section">
+        <div class="section-head">
+            <div class="label">Architecture</div>
+            <h2>Under the hood</h2>
+        </div>
+        <div class="tech-grid">
+            <div class="t-row reveal"><span class="t-label">Language</span><span class="t-val">Rust</span></div>
+            <div class="t-row reveal"><span class="t-label">Signatures</span><span class="t-val">Dilithium 5</span></div>
+            <div class="t-row reveal"><span class="t-label">Hash</span><span class="t-val">SHA-3 Keccak</span></div>
+            <div class="t-row reveal"><span class="t-label">Consensus</span><span class="t-val">PoS</span></div>
+            <div class="t-row reveal"><span class="t-label">Network</span><span class="t-val">libp2p</span></div>
+            <div class="t-row reveal"><span class="t-label">Protocol</span><span class="t-val">Gossipsub</span></div>
+            <div class="t-row reveal"><span class="t-label">Discovery</span><span class="t-val">mDNS + DHT</span></div>
+            <div class="t-row reveal"><span class="t-label">License</span><span class="t-val">MIT</span></div>
+        </div>
+
+        <div class="code-section">
+            <div class="code-block reveal">
+                <div class="code-header">
+                    <span class="code-lang">wallet.rs</span>
+                    <button class="code-copy" onclick="this.textContent='Copied!'">Copy</button>
+                </div>
+                <div class="code-body">
+<span class="cm">// Generate quantum-resistant keys</span><br>
+<span class="kw">let</span> keypair = <span class="fn">KeyPair::generate</span>();<br>
+<span class="kw">let</span> address = <span class="fn">Wallet::derive_address</span>(&amp;keypair.public_key);<br><br>
+<span class="cm">// Sign with Dilithium Level 5</span><br>
+<span class="kw">let</span> signature = keypair.<span class="fn">sign</span>(message);<br><br>
+<span class="cm">// Verify — quantum-safe</span><br>
+<span class="kw">assert!</span>(<span class="fn">dilithium::verify</span>(message, &amp;sig, &amp;pk));
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Tokenomics -->
+    <section id="tokenomics" class="section">
+        <div class="section-head">
+            <div class="label">Token</div>
+            <h2>Tokenomics</h2>
+        </div>
+        <div class="token-grid">
+            <div class="tk-card reveal">
+                <div class="tk-num">1B</div>
+                <div class="tk-label">Max Supply</div>
+            </div>
+            <div class="tk-card reveal">
+                <div class="tk-num">50</div>
+                <div class="tk-label">Block Reward</div>
+            </div>
+            <div class="tk-card reveal">
+                <div class="tk-num">PoS</div>
+                <div class="tk-label">Consensus</div>
+            </div>
+            <div class="tk-card reveal">
+                <div class="tk-num">$CUR</div>
+                <div class="tk-label">Ticker</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Roadmap -->
+    <section id="roadmap" class="section">
+        <div class="section-head">
+            <div class="label">Roadmap</div>
+            <h2>What's ahead</h2>
+        </div>
+        <div class="roadmap">
+            <div class="rm-item reveal">
+                <span class="rm-phase">Q2 2026</span>
+                <div class="rm-content">
+                    <h4>Core Protocol</h4>
+                    <p>Blockchain core, PoS consensus, P2P networking, wallet CLI. Testnet launch.</p>
+                </div>
+            </div>
+            <div class="rm-item reveal">
+                <span class="rm-phase">Q3 2026</span>
+                <div class="rm-content">
+                    <h4>Smart Contracts</h4>
+                    <p>WASM-based virtual machine for programmable smart contracts with quantum-safe execution.</p>
+                </div>
+            </div>
+            <div class="rm-item reveal">
+                <span class="rm-phase">Q4 2026</span>
+                <div class="rm-content">
+                    <h4>Mainnet Launch</h4>
+                    <p>Public mainnet, validator onboarding, block explorer, and developer SDK release.</p>
+                </div>
+            </div>
+            <div class="rm-item reveal">
+                <span class="rm-phase">2027</span>
+                <div class="rm-content">
+                    <h4>Ecosystem Growth</h4>
+                    <p>DEX, bridges to major chains, governance, and community grants program.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta-section">
+        <div class="cta-box reveal">
+            <h2>Join the quantum revolution</h2>
+            <p>CURS3D is open source. Start building, contributing, or running a node today.</p>
+            <a href="https://github.com/your-username/curs3d" class="cta-primary" target="_blank"><span>View on GitHub</span></a>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="f-logo">CURS3D</div>
+        <div class="f-links">
+            <a href="https://github.com/your-username/curs3d" target="_blank">GitHub</a>
+            <a href="#">Discord</a>
+            <a href="#">Twitter</a>
+        </div>
+        <p>&copy; 2026 CURS3D &mdash; MIT License. Quantum-resistant blockchain.</p>
+    </footer>
+
+    <script>
+        // ===== PARTICLES =====
+        const canvas = document.getElementById('particles');
+        const ctx = canvas.getContext('2d');
+        let w, h, particles = [];
+
+        function resize() {
+            w = canvas.width = window.innerWidth;
+            h = canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        class Particle {
+            constructor() { this.reset(); }
+            reset() {
+                this.x = Math.random() * w;
+                this.y = Math.random() * h;
+                this.size = Math.random() * 1.5 + 0.5;
+                this.speedX = (Math.random() - 0.5) * 0.3;
+                this.speedY = (Math.random() - 0.5) * 0.3;
+                this.opacity = Math.random() * 0.5 + 0.1;
+            }
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                if (this.x < 0 || this.x > w || this.y < 0 || this.y > h) this.reset();
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(139, 92, 246, ${this.opacity})`;
+                ctx.fill();
+            }
+        }
+
+        for (let i = 0; i < 80; i++) particles.push(new Particle());
+
+        function drawLines() {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 150) {
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = `rgba(139, 92, 246, ${0.06 * (1 - dist / 150)})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, w, h);
+            particles.forEach(p => { p.update(); p.draw(); });
+            drawLines();
+            requestAnimationFrame(animate);
+        }
+        animate();
+
+        // ===== SCROLL REVEAL =====
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach((entry, i) => {
+                if (entry.isIntersecting) {
+                    setTimeout(() => entry.target.classList.add('visible'), i * 80);
+                }
+            });
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+        // ===== SMOOTH SCROLL =====
+        document.querySelectorAll('a[href^="#"]').forEach(a => {
+            a.addEventListener('click', e => {
+                e.preventDefault();
+                const t = document.querySelector(a.getAttribute('href'));
+                if (t) t.scrollIntoView({ behavior: 'smooth' });
+            });
+        });
+    </script>
+</body>
+</html>

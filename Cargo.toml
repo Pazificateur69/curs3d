@@ -1,0 +1,36 @@
+[package]
+name = "curs3d"
+version = "0.1.0"
+edition = "2024"
+description = "CURS3D — Quantum-Resistant Blockchain"
+license = "MIT"
+repository = "https://github.com/your-username/curs3d"
+
+[dependencies]
+# Post-quantum cryptography
+pqcrypto-dilithium = "0.5"
+pqcrypto-traits = "0.3"
+sha3 = "0.10"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bincode = "1"
+
+# Networking
+tokio = { version = "1", features = ["full"] }
+libp2p = { version = "0.54", features = ["tcp", "noise", "yamux", "gossipsub", "mdns", "tokio", "macros"] }
+futures = "0.3"
+
+# Misc
+hex = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+clap = { version = "4", features = ["derive"] }
+rand = "0.8"
+
+[[bin]]
+name = "curs3d"
+path = "src/main.rs"

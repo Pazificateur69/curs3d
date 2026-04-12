@@ -1,0 +1,9 @@
+/target
+*.exe
+*.pdb
+wallet.json
+build.bat
+build_output.txt
+env_lib.txt
+.DS_Store
+Thumbs.db
