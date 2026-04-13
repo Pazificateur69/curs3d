@@ -1,0 +1,54 @@
+services:
+  node1:
+    build: .
+    container_name: curs3d-validator
+    command:
+      - "node"
+      - "--port"
+      - "4337"
+      - "--data-dir"
+      - "/data"
+      - "--rpc-addr"
+      - "0.0.0.0:9545"
+    ports:
+      - "4337:4337"
+      - "9545:9545"
+      - "8080:8080"
+    volumes:
+      - node1-data:/data
+    networks:
+      - curs3d-net
+    restart: unless-stopped
+
+  node2:
+    build: .
+    container_name: curs3d-relay
+    command:
+      - "node"
+      - "--port"
+      - "4337"
+      - "--data-dir"
+      - "/data"
+      - "--rpc-addr"
+      - "0.0.0.0:9545"
+      - "--bootnode"
+      - "/dns4/node1/tcp/4337"
+    ports:
+      - "4338:4337"
+      - "9546:9545"
+      - "8081:8080"
+    volumes:
+      - node2-data:/data
+    networks:
+      - curs3d-net
+    depends_on:
+      - node1
+    restart: unless-stopped
+
+volumes:
+  node1-data:
+  node2-data:
+
+networks:
+  curs3d-net:
+    driver: bridge

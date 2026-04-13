@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CURS3D - Quantum-Resistant Layer 1 Blockchain</title>
-    <meta name="description" content="CURS3D is a quantum-resistant Layer 1 blockchain built in Rust with Dilithium 5 signatures, BFT consensus, and SHA-3 integrity.">
+    <meta name="description" content="CURS3D is a quantum-resistant Layer 1 blockchain built in Rust with Dilithium 5 signatures, BFT consensus, REST API, and SHA-3 integrity.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -31,6 +31,7 @@
                 <a href="docs.html">Docs</a>
                 <a href="examples.html">Examples</a>
                 <a href="whitepaper.html">Whitepaper</a>
+                <a href="explorer.html">Explorer</a>
                 <a href="#features">Features</a>
                 <a href="#technology">Technology</a>
                 <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener" class="btn-nav">
@@ -51,6 +52,7 @@
         <a href="docs.html">Docs</a>
         <a href="examples.html">Examples</a>
         <a href="whitepaper.html">Whitepaper</a>
+        <a href="explorer.html">Explorer</a>
         <a href="#features">Features</a>
         <a href="#technology">Technology</a>
         <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub &rarr;</a>
@@ -61,7 +63,7 @@
         <div class="hero-content">
             <div class="badge">
                 <span class="pulse-dot"></span>
-                MAINNET COMING SOON
+                DEVNET LIVE
             </div>
             <h1>
                 The blockchain built<br>
@@ -69,15 +71,15 @@
             </h1>
             <p class="hero-sub">
                 Post-quantum cryptography meets Byzantine fault tolerance.
-                A Layer 1 protocol engineered in Rust for the next era of decentralized security.
+                A Layer 1 protocol engineered in Rust with BFT finality, REST API, and deterministic fork choice.
             </p>
             <div class="hero-buttons">
                 <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener" class="btn btn-primary">
                     Explore Code
                     <span class="btn-icon">&rarr;</span>
                 </a>
-                <a href="#features" class="btn btn-secondary">
-                    How it Works
+                <a href="docs.html" class="btn btn-secondary">
+                    Read the Docs
                 </a>
             </div>
             <div class="terminal">
@@ -89,28 +91,40 @@
                 </div>
                 <div class="terminal-body" id="terminalBody">
                     <div class="terminal-line">
-                        <span class="prompt">$</span> <span class="cmd">curs3d wallet create --quantum-safe</span>
+                        <span class="prompt">$</span> <span class="cmd">curs3d wallet --output validator.json</span>
                     </div>
                     <div class="terminal-line">
-                        <span class="output">[+] Generating Dilithium-5 keypair...</span>
+                        <span class="output">[+] Wallet created: CUR7f3a...9c2d (AES-256-GCM encrypted)</span>
                     </div>
                     <div class="terminal-line">
-                        <span class="output">[+] Wallet created: 0x7f3a...9c2d</span>
+                        <span class="output">[+] Keys: CRYSTALS-Dilithium Level 5</span>
                     </div>
                     <div class="terminal-line">
-                        <span class="output">[+] Quantum-resistant signature: ENABLED</span>
+                        <span class="prompt">$</span> <span class="cmd">curs3d node --validator-wallet validator.json --genesis-config genesis.json</span>
                     </div>
                     <div class="terminal-line">
-                        <span class="prompt">$</span> <span class="cmd">curs3d node start --bft-consensus</span>
+                        <span class="output">[+] Chain: curs3d-devnet | RPC: 127.0.0.1:9545 | HTTP API: :8080</span>
                     </div>
                     <div class="terminal-line">
-                        <span class="output">[+] Initializing BFT validator node...</span>
+                        <span class="output">[+] Gossipsub active. mDNS discovery enabled.</span>
                     </div>
                     <div class="terminal-line">
-                        <span class="output">[+] Connecting to peers via libp2p/gossipsub...</span>
+                        <span class="prompt">$</span> <span class="cmd">curs3d stake --wallet validator.json --amount 1000</span>
                     </div>
                     <div class="terminal-line">
-                        <span class="output success">[+] Node online. Finality: 2/3 threshold reached.</span>
+                        <span class="output success">[+] Stake submitted. Validator active at height 42.</span>
+                    </div>
+                    <div class="terminal-line">
+                        <span class="prompt">$</span> <span class="cmd">curs3d status --rpc-addr 127.0.0.1:9545</span>
+                    </div>
+                    <div class="terminal-line">
+                        <span class="output success">[+] Height: 142 | Finalized: 139 | Validators: 2</span>
+                    </div>
+                    <div class="terminal-line">
+                        <span class="prompt">$</span> <span class="cmd">curl localhost:8080/api/status</span>
+                    </div>
+                    <div class="terminal-line">
+                        <span class="output success">[+] {"ok":true,"data":{"height":142,"finalized_height":139}}</span>
                     </div>
                     <div class="terminal-line">
                         <span class="prompt">$</span> <span class="cursor">|</span>
@@ -124,8 +138,8 @@
     <section class="stats">
         <div class="stats-container">
             <div class="stat-item reveal">
-                <span class="stat-value gradient-text">SHA-3</span>
-                <span class="stat-label">Keccak Hashing</span>
+                <span class="stat-value gradient-text">BFT PoS</span>
+                <span class="stat-label">Byzantine Consensus</span>
             </div>
             <div class="stat-divider"></div>
             <div class="stat-item reveal">
@@ -134,8 +148,13 @@
             </div>
             <div class="stat-divider"></div>
             <div class="stat-item reveal">
-                <span class="stat-value gradient-text">BFT PoS</span>
-                <span class="stat-label">Byzantine Consensus</span>
+                <span class="stat-value gradient-text">10</span>
+                <span class="stat-label">REST API Endpoints</span>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat-item reveal">
+                <span class="stat-value gradient-text">46</span>
+                <span class="stat-label">Tests Passing</span>
             </div>
             <div class="stat-divider"></div>
             <div class="stat-item reveal">
@@ -151,50 +170,64 @@
             <div class="section-header reveal">
                 <span class="section-tag">Core Features</span>
                 <h2>Engineered for the <span class="gradient-text">post-quantum</span> era</h2>
-                <p class="section-sub">Every component designed from the ground up to resist quantum attacks while maintaining high-performance consensus.</p>
+                <p class="section-sub">Every component designed from the ground up to resist quantum attacks while delivering production-grade infrastructure.</p>
             </div>
-            <div class="features-grid">
+            <div class="features-grid features-grid-4">
                 <div class="feature-card reveal">
                     <div class="feature-icon-wrap">
                         <span class="feature-icon-symbol">&loz;</span>
                     </div>
-                    <h3>Quantum Resistant</h3>
-                    <p>CRYSTALS-Dilithium 5 lattice-based signatures provide provable security against both classical and quantum adversaries.</p>
+                    <h3>Quantum Cryptography</h3>
+                    <p>CRYSTALS-Dilithium Level 5 (NIST FIPS 204) for all signatures. SHA-3 Keccak-256 hashing. AES-256-GCM + Argon2 wallet encryption.</p>
                 </div>
                 <div class="feature-card reveal">
                     <div class="feature-icon-wrap">
                         <span class="feature-icon-symbol">&equiv;</span>
                     </div>
                     <h3>BFT Finality</h3>
-                    <p>Byzantine Fault Tolerant consensus with 2/3 threshold voting ensures deterministic finality even with malicious validators.</p>
+                    <p>Byzantine Fault Tolerant consensus with 2/3 threshold FinalityVote system. Blocks finalized when validators representing 2/3+ of total stake vote.</p>
                 </div>
                 <div class="feature-card reveal">
                     <div class="feature-icon-wrap">
                         <span class="feature-icon-symbol">&perp;</span>
                     </div>
-                    <h3>Fork Choice Rule</h3>
-                    <p>Heaviest-chain fork selection algorithm resolves conflicts deterministically, preventing chain splits and ensuring network convergence.</p>
+                    <h3>Fork Choice</h3>
+                    <p>BlockTree with heaviest-chain rule by cumulative proposer stake. Automatic reorg detection. Finality boundary prevents deep reorganizations.</p>
                 </div>
                 <div class="feature-card reveal">
                     <div class="feature-icon-wrap">
                         <span class="feature-icon-symbol">&times;</span>
                     </div>
                     <h3>Provable Slashing</h3>
-                    <p>Cryptographic evidence of misbehavior with on-chain provable slashing conditions for equivocation and invalid attestations.</p>
+                    <p>Cryptographic EquivocationEvidence with 33% stake penalty. Dual Dilithium signatures prove validator double-signing. Permanent jailing after slash.</p>
                 </div>
                 <div class="feature-card reveal">
                     <div class="feature-icon-wrap">
-                        <span class="feature-icon-symbol">#</span>
+                        <span class="feature-icon-symbol">&laquo;/&raquo;</span>
                     </div>
-                    <h3>SHA-3 Integrity</h3>
-                    <p>Keccak-based SHA-3 hashing across all protocol layers for collision-resistant block headers, Merkle trees, and state proofs.</p>
+                    <h3>REST API</h3>
+                    <p>Full HTTP REST API on port 8080 with CORS support. 10 endpoints: status, blocks, accounts, transactions, validators, faucet, and tx submission.</p>
                 </div>
                 <div class="feature-card reveal">
                     <div class="feature-icon-wrap">
-                        <span class="feature-icon-symbol">&lt;/&gt;</span>
+                        <span class="feature-icon-symbol">&#9635;</span>
                     </div>
-                    <h3>Open Source</h3>
-                    <p>MIT licensed. Fully auditable Rust codebase with no closed-source dependencies. Verify every line of code yourself.</p>
+                    <h3>Block Explorer</h3>
+                    <p>Built-in web explorer connects to the REST API. Browse blocks, look up accounts, search transactions, use the testnet faucet, and monitor live events.</p>
+                </div>
+                <div class="feature-card reveal">
+                    <div class="feature-icon-wrap">
+                        <span class="feature-icon-symbol">&#8645;</span>
+                    </div>
+                    <h3>Stake / Unstake</h3>
+                    <p>Four transaction types: Transfer, Stake, Unstake, and Coinbase. Lock tokens for validation and unlock them when done. Full liquidity control.</p>
+                </div>
+                <div class="feature-card reveal">
+                    <div class="feature-icon-wrap">
+                        <span class="feature-icon-symbol">&#9881;</span>
+                    </div>
+                    <h3>Docker Ready</h3>
+                    <p>Multi-stage Docker build with docker-compose for 2-node networks. GitHub Actions CI with check, test, clippy, and fmt. Production-ready from day one.</p>
                 </div>
             </div>
         </div>
@@ -236,7 +269,7 @@
                     </div>
                     <div class="tech-item reveal">
                         <span class="tech-label">Discovery</span>
-                        <span class="tech-value">mDNS + DHT</span>
+                        <span class="tech-value">mDNS + Bootnodes</span>
                     </div>
                     <div class="tech-item reveal">
                         <span class="tech-label">Finality</span>
@@ -248,11 +281,27 @@
                     </div>
                     <div class="tech-item reveal">
                         <span class="tech-label">Storage</span>
-                        <span class="tech-value">sled</span>
+                        <span class="tech-value">sled DB</span>
                     </div>
                     <div class="tech-item reveal">
-                        <span class="tech-label">Encryption</span>
+                        <span class="tech-label">Wallet Crypto</span>
                         <span class="tech-value">AES-256-GCM</span>
+                    </div>
+                    <div class="tech-item reveal">
+                        <span class="tech-label">KDF</span>
+                        <span class="tech-value">Argon2</span>
+                    </div>
+                    <div class="tech-item reveal">
+                        <span class="tech-label">HTTP API</span>
+                        <span class="tech-value">REST + CORS</span>
+                    </div>
+                    <div class="tech-item reveal">
+                        <span class="tech-label">Containers</span>
+                        <span class="tech-value">Docker</span>
+                    </div>
+                    <div class="tech-item reveal">
+                        <span class="tech-label">CI/CD</span>
+                        <span class="tech-value">GitHub Actions</span>
                     </div>
                     <div class="tech-item reveal">
                         <span class="tech-label">License</span>
@@ -280,7 +329,7 @@
         hasher.<span class="fn">update</span>(pk.<span class="fn">as_bytes</span>());
         <span class="kw">let</span> hash = hasher.<span class="fn">finalize</span>();
         <span class="kw">let</span> address = <span class="macro">format!</span>(
-            <span class="str">"0x{}"</span>, <span class="fn">hex</span>::<span class="fn">encode</span>(&amp;hash[..<span class="num">20</span>])
+            <span class="str">"CUR{}"</span>, <span class="fn">hex</span>::<span class="fn">encode</span>(&amp;hash[..<span class="num">20</span>])
         );
 
         <span class="ty">Wallet</span> { address, public_key: pk, secret_key: sk }
@@ -295,26 +344,133 @@
         </div>
     </section>
 
+    <!-- REST API Showcase -->
+    <section class="api-showcase" id="api">
+        <div class="section-container">
+            <div class="section-header reveal">
+                <span class="section-tag">REST API</span>
+                <h2>Build on CURS3D with a <span class="gradient-text">simple HTTP API</span></h2>
+                <p class="section-sub">10 endpoints with full CORS support. Query the chain, look up accounts, submit transactions -- all from your browser or any HTTP client.</p>
+            </div>
+            <div class="api-grid">
+                <div class="api-card reveal">
+                    <span class="api-method get">GET</span>
+                    <span class="api-path">/api/status</span>
+                    <span class="api-desc">Chain height, finalized height, validators, pending txs</span>
+                </div>
+                <div class="api-card reveal">
+                    <span class="api-method get">GET</span>
+                    <span class="api-path">/api/blocks</span>
+                    <span class="api-desc">Recent blocks with pagination (?from=0&amp;limit=20)</span>
+                </div>
+                <div class="api-card reveal">
+                    <span class="api-method get">GET</span>
+                    <span class="api-path">/api/block/:height</span>
+                    <span class="api-desc">Full block detail with transactions, state root, merkle root</span>
+                </div>
+                <div class="api-card reveal">
+                    <span class="api-method get">GET</span>
+                    <span class="api-path">/api/account/:addr</span>
+                    <span class="api-desc">Balance, nonce, and staked balance for any address</span>
+                </div>
+                <div class="api-card reveal">
+                    <span class="api-method get">GET</span>
+                    <span class="api-path">/api/tx/:hash</span>
+                    <span class="api-desc">Transaction details by hash (kind, from, to, amount, fee)</span>
+                </div>
+                <div class="api-card reveal">
+                    <span class="api-method get">GET</span>
+                    <span class="api-path">/api/pending</span>
+                    <span class="api-desc">All pending transactions in the mempool</span>
+                </div>
+                <div class="api-card reveal">
+                    <span class="api-method get">GET</span>
+                    <span class="api-path">/api/validators</span>
+                    <span class="api-desc">Active validator set with addresses, public keys, and stakes</span>
+                </div>
+                <div class="api-card reveal">
+                    <span class="api-method get">GET</span>
+                    <span class="api-path">/api/faucet/:addr</span>
+                    <span class="api-desc">Testnet faucet -- instantly credits 100 CUR</span>
+                </div>
+                <div class="api-card reveal">
+                    <span class="api-method post">POST</span>
+                    <span class="api-path">/api/tx/submit</span>
+                    <span class="api-desc">Submit a signed transaction (JSON body)</span>
+                </div>
+                <div class="api-card reveal">
+                    <span class="api-method opt">OPTIONS</span>
+                    <span class="api-path">*</span>
+                    <span class="api-desc">CORS preflight -- all origins, methods, headers allowed</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Infrastructure -->
+    <section class="infrastructure" id="infrastructure">
+        <div class="section-container">
+            <div class="section-header reveal">
+                <span class="section-tag">Infrastructure</span>
+                <h2><span class="gradient-text">Production-grade</span> from day one</h2>
+                <p class="section-sub">Docker containers, CI pipelines, dual API servers, and persistent storage -- everything you need to run a real network.</p>
+            </div>
+            <div class="infra-grid">
+                <div class="infra-card reveal">
+                    <h3>Docker Multi-Stage Build</h3>
+                    <p>Optimized Dockerfile builds a minimal production image. docker-compose launches a 2-node network with a single command.</p>
+                    <div class="code-block-full">
+                        <div class="code-header">
+                            <span class="code-filename">terminal</span>
+                            <button class="code-copy">Copy</button>
+                        </div>
+                        <pre class="code-body"><code>docker-compose up -d
+# Node 1: port 4337, RPC 9545, HTTP 8080
+# Node 2: port 4338, RPC 9546, HTTP 8081</code></pre>
+                    </div>
+                </div>
+                <div class="infra-card reveal">
+                    <h3>GitHub Actions CI</h3>
+                    <p>Automated pipeline runs on every push: cargo check, cargo test (46 tests), clippy linting, and rustfmt formatting verification.</p>
+                    <div class="ci-badges">
+                        <span class="ci-badge pass">check</span>
+                        <span class="ci-badge pass">test (46)</span>
+                        <span class="ci-badge pass">clippy</span>
+                        <span class="ci-badge pass">fmt</span>
+                    </div>
+                </div>
+                <div class="infra-card reveal">
+                    <h3>Dual API Servers</h3>
+                    <p>TCP RPC on port 9545 for CLI tooling. HTTP REST API on port 8080 for browsers, explorers, and external apps. Both run concurrently.</p>
+                </div>
+                <div class="infra-card reveal">
+                    <h3>Persistent Storage</h3>
+                    <p>sled embedded database stores blocks, accounts, and chain config. Survives restarts. Configurable data directory per node.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- Tokenomics -->
     <section class="tokenomics" id="tokenomics">
         <div class="section-container">
             <div class="section-header reveal">
                 <span class="section-tag">Tokenomics</span>
                 <h2>Simple, <span class="gradient-text">transparent</span> economics</h2>
-                <p class="section-sub">No pre-mine. No insider allocation. Fair launch with predictable issuance.</p>
+                <p class="section-sub">Configurable genesis. Fair distribution. Predictable issuance.</p>
             </div>
             <div class="token-grid">
                 <div class="token-card reveal">
-                    <span class="token-number">1B</span>
-                    <span class="token-label">Max Supply</span>
-                </div>
-                <div class="token-card reveal">
                     <span class="token-number">50</span>
-                    <span class="token-label">Block Reward</span>
+                    <span class="token-label">Block Reward (CUR)</span>
                 </div>
                 <div class="token-card reveal">
-                    <span class="token-number">BFT</span>
-                    <span class="token-label">PoS Consensus</span>
+                    <span class="token-number">1K</span>
+                    <span class="token-label">Min Stake (CUR)</span>
+                </div>
+                <div class="token-card reveal">
+                    <span class="token-number">33%</span>
+                    <span class="token-label">Slash Penalty</span>
                 </div>
                 <div class="token-card reveal">
                     <span class="token-number">$CUR</span>
@@ -334,15 +490,15 @@
             <div class="roadmap-track">
                 <div class="roadmap-line"></div>
                 <div class="roadmap-item reveal">
-                    <div class="roadmap-dot active"></div>
+                    <div class="roadmap-dot completed"></div>
                     <div class="roadmap-content">
-                        <span class="roadmap-date">Q2 2026</span>
+                        <span class="roadmap-date">Q2 2026 -- DONE</span>
                         <h3>Core Protocol</h3>
-                        <p>BFT finality engine, Dilithium 5 wallet system, fork choice rule, and provable slashing conditions.</p>
+                        <p>BFT finality engine, Dilithium 5 wallets, fork choice rule, provable slashing, REST API, Block Explorer, Unstake transactions, Docker, CI pipeline. 46 tests, 16 modules, 7 website pages.</p>
                     </div>
                 </div>
                 <div class="roadmap-item reveal">
-                    <div class="roadmap-dot"></div>
+                    <div class="roadmap-dot active"></div>
                     <div class="roadmap-content">
                         <span class="roadmap-date">Q3 2026</span>
                         <h3>Smart Contracts</h3>
@@ -354,7 +510,7 @@
                     <div class="roadmap-content">
                         <span class="roadmap-date">Q4 2026</span>
                         <h3>Mainnet Launch</h3>
-                        <p>Genesis block, validator onboarding, block explorer, and ecosystem tooling release.</p>
+                        <p>Genesis block, community validator onboarding, security audit, and ecosystem tooling release.</p>
                     </div>
                 </div>
                 <div class="roadmap-item reveal">
@@ -403,14 +559,15 @@
                     <span class="footer-heading">Protocol</span>
                     <a href="#features">Features</a>
                     <a href="#technology">Technology</a>
+                    <a href="#api">REST API</a>
                     <a href="whitepaper.html">Whitepaper</a>
                 </div>
                 <div class="footer-links-group">
                     <span class="footer-heading">Developers</span>
                     <a href="docs.html">Documentation</a>
                     <a href="examples.html">Examples</a>
-                    <a href="docs.html#cli-reference">CLI Reference</a>
-                    <a href="docs.html#rpc-api">RPC API</a>
+                    <a href="explorer.html">Block Explorer</a>
+                    <a href="docs.html#rest-api">API Reference</a>
                 </div>
                 <div class="footer-links-group">
                     <span class="footer-heading">Community</span>

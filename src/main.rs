@@ -1,3 +1,4 @@
+mod api;
 mod consensus;
 mod core;
 mod crypto;
@@ -255,9 +256,22 @@ async fn run_node(
     };
 
     let (_outbound_tx, outbound_rx) = tokio::sync::mpsc::channel(100);
+    let (event_tx, _event_rx) = tokio::sync::broadcast::channel::<String>(256);
+
+    // TCP RPC (for CLI)
     let rpc_chain = Arc::clone(&chain);
     let rpc_addr_owned = rpc_addr.to_string();
     let rpc_task = tokio::spawn(async move { rpc::serve(&rpc_addr_owned, rpc_chain).await });
+
+    // HTTP API (for browser/explorer)
+    let http_chain = Arc::clone(&chain);
+    let http_event_tx = event_tx.clone();
+    let http_addr = rpc_addr.replace("9545", "8080");
+    let http_task = tokio::spawn(async move {
+        if let Err(e) = api::serve_http(&http_addr, http_chain, http_event_tx).await {
+            tracing::error!("HTTP API error: {}", e);
+        }
+    });
 
     match network::NetworkNode::new(port, bootnodes).await {
         Ok(mut node) => {
@@ -277,6 +291,7 @@ async fn run_node(
             println!("Node PeerId: {}", node.peer_id);
             println!("Listening on port {}", port);
             println!("RPC listening on {}", rpc_addr);
+            println!("HTTP API on http://{}", rpc_addr.replace("9545", "8080"));
             println!("Chain height: {}", chain_height);
             println!("Active validators: {}", active_validators);
             println!("Pending txs: {}", pending_txs);
@@ -307,6 +322,7 @@ async fn run_node(
                         Err(err) => eprintln!("RPC task failed: {}", err),
                     }
                 }
+                _ = http_task => {}
                 _ = tokio::signal::ctrl_c() => {
                     println!("\nShutting down gracefully...");
                 }

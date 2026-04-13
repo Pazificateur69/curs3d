@@ -7,6 +7,7 @@ use crate::crypto::hash;
 pub enum TransactionKind {
     Transfer,
     Stake,
+    Unstake,
     Coinbase,
 }
 
@@ -139,6 +140,24 @@ impl Transaction {
     pub fn is_stake(&self) -> bool {
         self.kind == TransactionKind::Stake
     }
+
+    pub fn is_unstake(&self) -> bool {
+        self.kind == TransactionKind::Unstake
+    }
+
+    pub fn unstake(sender_public_key: Vec<u8>, amount: u64, fee: u64, nonce: u64) -> Self {
+        Transaction {
+            kind: TransactionKind::Unstake,
+            from: hash::address_bytes_from_public_key(&sender_public_key),
+            sender_public_key,
+            to: Vec::new(),
+            amount,
+            fee,
+            nonce,
+            timestamp: chrono::Utc::now().timestamp(),
+            signature: None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -172,6 +191,16 @@ mod tests {
         let mut tx = Transaction::stake(kp.public_key.clone(), 5000, 10, 0);
         tx.sign(&kp);
         assert!(tx.is_stake());
+        assert!(tx.verify_signature());
+        assert_eq!(tx.to.len(), 0);
+    }
+
+    #[test]
+    fn test_unstake_transaction() {
+        let kp = KeyPair::generate();
+        let mut tx = Transaction::unstake(kp.public_key.clone(), 5000, 10, 0);
+        tx.sign(&kp);
+        assert!(tx.is_unstake());
         assert!(tx.verify_signature());
         assert_eq!(tx.to.len(), 0);
     }

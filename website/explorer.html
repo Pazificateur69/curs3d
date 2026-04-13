@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Block Explorer - CURS3D</title>
+    <meta name="description" content="CURS3D Block Explorer. Browse blocks, look up accounts, search transactions, and monitor the quantum-resistant blockchain in real time.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* === Explorer-Specific Styles === */
+
+        .explorer-config {
+            max-width: 1200px;
+            margin: 0 auto 1.5rem;
+            padding: 0 2rem;
+        }
+
+        .config-bar {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem 1.25rem;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            backdrop-filter: blur(12px);
+        }
+
+        .config-bar label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text2);
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .config-bar input {
+            flex: 1;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.5rem 0.75rem;
+            color: var(--text);
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .config-bar input:focus {
+            border-color: var(--purple);
+        }
+
+        .config-bar .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ef4444;
+            flex-shrink: 0;
+            transition: background 0.3s;
+        }
+
+        .config-bar .status-dot.online {
+            background: var(--green);
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+        }
+
+        .config-bar .status-label {
+            font-size: 0.8rem;
+            color: var(--text3);
+            white-space: nowrap;
+        }
+
+        /* Status Dashboard */
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            max-width: 1200px;
+            margin: 0 auto 2rem;
+            padding: 0 2rem;
+        }
+
+        .status-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 1.25rem 1.5rem;
+            backdrop-filter: blur(12px);
+            transition: border-color 0.3s, transform 0.3s var(--ease-out);
+        }
+
+        .status-card:hover {
+            border-color: var(--border-hover);
+            transform: translateY(-2px);
+        }
+
+        .status-card .card-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text3);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+        }
+
+        .status-card .card-value {
+            font-size: 1.5rem;
+            font-weight: 800;
+            font-family: var(--font-mono);
+            background: var(--gradient-main);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* Explorer Layout */
+        .explorer-body {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem 4rem;
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 2rem;
+        }
+
+        @media (max-width: 960px) {
+            .explorer-body {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .explorer-panel {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 1.5rem;
+            backdrop-filter: blur(12px);
+        }
+
+        .panel-title {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .panel-title .icon {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: var(--gradient-main);
+            border-radius: 2px;
+            transform: rotate(45deg);
+        }
+
+        /* Blocks Table */
+        .blocks-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .blocks-table thead th {
+            text-align: left;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text3);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .blocks-table tbody tr {
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .blocks-table tbody tr:hover {
+            background: rgba(139, 92, 246, 0.06);
+        }
+
+        .blocks-table tbody td {
+            padding: 0.6rem 0.75rem;
+            color: var(--text2);
+        }
+
+        .blocks-table .mono {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--purple2);
+        }
+
+        .block-txs-expand {
+            display: none;
+            padding: 0.75rem 1rem;
+            background: rgba(139, 92, 246, 0.04);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .block-txs-expand.open {
+            display: table-row;
+        }
+
+        .block-txs-expand td {
+            padding: 0.75rem 1rem;
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            color: var(--text3);
+        }
+
+        /* Sidebar Panels */
+        .sidebar-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .explorer-panel input[type="text"] {
+            width: 100%;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.6rem 0.75rem;
+            color: var(--text);
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            outline: none;
+            transition: border-color 0.3s;
+            margin-bottom: 0.75rem;
+        }
+
+        .explorer-panel input[type="text"]:focus {
+            border-color: var(--purple);
+        }
+
+        .explorer-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding: 0.6rem 1.25rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: var(--gradient-subtle);
+            color: #fff;
+            transition: opacity 0.2s, transform 0.2s;
+        }
+
+        .explorer-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .explorer-btn:active {
+            transform: translateY(0);
+        }
+
+        .result-box {
+            margin-top: 0.75rem;
+            padding: 0.75rem;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--text2);
+            min-height: 48px;
+            word-break: break-all;
+        }
+
+        .result-box.error {
+            border-color: rgba(239, 68, 68, 0.3);
+            color: #f87171;
+        }
+
+        .result-box.success {
+            border-color: rgba(16, 185, 129, 0.3);
+            color: var(--green2);
+        }
+
+        /* Account Info */
+        .account-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+        }
+
+        .account-info .info-item {
+            padding: 0.5rem;
+            background: rgba(255,255,255,0.02);
+            border-radius: 6px;
+        }
+
+        .account-info .info-label {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text3);
+            margin-bottom: 0.2rem;
+        }
+
+        .account-info .info-value {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--text);
+        }
+
+        /* Live Feed */
+        .live-feed-section {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem 4rem;
+        }
+
+        .live-feed {
+            height: 260px;
+            overflow-y: auto;
+            padding: 0.75rem;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            line-height: 1.7;
+            color: var(--text3);
+        }
+
+        .live-feed::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .live-feed::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .live-feed::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.08);
+            border-radius: 3px;
+        }
+
+        .feed-line {
+            padding: 2px 0;
+        }
+
+        .feed-line .ts {
+            color: var(--text3);
+        }
+
+        .feed-line .ev-block {
+            color: var(--purple2);
+        }
+
+        .feed-line .ev-tx {
+            color: var(--cyan);
+        }
+
+        .feed-line .ev-finality {
+            color: var(--green2);
+        }
+
+        .feed-line .ev-error {
+            color: #f87171;
+        }
+
+        .ws-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            color: var(--text3);
+            margin-left: auto;
+        }
+
+        .ws-status .ws-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #ef4444;
+        }
+
+        .ws-status .ws-dot.connected {
+            background: var(--green);
+            box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+        }
+
+        /* Offline Banner */
+        .offline-banner {
+            display: none;
+            max-width: 1200px;
+            margin: 0 auto 1.5rem;
+            padding: 0 2rem;
+        }
+
+        .offline-banner.show {
+            display: block;
+        }
+
+        .offline-banner-inner {
+            padding: 0.75rem 1.25rem;
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            border-radius: 10px;
+            color: #f87171;
+            font-size: 0.85rem;
+            text-align: center;
+        }
+
+        /* Tx Detail */
+        .tx-detail {
+            display: grid;
+            gap: 0.4rem;
+        }
+
+        .tx-detail .tx-row {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .tx-detail .tx-label {
+            flex-shrink: 0;
+            width: 60px;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text3);
+            padding-top: 2px;
+        }
+
+        .tx-detail .tx-val {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--text2);
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Particle Canvas -->
+    <canvas id="particles"></canvas>
+
+    <!-- Glow Orbs -->
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
+    <!-- Navigation -->
+    <nav id="nav">
+        <div class="nav-container">
+            <a href="index.html" class="logo"><span class="logo-diamond"></span> CURS3D</a>
+            <div class="nav-links" id="navLinks">
+                <a href="docs.html">Docs</a>
+                <a href="examples.html">Examples</a>
+                <a href="whitepaper.html">Whitepaper</a>
+                <a href="explorer.html" class="active">Explorer</a>
+                <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener" class="btn-nav">GitHub <span class="btn-nav-arrow">&rarr;</span></a>
+            </div>
+            <button class="hamburger" id="hamburger" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+        </div>
+    </nav>
+
+    <!-- Mobile Menu -->
+    <div class="mobile-menu" id="mobileMenu">
+        <a href="docs.html">Docs</a>
+        <a href="examples.html">Examples</a>
+        <a href="whitepaper.html">Whitepaper</a>
+        <a href="explorer.html">Explorer</a>
+        <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub &rarr;</a>
+    </div>
+
+    <!-- Page Hero -->
+    <section class="page-hero">
+        <span class="section-tag">Block Explorer</span>
+        <h1>Explore the <span class="gradient-text animated-gradient">CURS3D</span> chain</h1>
+        <p class="section-sub" style="max-width:640px;margin:0 auto;">Browse blocks, look up accounts, search transactions, and monitor the quantum-resistant network in real time.</p>
+    </section>
+
+    <!-- API Endpoint Config -->
+    <div class="explorer-config">
+        <div class="config-bar">
+            <label for="apiEndpoint">API Endpoint</label>
+            <input type="text" id="apiEndpoint" value="http://localhost:8080" spellcheck="false">
+            <span class="status-dot" id="statusDot"></span>
+            <span class="status-label" id="statusLabel">Offline</span>
+        </div>
+    </div>
+
+    <!-- Offline Banner -->
+    <div class="offline-banner" id="offlineBanner">
+        <div class="offline-banner-inner">
+            Node offline &mdash; unable to reach the API endpoint. Make sure a CURS3D node is running.
+        </div>
+    </div>
+
+    <!-- Status Dashboard -->
+    <div class="status-grid" id="statusGrid">
+        <div class="status-card">
+            <div class="card-label">Chain Height</div>
+            <div class="card-value" id="chainHeight">&mdash;</div>
+        </div>
+        <div class="status-card">
+            <div class="card-label">Finalized Height</div>
+            <div class="card-value" id="finalizedHeight">&mdash;</div>
+        </div>
+        <div class="status-card">
+            <div class="card-label">Pending Txs</div>
+            <div class="card-value" id="pendingTxs">&mdash;</div>
+        </div>
+        <div class="status-card">
+            <div class="card-label">Active Validators</div>
+            <div class="card-value" id="activeValidators">&mdash;</div>
+        </div>
+        <div class="status-card">
+            <div class="card-label">Chain Name</div>
+            <div class="card-value" id="chainName">&mdash;</div>
+        </div>
+    </div>
+
+    <!-- Main Explorer Body -->
+    <div class="explorer-body">
+        <!-- Left: Recent Blocks -->
+        <div class="explorer-panel">
+            <div class="panel-title"><span class="icon"></span> Recent Blocks</div>
+            <div style="overflow-x:auto;">
+                <table class="blocks-table" id="blocksTable">
+                    <thead>
+                        <tr>
+                            <th>Height</th>
+                            <th>Hash</th>
+                            <th>Validator</th>
+                            <th>Txs</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="blocksBody">
+                        <tr><td colspan="5" style="text-align:center;color:var(--text3);padding:2rem;">Waiting for data&hellip;</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Right: Sidebar -->
+        <div class="sidebar-stack">
+            <!-- Account Lookup -->
+            <div class="explorer-panel">
+                <div class="panel-title"><span class="icon"></span> Account Lookup</div>
+                <input type="text" id="accountAddr" placeholder="Address (hex, with or without CUR prefix)">
+                <button class="explorer-btn" onclick="lookupAccount()">Look Up</button>
+                <div class="result-box" id="accountResult" style="display:none;"></div>
+            </div>
+
+            <!-- Testnet Faucet -->
+            <div class="explorer-panel">
+                <div class="panel-title"><span class="icon"></span> Testnet Faucet</div>
+                <input type="text" id="faucetAddr" placeholder="Recipient address">
+                <button class="explorer-btn" onclick="requestFaucet()">Request 100 CUR</button>
+                <div class="result-box" id="faucetResult" style="display:none;"></div>
+            </div>
+
+            <!-- Transaction Search -->
+            <div class="explorer-panel">
+                <div class="panel-title"><span class="icon"></span> Transaction Search</div>
+                <input type="text" id="txHash" placeholder="Transaction hash">
+                <button class="explorer-btn" onclick="searchTx()">Search</button>
+                <div class="result-box" id="txResult" style="display:none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- WebSocket Live Feed -->
+    <div class="live-feed-section">
+        <div class="explorer-panel">
+            <div class="panel-title" style="justify-content:space-between;">
+                <span style="display:flex;align-items:center;gap:0.5rem;"><span class="icon"></span> Live Feed</span>
+                <span class="ws-status"><span class="ws-dot" id="wsDot"></span> <span id="wsLabel">Disconnected</span></span>
+            </div>
+            <div class="live-feed" id="liveFeed">
+                <div class="feed-line"><span class="ts">[--:--:--]</span> Waiting for WebSocket connection&hellip;</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-container">
+            <div class="footer-top">
+                <div class="footer-brand">
+                    <span class="logo"><span class="logo-diamond"></span> CURS3D</span>
+                    <p>Quantum-resistant blockchain infrastructure for the next century.</p>
+                </div>
+                <div class="footer-links-group">
+                    <span class="footer-heading">Protocol</span>
+                    <a href="index.html#features">Features</a>
+                    <a href="index.html#technology">Technology</a>
+                    <a href="whitepaper.html">Whitepaper</a>
+                </div>
+                <div class="footer-links-group">
+                    <span class="footer-heading">Developers</span>
+                    <a href="docs.html">Documentation</a>
+                    <a href="examples.html">Examples</a>
+                    <a href="explorer.html">Block Explorer</a>
+                    <a href="docs.html#rest-api">REST API</a>
+                </div>
+                <div class="footer-links-group">
+                    <span class="footer-heading">Community</span>
+                    <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
+                    <a href="#" target="_blank" rel="noopener">Discord</a>
+                    <a href="#" target="_blank" rel="noopener">Twitter / X</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 CURS3D Protocol. MIT License. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+    <script>
+    (function() {
+        'use strict';
+
+        // --- Configuration ---
+        const endpointInput = document.getElementById('apiEndpoint');
+        const statusDot = document.getElementById('statusDot');
+        const statusLabel = document.getElementById('statusLabel');
+        const offlineBanner = document.getElementById('offlineBanner');
+
+        function getApi() {
+            return endpointInput.value.replace(/\/+$/, '');
+        }
+
+        function getWsUrl() {
+            const api = getApi();
+            return api.replace(/^http/, 'ws') + '/ws';
+        }
+
+        let nodeOnline = false;
+
+        function setOnline(online) {
+            nodeOnline = online;
+            statusDot.classList.toggle('online', online);
+            statusLabel.textContent = online ? 'Online' : 'Offline';
+            offlineBanner.classList.toggle('show', !online);
+        }
+
+        // --- Helpers ---
+        function truncHash(h, len) {
+            if (!h) return '';
+            len = len || 8;
+            if (h.length <= len * 2 + 2) return h;
+            return h.slice(0, len + 2) + '...' + h.slice(-len);
+        }
+
+        function timeAgo(ts) {
+            if (!ts) return '';
+            const diff = Math.floor((Date.now() / 1000) - ts);
+            if (diff < 0) return 'just now';
+            if (diff < 60) return diff + 's ago';
+            if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+            if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+            return Math.floor(diff / 86400) + 'd ago';
+        }
+
+        function nowTs() {
+            const d = new Date();
+            return d.toTimeString().slice(0, 8);
+        }
+
+        async function apiFetch(path) {
+            const resp = await fetch(getApi() + path);
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            return resp.json();
+        }
+
+        // --- Status Dashboard ---
+        async function refreshStatus() {
+            try {
+                const resp = await apiFetch('/api/status');
+                setOnline(true);
+                var data = resp;
+                // Handle envelope format: {"ok":true,"data":{...}}
+                if (resp && resp.ok === true && resp.data) {
+                    data = resp.data;
+                }
+                document.getElementById('chainHeight').textContent = data.height ?? data.chain_height ?? '--';
+                document.getElementById('finalizedHeight').textContent = data.finalized_height ?? '--';
+                document.getElementById('pendingTxs').textContent = data.pending_transactions ?? data.pending_txs ?? '0';
+                document.getElementById('activeValidators').textContent = data.active_validators ?? '--';
+                document.getElementById('chainName').textContent = data.chain_name ?? 'CURS3D';
+            } catch (e) {
+                setOnline(false);
+            }
+        }
+
+        // --- Recent Blocks ---
+        let expandedBlock = null;
+
+        async function refreshBlocks() {
+            if (!nodeOnline) return;
+            try {
+                const resp = await apiFetch('/api/blocks?from=0&limit=20');
+                var data = resp;
+                if (resp && resp.ok === true && resp.data) { data = resp.data; }
+                const blocks = Array.isArray(data) ? data : (data.blocks || []);
+                if (!Array.isArray(blocks) || blocks.length === 0) return;
+
+                const tbody = document.getElementById('blocksBody');
+                tbody.innerHTML = '';
+
+                blocks.forEach(function(block) {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML =
+                        '<td>' + (block.height ?? '') + '</td>' +
+                        '<td class="mono">' + truncHash(block.hash) + '</td>' +
+                        '<td class="mono">' + truncHash(block.validator || block.proposer, 6) + '</td>' +
+                        '<td>' + (block.tx_count ?? (block.transactions ? block.transactions.length : 0)) + '</td>' +
+                        '<td>' + timeAgo(block.timestamp) + '</td>';
+
+                    // Expand row for transactions
+                    const expandRow = document.createElement('tr');
+                    expandRow.className = 'block-txs-expand';
+                    const txs = block.transactions || [];
+                    let txHtml = '<td colspan="5">';
+                    if (txs.length === 0) {
+                        txHtml += 'No transactions in this block.';
+                    } else {
+                        txHtml += txs.map(function(tx) {
+                            const h = typeof tx === 'string' ? tx : (tx.hash || tx.id || JSON.stringify(tx));
+                            return truncHash(h, 16);
+                        }).join('<br>');
+                    }
+                    txHtml += '</td>';
+                    expandRow.innerHTML = txHtml;
+
+                    tr.addEventListener('click', function() {
+                        if (expandedBlock === expandRow) {
+                            expandRow.classList.remove('open');
+                            expandedBlock = null;
+                        } else {
+                            if (expandedBlock) expandedBlock.classList.remove('open');
+                            expandRow.classList.add('open');
+                            expandedBlock = expandRow;
+                        }
+                    });
+
+                    tbody.appendChild(tr);
+                    tbody.appendChild(expandRow);
+                });
+            } catch (e) {
+                // ignore
+            }
+        }
+
+        // --- Account Lookup ---
+        window.lookupAccount = async function() {
+            const addr = document.getElementById('accountAddr').value.trim();
+            const box = document.getElementById('accountResult');
+            box.style.display = 'block';
+            box.className = 'result-box';
+            if (!addr) { box.textContent = 'Enter an address.'; return; }
+            try {
+                const resp = await apiFetch('/api/account/' + encodeURIComponent(addr));
+                var data = resp;
+                if (resp && resp.ok === true && resp.data) { data = resp.data; }
+                box.innerHTML =
+                    '<div class="account-info">' +
+                    '<div class="info-item"><div class="info-label">Balance</div><div class="info-value">' + (data.balance ?? 0) + ' CUR</div></div>' +
+                    '<div class="info-item"><div class="info-label">Staked</div><div class="info-value">' + (data.staked_balance ?? data.staked ?? 0) + ' CUR</div></div>' +
+                    '<div class="info-item"><div class="info-label">Nonce</div><div class="info-value">' + (data.nonce ?? 0) + '</div></div>' +
+                    '<div class="info-item"><div class="info-label">Address</div><div class="info-value" style="font-size:0.72rem;">' + (data.address ?? addr) + '</div></div>' +
+                    '</div>';
+                box.className = 'result-box success';
+            } catch (e) {
+                box.textContent = 'Error: Could not fetch account. ' + e.message;
+                box.className = 'result-box error';
+            }
+        };
+
+        // --- Testnet Faucet ---
+        window.requestFaucet = async function() {
+            const addr = document.getElementById('faucetAddr').value.trim();
+            const box = document.getElementById('faucetResult');
+            box.style.display = 'block';
+            box.className = 'result-box';
+            if (!addr) { box.textContent = 'Enter a recipient address.'; return; }
+            try {
+                const resp = await apiFetch('/api/faucet/' + encodeURIComponent(addr));
+                var data = resp;
+                if (resp && resp.ok === true && resp.data) { data = resp.data; }
+                box.textContent = data.message || data.tx_hash || 'Sent 100 CUR to ' + truncHash(addr);
+                box.className = 'result-box success';
+            } catch (e) {
+                box.textContent = 'Faucet error: ' + e.message;
+                box.className = 'result-box error';
+            }
+        };
+
+        // --- Transaction Search ---
+        window.searchTx = async function() {
+            const hash = document.getElementById('txHash').value.trim();
+            const box = document.getElementById('txResult');
+            box.style.display = 'block';
+            box.className = 'result-box';
+            if (!hash) { box.textContent = 'Enter a transaction hash.'; return; }
+            try {
+                const resp = await apiFetch('/api/tx/' + encodeURIComponent(hash));
+                var data = resp;
+                if (resp && resp.ok === true && resp.data) { data = resp.data; }
+                box.innerHTML =
+                    '<div class="tx-detail">' +
+                    '<div class="tx-row"><span class="tx-label">Hash</span><span class="tx-val">' + (data.hash || hash) + '</span></div>' +
+                    '<div class="tx-row"><span class="tx-label">From</span><span class="tx-val">' + (data.from || '--') + '</span></div>' +
+                    '<div class="tx-row"><span class="tx-label">To</span><span class="tx-val">' + (data.to || '--') + '</span></div>' +
+                    '<div class="tx-row"><span class="tx-label">Amount</span><span class="tx-val">' + (data.amount ?? 0) + ' CUR</span></div>' +
+                    '<div class="tx-row"><span class="tx-label">Block</span><span class="tx-val">' + (data.block_height ?? data.block ?? '--') + '</span></div>' +
+                    '<div class="tx-row"><span class="tx-label">Status</span><span class="tx-val">' + (data.status ?? 'confirmed') + '</span></div>' +
+                    '</div>';
+                box.className = 'result-box success';
+            } catch (e) {
+                box.textContent = 'Transaction not found. ' + e.message;
+                box.className = 'result-box error';
+            }
+        };
+
+        // --- WebSocket Live Feed ---
+        const liveFeed = document.getElementById('liveFeed');
+        const wsDot = document.getElementById('wsDot');
+        const wsLabelEl = document.getElementById('wsLabel');
+        let ws = null;
+        let wsRetryTimer = null;
+
+        function addFeedLine(cls, msg) {
+            const div = document.createElement('div');
+            div.className = 'feed-line';
+            div.innerHTML = '<span class="ts">[' + nowTs() + ']</span> <span class="' + cls + '">' + msg + '</span>';
+            liveFeed.appendChild(div);
+            liveFeed.scrollTop = liveFeed.scrollHeight;
+            // keep max 200 lines
+            while (liveFeed.children.length > 200) {
+                liveFeed.removeChild(liveFeed.firstChild);
+            }
+        }
+
+        function connectWs() {
+            if (ws) {
+                try { ws.close(); } catch(e) {}
+            }
+            try {
+                ws = new WebSocket(getWsUrl());
+            } catch(e) {
+                wsDot.classList.remove('connected');
+                wsLabelEl.textContent = 'Disconnected';
+                return;
+            }
+
+            ws.onopen = function() {
+                wsDot.classList.add('connected');
+                wsLabelEl.textContent = 'Connected';
+                addFeedLine('ev-finality', 'WebSocket connected to ' + getWsUrl());
+            };
+
+            ws.onmessage = function(evt) {
+                try {
+                    const data = JSON.parse(evt.data);
+                    const type = data.type || data.event || '';
+                    if (type.includes('block') || type === 'new_block') {
+                        addFeedLine('ev-block', 'New block #' + (data.height || data.block_height || '?') + ' hash=' + truncHash(data.hash || data.block_hash, 10));
+                    } else if (type.includes('tx') || type === 'new_transaction') {
+                        addFeedLine('ev-tx', 'New tx ' + truncHash(data.hash || data.tx_hash, 10) + ' from=' + truncHash(data.from, 6));
+                    } else if (type.includes('finality') || type.includes('finalized')) {
+                        addFeedLine('ev-finality', 'Finality update: height ' + (data.height || data.finalized_height || '?'));
+                    } else {
+                        addFeedLine('ev-block', type + ': ' + JSON.stringify(data).slice(0, 120));
+                    }
+                } catch(e) {
+                    addFeedLine('ev-block', evt.data);
+                }
+            };
+
+            ws.onerror = function() {
+                addFeedLine('ev-error', 'WebSocket error');
+            };
+
+            ws.onclose = function() {
+                wsDot.classList.remove('connected');
+                wsLabelEl.textContent = 'Disconnected';
+                addFeedLine('ev-error', 'WebSocket disconnected. Retrying in 5s...');
+                wsRetryTimer = setTimeout(connectWs, 5000);
+            };
+        }
+
+        // --- Auto-refresh loop ---
+        async function tick() {
+            await refreshStatus();
+            await refreshBlocks();
+        }
+
+        tick();
+        setInterval(tick, 5000);
+
+        // Reconnect WS on endpoint change
+        let endpointDebounce = null;
+        endpointInput.addEventListener('input', function() {
+            clearTimeout(endpointDebounce);
+            endpointDebounce = setTimeout(function() {
+                clearTimeout(wsRetryTimer);
+                connectWs();
+                tick();
+            }, 600);
+        });
+
+        // Initial WS connect
+        connectWs();
+
+    })();
+    </script>
+</body>
+</html>

@@ -1,3 +1,4 @@
+pub mod api;
 pub mod consensus;
 pub mod core;
 pub mod crypto;

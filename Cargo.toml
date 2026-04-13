@@ -29,6 +29,16 @@ tokio = { version = "1", features = ["full"] }
 libp2p = { version = "0.54", features = ["tcp", "noise", "yamux", "gossipsub", "mdns", "tokio", "macros"] }
 futures = "0.3"
 
+# HTTP API
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["tokio", "http1"] }
+http-body-util = "0.1"
+bytes = "1"
+tokio-tungstenite = "0.24"
+
+# WASM VM
+wasmer = "5"
+
 # Misc
 hex = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
