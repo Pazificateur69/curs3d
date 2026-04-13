@@ -5,6 +5,7 @@ mod crypto;
 mod network;
 mod rpc;
 mod storage;
+mod vm;
 mod wallet;
 
 use std::sync::Arc;
@@ -222,6 +223,7 @@ async fn run_node(
 
     let chain_height = chain.height();
     let latest_hash = chain.latest_block().hash_hex();
+    let network_topic = format!("curs3d-{}-v1", chain.chain_id());
     info!(
         "Blockchain loaded. Chain: {}, Height: {}, Latest: {}",
         chain.genesis_config.chain_name,
@@ -255,39 +257,45 @@ async fn run_node(
         None
     };
 
-    let (_outbound_tx, outbound_rx) = tokio::sync::mpsc::channel(100);
+    let (outbound_tx, outbound_rx) = tokio::sync::mpsc::channel(100);
     let (event_tx, _event_rx) = tokio::sync::broadcast::channel::<String>(256);
 
     // TCP RPC (for CLI)
     let rpc_chain = Arc::clone(&chain);
     let rpc_addr_owned = rpc_addr.to_string();
-    let rpc_task = tokio::spawn(async move { rpc::serve(&rpc_addr_owned, rpc_chain).await });
+    let rpc_outbound_tx = outbound_tx.clone();
+    let rpc_task =
+        tokio::spawn(async move { rpc::serve(&rpc_addr_owned, rpc_chain, rpc_outbound_tx).await });
 
     // HTTP API (for browser/explorer)
     let http_chain = Arc::clone(&chain);
     let http_event_tx = event_tx.clone();
+    let http_outbound_tx = outbound_tx.clone();
     let http_addr = rpc_addr.replace("9545", "8080");
     let http_task = tokio::spawn(async move {
-        if let Err(e) = api::serve_http(&http_addr, http_chain, http_event_tx).await {
+        if let Err(e) = api::serve_http(&http_addr, http_chain, http_event_tx, http_outbound_tx).await {
             tracing::error!("HTTP API error: {}", e);
         }
     });
 
-    match network::NetworkNode::new(port, bootnodes).await {
+    match network::NetworkNode::new(port, bootnodes, &network_topic).await {
         Ok(mut node) => {
-            let (active_validators, pending_txs, chain_name, genesis_hash) = {
+            let (active_validators, pending_txs, chain_id, chain_name, genesis_hash) = {
                 let chain_lock = chain.lock().await;
                 (
                     chain_lock.active_validator_count(),
                     chain_lock.pending_transactions.len(),
+                    chain_lock.chain_id().to_string(),
                     chain_lock.genesis_config.chain_name.clone(),
                     hex::encode(chain_lock.genesis_hash()),
                 )
             };
 
             println!();
+            println!("Chain ID: {}", chain_id);
             println!("Chain: {}", chain_name);
             println!("Genesis: {}", genesis_hash);
+            println!("Network topic: {}", network_topic);
             println!("Node PeerId: {}", node.peer_id);
             println!("Listening on port {}", port);
             println!("RPC listening on {}", rpc_addr);
@@ -398,6 +406,7 @@ async fn send_tokens(
     };
 
     let mut tx = crate::core::transaction::Transaction::new(
+        &resolve_chain_id(data_dir, rpc_addr).await.unwrap_or_else(|_| "curs3d-devnet".to_string()),
         w.keypair.public_key.clone(),
         to_bytes,
         amount_micro,
@@ -426,7 +435,10 @@ async fn show_status(data_dir: &str, rpc_addr: Option<&str>) {
         match rpc::send_request(addr, &RpcRequest::GetStatus).await {
             Ok(RpcResponse::Status { status }) => {
                 println!("=== CURS3D Node Status ===");
+                println!("Chain ID:          {}", status.chain_id);
                 println!("Chain:             {}", status.chain_name);
+                println!("Epoch:             {}", status.epoch);
+                println!("Epoch Start:       {}", status.epoch_start_height);
                 println!("Height:            {}", status.height);
                 println!("Finalized:         {}", status.finalized_height);
                 println!("Latest Hash:       {}", status.latest_hash);
@@ -457,7 +469,10 @@ async fn show_status(data_dir: &str, rpc_addr: Option<&str>) {
     };
 
     println!("=== CURS3D Blockchain Status ===");
+    println!("Chain ID:          {}", chain.chain_id());
     println!("Chain:             {}", chain.genesis_config.chain_name);
+    println!("Epoch:             {}", chain.current_epoch());
+    println!("Epoch Start:       {}", chain.current_epoch_start_height());
     println!("Height:            {}", chain.height());
     println!("Latest Hash:       {}", chain.latest_block().hash_hex());
     println!("Genesis Hash:      {}", hex::encode(chain.genesis_hash()));
@@ -528,6 +543,7 @@ async fn stake_tokens(wallet_path: &str, amount: u64, fee: u64, data_dir: &str, 
     }
 
     let mut tx = crate::core::transaction::Transaction::stake(
+        &resolve_chain_id(data_dir, rpc_addr).await.unwrap_or_else(|_| "curs3d-devnet".to_string()),
         w.keypair.public_key.clone(),
         stake_micro,
         fee,
@@ -597,6 +613,18 @@ async fn submit_transaction(
             let mut chain = Blockchain::with_storage(data_dir, None).map_err(|e| e.to_string())?;
             chain.add_transaction(tx).map_err(|e| e.to_string())?;
             Ok(format!("local {}", data_dir))
+        }
+    }
+}
+
+async fn resolve_chain_id(data_dir: &str, rpc_addr: &str) -> Result<String, String> {
+    match rpc::send_request(rpc_addr, &RpcRequest::GetStatus).await {
+        Ok(RpcResponse::Status { status }) => Ok(status.chain_id),
+        Ok(RpcResponse::Error { message }) => Err(message),
+        Ok(_) => Err("unexpected RPC response".to_string()),
+        Err(_) => {
+            let chain = Blockchain::with_storage(data_dir, None).map_err(|e| e.to_string())?;
+            Ok(chain.chain_id().to_string())
         }
     }
 }

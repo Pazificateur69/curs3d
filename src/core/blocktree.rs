@@ -63,11 +63,18 @@ impl BlockTree {
             return Err(BlockTreeError::BelowFinalized);
         }
 
-        let parent_weight = self
-            .entries
-            .get(&prev_hash)
-            .ok_or(BlockTreeError::OrphanBlock)?
-            .cumulative_stake_weight;
+        let parent = self.entries.get(&prev_hash).ok_or(BlockTreeError::OrphanBlock)?;
+        if block.header.height != parent.block.header.height + 1 {
+            return Err(BlockTreeError::InvalidHeightLink);
+        }
+        if self.finalized_height > 0
+            && prev_hash != self.finalized_hash
+            && !self.is_descendant_of(&prev_hash, &self.finalized_hash)
+        {
+            return Err(BlockTreeError::BelowFinalized);
+        }
+
+        let parent_weight = parent.cumulative_stake_weight;
 
         let cumulative_weight = parent_weight + proposer_stake;
 
@@ -95,27 +102,24 @@ impl BlockTree {
         if cumulative_weight > old_tip_weight {
             let old_tip = self.canonical_tip.clone();
             self.canonical_tip = block_hash;
-            Ok(old_tip != self.canonical_tip_parent_chain_includes(&old_tip))
+            Ok(!self.is_descendant_of(&self.canonical_tip, &old_tip))
         } else {
             Ok(false)
         }
     }
 
-    /// Helper: check if old_tip is an ancestor of the new canonical tip.
-    /// If yes, no reorg needed (just extension). If no, reorg needed.
-    fn canonical_tip_parent_chain_includes(&self, old_tip: &[u8]) -> Vec<u8> {
-        // Walk back from canonical_tip to see if old_tip is an ancestor
-        let mut current = self.canonical_tip.clone();
+    pub fn is_descendant_of(&self, descendant: &[u8], ancestor: &[u8]) -> bool {
+        let mut current = descendant.to_vec();
         while let Some(entry) = self.entries.get(&current) {
-            if current == old_tip {
-                return current; // Old tip is ancestor, return it to signal no reorg
+            if current == ancestor {
+                return true;
             }
             if entry.block.header.height == 0 {
                 break;
             }
             current = entry.block.header.prev_hash.clone();
         }
-        Vec::new() // Old tip is not an ancestor — reorg needed
+        false
     }
 
     /// Get the canonical chain tip hash
@@ -136,6 +140,10 @@ impl BlockTree {
         }
         chain.reverse();
         chain
+    }
+
+    pub fn is_on_canonical_chain(&self, hash: &[u8]) -> bool {
+        self.is_descendant_of(&self.canonical_tip, hash)
     }
 
     /// Find the common ancestor between two block hashes
@@ -167,6 +175,7 @@ impl BlockTree {
     }
 
     /// Get blocks from ancestor (exclusive) to descendant (inclusive)
+    #[allow(dead_code)]
     pub fn chain_between(&self, ancestor_hash: &[u8], descendant_hash: &[u8]) -> Vec<&Block> {
         let mut blocks = Vec::new();
         let mut current = descendant_hash.to_vec();
@@ -199,21 +208,18 @@ impl BlockTree {
             return;
         }
 
-        // Collect canonical chain hashes
-        let canonical_hashes: std::collections::HashSet<Vec<u8>> = self
-            .canonical_chain()
-            .iter()
-            .map(|b| b.hash.clone())
+        let finalized_hash = self.finalized_hash.clone();
+        let keep: std::collections::HashSet<Vec<u8>> = self
+            .entries
+            .keys()
+            .filter(|hash| {
+                *hash == &finalized_hash
+                    || self.is_descendant_of(hash, &finalized_hash)
+                    || self.is_descendant_of(&finalized_hash, hash)
+            })
+            .cloned()
             .collect();
-
-        // Remove non-canonical entries at or below finalized height
-        self.entries.retain(|hash, entry| {
-            if entry.block.header.height <= self.finalized_height {
-                canonical_hashes.contains(hash)
-            } else {
-                true
-            }
-        });
+        self.entries.retain(|hash, _| keep.contains(hash));
     }
 
     /// Check if a block hash is known to the tree
@@ -236,6 +242,8 @@ impl BlockTree {
 pub enum BlockTreeError {
     #[error("block's parent is not in the tree")]
     OrphanBlock,
+    #[error("block height is not parent height plus one")]
+    InvalidHeightLink,
     #[error("block would fork below finalized height")]
     BelowFinalized,
 }
@@ -249,7 +257,7 @@ mod tests {
     use crate::crypto::hash;
 
     fn make_block(height: u64, prev_hash: Vec<u8>, kp: &KeyPair) -> Block {
-        let coinbase = Transaction::coinbase(vec![1; hash::ADDRESS_LEN], 50);
+        let coinbase = Transaction::coinbase("curs3d-devnet", vec![1; hash::ADDRESS_LEN], 50);
         Block::new(
             height,
             prev_hash,
@@ -358,5 +366,30 @@ mod tests {
         assert!(!tree.contains(&block_b.hash));
         // genesis + block_a + block_a2 remain
         assert_eq!(tree.len(), 3);
+    }
+
+    #[test]
+    fn test_rejects_branch_that_does_not_descend_from_finalized_hash() {
+        let genesis = Block::genesis();
+        let kp_a = KeyPair::generate();
+        let kp_b = KeyPair::generate();
+        let mut tree = BlockTree::from_genesis(&genesis);
+
+        let block_a1 = make_block(1, genesis.hash.clone(), &kp_a);
+        tree.insert(block_a1.clone(), 5_000).unwrap();
+
+        let block_b1 = make_block(1, genesis.hash.clone(), &kp_b);
+        tree.insert(block_b1.clone(), 1_000).unwrap();
+
+        let block_a2 = make_block(2, block_a1.hash.clone(), &kp_a);
+        tree.insert(block_a2.clone(), 5_000).unwrap();
+        tree.set_finalized(block_a1.hash.clone(), 1);
+
+        let fork_from_old_branch = make_block(2, block_b1.hash.clone(), &kp_b);
+        let result = tree.insert(fork_from_old_branch, 10_000);
+        assert!(matches!(
+            result,
+            Err(BlockTreeError::BelowFinalized) | Err(BlockTreeError::OrphanBlock)
+        ));
     }
 }

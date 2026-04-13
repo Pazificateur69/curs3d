@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::core::block::{Block, BlockHeader};
 use crate::core::chain::AccountState;
 use crate::crypto::dilithium::{self, Signature};
 
@@ -26,8 +27,10 @@ pub struct Validator {
 pub struct EquivocationEvidence {
     pub height: u64,
     pub validator_public_key: Vec<u8>,
+    pub block_header_a: BlockHeader,
     pub block_hash_a: Vec<u8>,
     pub signature_a: Signature,
+    pub block_header_b: BlockHeader,
     pub block_hash_b: Vec<u8>,
     pub signature_b: Signature,
 }
@@ -35,9 +38,26 @@ pub struct EquivocationEvidence {
 impl EquivocationEvidence {
     /// Verify that this evidence is valid:
     /// - The two block hashes are different
+    /// - Both hashes commit to headers at the claimed height
     /// - Both signatures are valid Dilithium5 signatures from the same validator
     pub fn verify(&self) -> bool {
         if self.block_hash_a == self.block_hash_b {
+            return false;
+        }
+
+        if self.block_header_a.height != self.height || self.block_header_b.height != self.height {
+            return false;
+        }
+
+        if self.block_header_a.validator_public_key != self.validator_public_key
+            || self.block_header_b.validator_public_key != self.validator_public_key
+        {
+            return false;
+        }
+
+        if Block::compute_hash(&self.block_header_a) != self.block_hash_a
+            || Block::compute_hash(&self.block_header_b) != self.block_hash_b
+        {
             return false;
         }
 
@@ -142,7 +162,8 @@ impl FinalityTracker {
         vote: FinalityVote,
         accounts: &HashMap<Vec<u8>, AccountState>,
         minimum_stake: u64,
-        slashed: &HashSet<Vec<u8>>,
+        _slashed: &HashSet<Vec<u8>>,
+        current_height: u64,
     ) -> Option<FinalizedBlock> {
         if !vote.verify() {
             return None;
@@ -160,7 +181,7 @@ impl FinalityTracker {
         if voter_account.staked_balance < minimum_stake {
             return None;
         }
-        if slashed.contains(&voter_address) {
+        if voter_account.jailed_until_height > current_height {
             return None;
         }
 
@@ -183,7 +204,7 @@ impl FinalityTracker {
         }
 
         // Check if 2/3+ threshold reached
-        let total_active_stake = self.total_active_stake(accounts, minimum_stake, slashed);
+        let total_active_stake = self.total_active_stake(accounts, minimum_stake, current_height);
         if total_active_stake == 0 {
             return None;
         }
@@ -225,18 +246,29 @@ impl FinalityTracker {
         &self,
         accounts: &HashMap<Vec<u8>, AccountState>,
         minimum_stake: u64,
-        slashed: &HashSet<Vec<u8>>,
+        current_height: u64,
     ) -> u64 {
         accounts
             .iter()
-            .filter(|(addr, acc)| {
+            .filter(|(_addr, acc)| {
                 acc.staked_balance >= minimum_stake
                     && acc.public_key.is_some()
-                    && !slashed.contains(*addr)
+                    && acc.validator_active_from_height <= current_height
+                    && acc.jailed_until_height <= current_height
             })
             .map(|(_, acc)| acc.staked_balance)
             .sum()
     }
+}
+
+// ─── Epoch Snapshot ─────────────────────────────────────────────────
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EpochSnapshot {
+    pub epoch: u64,
+    pub start_height: u64,
+    pub validators: Vec<Validator>,
+    pub total_stake: u64,
 }
 
 // ─── Proof of Stake ──────────────────────────────────────────────────
@@ -245,20 +277,27 @@ impl FinalityTracker {
 pub struct ProofOfStake {
     pub minimum_stake: u64,
     pub slashed_validators: HashSet<Vec<u8>>,
+    pub current_height: u64,
 }
 
 impl ProofOfStake {
-    pub fn new(minimum_stake: u64) -> Self {
+    pub fn new(minimum_stake: u64, current_height: u64) -> Self {
         ProofOfStake {
             minimum_stake,
             slashed_validators: HashSet::new(),
+            current_height,
         }
     }
 
-    pub fn with_slashed(minimum_stake: u64, slashed: HashSet<Vec<u8>>) -> Self {
+    pub fn with_slashed(
+        minimum_stake: u64,
+        slashed: HashSet<Vec<u8>>,
+        current_height: u64,
+    ) -> Self {
         ProofOfStake {
             minimum_stake,
             slashed_validators: slashed,
+            current_height,
         }
     }
 
@@ -270,7 +309,10 @@ impl ProofOfStake {
                 if account.staked_balance < self.minimum_stake {
                     return None;
                 }
-                if self.slashed_validators.contains(address) {
+                if account.validator_active_from_height > self.current_height {
+                    return None;
+                }
+                if account.jailed_until_height > self.current_height {
                     return None;
                 }
                 Some(Validator {
@@ -317,12 +359,44 @@ impl ProofOfStake {
         None
     }
 
+    /// Select a validator from a frozen epoch snapshot using the same weighted selection logic.
+    pub fn select_validator_from_snapshot(
+        snapshot: &EpochSnapshot,
+        block_height: u64,
+        prev_hash: &[u8],
+    ) -> Option<Validator> {
+        if snapshot.validators.is_empty() {
+            return None;
+        }
+
+        let total_stake: u64 = snapshot.validators.iter().map(|v| v.stake).sum();
+        if total_stake == 0 {
+            return None;
+        }
+
+        let mut seed = Vec::new();
+        seed.extend_from_slice(&block_height.to_le_bytes());
+        seed.extend_from_slice(prev_hash);
+        let hash = crate::crypto::hash::sha3_hash(&seed);
+        let mut selector = u64::from_le_bytes(hash[..8].try_into().unwrap()) % total_stake;
+
+        for validator in &snapshot.validators {
+            if selector < validator.stake {
+                return Some(validator.clone());
+            }
+            selector -= validator.stake;
+        }
+
+        None
+    }
+
     /// Slash a validator with cryptographic proof of equivocation.
     /// Returns the penalty amount on success.
     pub fn slash_with_evidence(
         &mut self,
         accounts: &mut HashMap<Vec<u8>, AccountState>,
         evidence: &EquivocationEvidence,
+        jail_duration_blocks: u64,
     ) -> Result<u64, SlashingError> {
         if !evidence.verify() {
             return Err(SlashingError::InvalidEvidence);
@@ -344,6 +418,9 @@ impl ProofOfStake {
             .saturating_mul(EQUIVOCATION_SLASH_PERCENT)
             / 100;
         account.staked_balance = account.staked_balance.saturating_sub(penalty);
+        account.jailed_until_height = self
+            .current_height
+            .saturating_add(jail_duration_blocks);
 
         self.slashed_validators.insert(address);
 
@@ -371,6 +448,28 @@ mod tests {
     use crate::crypto::dilithium::KeyPair;
     use crate::crypto::hash;
 
+    fn signed_header(
+        kp: &KeyPair,
+        height: u64,
+        timestamp: i64,
+        prev_hash: Vec<u8>,
+        merkle_seed: &[u8],
+    ) -> (BlockHeader, Vec<u8>, Signature) {
+        let header = BlockHeader {
+            version: 1,
+            height,
+            timestamp,
+            prev_hash,
+            merkle_root: hash::sha3_hash(merkle_seed),
+            state_root: hash::sha3_hash(b"state"),
+            validator_public_key: kp.public_key.clone(),
+            nonce: 0,
+        };
+        let block_hash = Block::compute_hash(&header);
+        let signature = kp.sign(&block_hash);
+        (header, block_hash, signature)
+    }
+
     #[test]
     fn test_active_validators() {
         let kp = KeyPair::generate();
@@ -382,11 +481,14 @@ mod tests {
                 balance: 10,
                 nonce: 0,
                 staked_balance: 5_000,
+                pending_unstakes: Vec::new(),
+                validator_active_from_height: 0,
+                jailed_until_height: 0,
                 public_key: Some(kp.public_key.clone()),
             },
         );
 
-        let pos = ProofOfStake::new(1_000);
+        let pos = ProofOfStake::new(1_000, 1);
         let validators = pos.active_validators(&accounts);
         assert_eq!(validators.len(), 1);
         assert_eq!(validators[0].address, address);
@@ -403,6 +505,9 @@ mod tests {
                 balance: 0,
                 nonce: 0,
                 staked_balance: 5_000,
+                pending_unstakes: Vec::new(),
+                validator_active_from_height: 0,
+                jailed_until_height: 0,
                 public_key: Some(kp1.public_key.clone()),
             },
         );
@@ -412,11 +517,14 @@ mod tests {
                 balance: 0,
                 nonce: 0,
                 staked_balance: 3_000,
+                pending_unstakes: Vec::new(),
+                validator_active_from_height: 0,
+                jailed_until_height: 0,
                 public_key: Some(kp2.public_key.clone()),
             },
         );
 
-        let pos = ProofOfStake::new(1_000);
+        let pos = ProofOfStake::new(1_000, 1);
         let selected = pos.select_validator(&accounts, 1, &[0; 32]);
         assert!(selected.is_some());
     }
@@ -433,11 +541,14 @@ mod tests {
                 balance: 0,
                 nonce: 0,
                 staked_balance: 5_000,
+                pending_unstakes: Vec::new(),
+                validator_active_from_height: 0,
+                jailed_until_height: 0,
                 public_key: Some(kp.public_key.clone()),
             },
         );
 
-        let pos = ProofOfStake::new(1_000);
+        let pos = ProofOfStake::new(1_000, 1);
         let penalty = pos.slash(&mut accounts, &address, 50);
         assert_eq!(penalty, Some(2_500));
         assert_eq!(accounts[&address].staked_balance, 2_500);
@@ -446,16 +557,16 @@ mod tests {
     #[test]
     fn test_equivocation_evidence_valid() {
         let kp = KeyPair::generate();
-        let hash_a = hash::sha3_hash(b"block_a");
-        let hash_b = hash::sha3_hash(b"block_b");
-        let sig_a = kp.sign(&hash_a);
-        let sig_b = kp.sign(&hash_b);
+        let (header_a, hash_a, sig_a) = signed_header(&kp, 5, 100, vec![0; 32], b"block_a");
+        let (header_b, hash_b, sig_b) = signed_header(&kp, 5, 101, vec![1; 32], b"block_b");
 
         let evidence = EquivocationEvidence {
             height: 5,
             validator_public_key: kp.public_key.clone(),
+            block_header_a: header_a,
             block_hash_a: hash_a,
             signature_a: sig_a,
+            block_header_b: header_b,
             block_hash_b: hash_b,
             signature_b: sig_b,
         };
@@ -466,15 +577,16 @@ mod tests {
     #[test]
     fn test_equivocation_evidence_same_hash_rejected() {
         let kp = KeyPair::generate();
-        let hash_a = hash::sha3_hash(b"same_block");
-        let sig_a = kp.sign(&hash_a);
-        let sig_b = kp.sign(&hash_a);
+        let (header_a, hash_a, sig_a) = signed_header(&kp, 5, 100, vec![0; 32], b"same_block");
+        let (header_b, _hash_b, sig_b) = signed_header(&kp, 5, 101, vec![1; 32], b"same_block_2");
 
         let evidence = EquivocationEvidence {
             height: 5,
             validator_public_key: kp.public_key.clone(),
+            block_header_a: header_a,
             block_hash_a: hash_a.clone(),
             signature_a: sig_a,
+            block_header_b: header_b,
             block_hash_b: hash_a,
             signature_b: sig_b,
         };
@@ -493,30 +605,57 @@ mod tests {
                 balance: 100,
                 nonce: 0,
                 staked_balance: 9_000,
+                pending_unstakes: Vec::new(),
+                validator_active_from_height: 0,
+                jailed_until_height: 0,
                 public_key: Some(kp.public_key.clone()),
             },
         );
 
-        let hash_a = hash::sha3_hash(b"block_a");
-        let hash_b = hash::sha3_hash(b"block_b");
+        let (header_a, hash_a, sig_a) = signed_header(&kp, 5, 100, vec![0; 32], b"block_a");
+        let (header_b, hash_b, sig_b) = signed_header(&kp, 5, 101, vec![1; 32], b"block_b");
         let evidence = EquivocationEvidence {
             height: 5,
             validator_public_key: kp.public_key.clone(),
-            block_hash_a: hash_a.clone(),
-            signature_a: kp.sign(&hash_a),
-            block_hash_b: hash_b.clone(),
-            signature_b: kp.sign(&hash_b),
+            block_header_a: header_a,
+            block_hash_a: hash_a,
+            signature_a: sig_a,
+            block_header_b: header_b,
+            block_hash_b: hash_b,
+            signature_b: sig_b,
         };
 
-        let mut pos = ProofOfStake::new(1_000);
-        let penalty = pos.slash_with_evidence(&mut accounts, &evidence).unwrap();
+        let mut pos = ProofOfStake::new(1_000, 5);
+        let penalty = pos
+            .slash_with_evidence(&mut accounts, &evidence, 10)
+            .unwrap();
         assert_eq!(penalty, 2_970); // 33% of 9000
         assert_eq!(accounts[&address].staked_balance, 6_030);
+        assert_eq!(accounts[&address].jailed_until_height, 15);
         assert!(pos.slashed_validators.contains(&address));
     }
 
     #[test]
-    fn test_slashed_validator_excluded() {
+    fn test_equivocation_evidence_rejects_mismatched_height() {
+        let kp = KeyPair::generate();
+        let (header_a, hash_a, sig_a) = signed_header(&kp, 5, 100, vec![0; 32], b"block_a");
+        let (header_b, hash_b, sig_b) = signed_header(&kp, 6, 101, vec![1; 32], b"block_b");
+        let evidence = EquivocationEvidence {
+            height: 5,
+            validator_public_key: kp.public_key.clone(),
+            block_header_a: header_a,
+            block_hash_a: hash_a,
+            signature_a: sig_a,
+            block_header_b: header_b,
+            block_hash_b: hash_b,
+            signature_b: sig_b,
+        };
+
+        assert!(!evidence.verify());
+    }
+
+    #[test]
+    fn test_jailed_validator_excluded() {
         let kp = KeyPair::generate();
         let address = hash::address_bytes_from_public_key(&kp.public_key);
         let mut accounts = HashMap::new();
@@ -526,13 +665,16 @@ mod tests {
                 balance: 0,
                 nonce: 0,
                 staked_balance: 5_000,
+                pending_unstakes: Vec::new(),
+                validator_active_from_height: 0,
+                jailed_until_height: 10,
                 public_key: Some(kp.public_key.clone()),
             },
         );
 
         let mut slashed = HashSet::new();
         slashed.insert(address.clone());
-        let pos = ProofOfStake::with_slashed(1_000, slashed);
+        let pos = ProofOfStake::with_slashed(1_000, slashed, 1);
 
         assert_eq!(pos.active_validators(&accounts).len(), 0);
         assert!(pos.select_validator(&accounts, 1, &[0; 32]).is_none());
@@ -568,6 +710,9 @@ mod tests {
                     balance: 0,
                     nonce: 0,
                     staked_balance: 3_000,
+                    pending_unstakes: Vec::new(),
+                    validator_active_from_height: 0,
+                    jailed_until_height: 0,
                     public_key: Some(pk.clone()),
                 },
             );
@@ -580,12 +725,12 @@ mod tests {
         // 1/3 vote — not enough
         let vote1 = FinalityVote::new(block_hash.clone(), 5, &kp1);
         assert!(tracker
-            .add_vote(vote1, &accounts, 1_000, &slashed)
+            .add_vote(vote1, &accounts, 1_000, &slashed, 5)
             .is_none());
 
         // 2/3 votes — threshold reached
         let vote2 = FinalityVote::new(block_hash.clone(), 5, &kp2);
-        let result = tracker.add_vote(vote2, &accounts, 1_000, &slashed);
+        let result = tracker.add_vote(vote2, &accounts, 1_000, &slashed, 5);
         assert!(result.is_some());
         assert_eq!(result.unwrap().height, 5);
         assert_eq!(tracker.finalized_height, 5);
@@ -602,6 +747,9 @@ mod tests {
                 balance: 0,
                 nonce: 0,
                 staked_balance: 10_000,
+                pending_unstakes: Vec::new(),
+                validator_active_from_height: 0,
+                jailed_until_height: 0,
                 public_key: Some(kp.public_key.clone()),
             },
         );
@@ -615,11 +763,11 @@ mod tests {
 
         // First vote triggers finality (single validator = 100% > 66%)
         assert!(tracker
-            .add_vote(vote1, &accounts, 1_000, &slashed)
+            .add_vote(vote1, &accounts, 1_000, &slashed, 5)
             .is_some());
         // Duplicate is ignored (block already finalized, height <= finalized)
         assert!(tracker
-            .add_vote(vote2, &accounts, 1_000, &slashed)
+            .add_vote(vote2, &accounts, 1_000, &slashed, 5)
             .is_none());
     }
 }

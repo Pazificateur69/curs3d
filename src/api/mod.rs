@@ -3,18 +3,22 @@ use std::sync::Arc;
 use bytes::Bytes;
 use http_body_util::Full;
 use hyper::body::Incoming;
+use hyper::header::{AUTHORIZATION, CONTENT_LENGTH};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use serde::Serialize;
 use tokio::net::TcpListener;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{broadcast, Mutex, mpsc};
 
 use crate::core::block::Block;
 use crate::core::chain::Blockchain;
 use crate::core::transaction::{Transaction, TransactionKind};
 use crate::crypto::hash;
+use crate::network::NetworkMessage;
+
+const MAX_API_BODY_BYTES: usize = 1024 * 1024;
 
 // ─── API Response Types ──────────────────────────────────────────────
 
@@ -73,13 +77,17 @@ fn cors_preflight() -> Response<Full<Bytes>> {
 
 #[derive(Serialize)]
 struct ApiStatus {
+    chain_id: String,
     chain_name: String,
+    epoch: u64,
+    epoch_start_height: u64,
     height: u64,
     finalized_height: u64,
     latest_hash: String,
     genesis_hash: String,
     pending_transactions: usize,
     active_validators: usize,
+    protocol_version: u32,
 }
 
 #[derive(Serialize)]
@@ -132,13 +140,6 @@ struct ApiValidator {
     stake: u64,
 }
 
-#[derive(Serialize)]
-struct ApiFaucetResult {
-    message: String,
-    address: String,
-    amount: u64,
-}
-
 // ─── Converters ──────────────────────────────────────────────────────
 
 fn block_to_api(block: &Block) -> ApiBlock {
@@ -174,6 +175,8 @@ fn tx_to_api(tx: &Transaction) -> ApiTransaction {
             TransactionKind::Stake => "stake".to_string(),
             TransactionKind::Unstake => "unstake".to_string(),
             TransactionKind::Coinbase => "coinbase".to_string(),
+            TransactionKind::DeployContract => "deploy_contract".to_string(),
+            TransactionKind::CallContract => "call_contract".to_string(),
         },
         from: hex::encode(&tx.from),
         to: hex::encode(&tx.to),
@@ -184,12 +187,36 @@ fn tx_to_api(tx: &Transaction) -> ApiTransaction {
     }
 }
 
+fn api_token() -> Option<String> {
+    std::env::var("CURS3D_API_TOKEN").ok().filter(|value| !value.is_empty())
+}
+
+fn enforce_api_auth(req: &Request<Incoming>) -> Option<Response<Full<Bytes>>> {
+    let Some(token) = api_token() else {
+        return None;
+    };
+
+    let expected = format!("Bearer {}", token);
+    match req
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+    {
+        Some(actual) if actual == expected => None,
+        _ => Some(json_err(
+            StatusCode::UNAUTHORIZED,
+            "missing or invalid API bearer token",
+        )),
+    }
+}
+
 // ─── Request Router ──────────────────────────────────────────────────
 
 async fn handle_request(
     req: Request<Incoming>,
     chain: Arc<Mutex<Blockchain>>,
     event_tx: broadcast::Sender<String>,
+    outbound_tx: mpsc::Sender<NetworkMessage>,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
     if req.method() == Method::OPTIONS {
         return Ok(cors_preflight());
@@ -205,13 +232,17 @@ async fn handle_request(
         (Method::GET, ["api", "status"]) => {
             let chain = chain.lock().await;
             Ok(json_ok(ApiStatus {
+                chain_id: chain.chain_id().to_string(),
                 chain_name: chain.genesis_config.chain_name.clone(),
+                epoch: chain.current_epoch(),
+                epoch_start_height: chain.current_epoch_start_height(),
                 height: chain.height(),
                 finalized_height: chain.finalized_height(),
                 latest_hash: hex::encode(chain.latest_hash()),
                 genesis_hash: hex::encode(chain.genesis_hash()),
                 pending_transactions: chain.pending_transactions.len(),
                 active_validators: chain.active_validator_count(),
+                protocol_version: chain.protocol_version_at_height(chain.height()),
             }))
         }
 
@@ -313,6 +344,7 @@ async fn handle_request(
             let pos = crate::consensus::ProofOfStake::with_slashed(
                 chain.minimum_stake,
                 chain.slashed_validators.clone(),
+                chain.height() + 1,
             );
             let validators: Vec<ApiValidator> = pos
                 .active_validators(&chain.accounts)
@@ -326,34 +358,39 @@ async fn handle_request(
             Ok(json_ok(validators))
         }
 
-        // GET /api/faucet/:address (testnet only)
+        // GET /api/faucet/:address
         (Method::GET, ["api", "faucet", addr_hex]) => {
-            let addr_clean = addr_hex.strip_prefix("CUR").unwrap_or(addr_hex);
-            let address = match hex::decode(addr_clean) {
-                Ok(a) if a.len() == hash::ADDRESS_LEN => a,
-                _ => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid address")),
-            };
-
-            let faucet_amount: u64 = 100_000_000; // 100 CUR
-
-            // Directly credit the account (testnet faucet only)
-            let mut chain = chain.lock().await;
-            let account = chain.accounts.entry(address.clone()).or_default();
-            account.balance = account.balance.saturating_add(faucet_amount);
-
-            Ok(json_ok(ApiFaucetResult {
-                message: "Faucet tokens sent".to_string(),
-                address: hex::encode(&address),
-                amount: faucet_amount,
-            }))
+            let _ = addr_hex;
+            Ok(json_err(
+                StatusCode::FORBIDDEN,
+                "faucet disabled: use genesis allocations or a signed transaction",
+            ))
         }
 
         // POST /api/tx/submit
         (Method::POST, ["api", "tx", "submit"]) => {
+            if let Some(response) = enforce_api_auth(&req) {
+                return Ok(response);
+            }
+
+            if let Some(content_length) = req
+                .headers()
+                .get(CONTENT_LENGTH)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<usize>().ok())
+            {
+                if content_length > MAX_API_BODY_BYTES {
+                    return Ok(json_err(StatusCode::PAYLOAD_TOO_LARGE, "request body too large"));
+                }
+            }
+
             let body_bytes = match http_body_util::BodyExt::collect(req.into_body()).await {
                 Ok(collected) => collected.to_bytes(),
                 Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "failed to read body")),
             };
+            if body_bytes.len() > MAX_API_BODY_BYTES {
+                return Ok(json_err(StatusCode::PAYLOAD_TOO_LARGE, "request body too large"));
+            }
 
             let tx: Transaction = match serde_json::from_slice(&body_bytes) {
                 Ok(t) => t,
@@ -369,6 +406,11 @@ async fn handle_request(
             let mut chain = chain.lock().await;
             match chain.add_transaction(tx) {
                 Ok(()) => {
+                    if let Some(pending) = chain.pending_transactions.last() {
+                        if let Ok(data) = bincode::serialize(pending) {
+                            let _ = outbound_tx.try_send(NetworkMessage::NewTransaction(data));
+                        }
+                    }
                     let event =
                         serde_json::json!({"type": "new_tx", "hash": tx_hash}).to_string();
                     let _ = event_tx.send(event);
@@ -388,6 +430,7 @@ pub async fn serve_http(
     addr: &str,
     chain: Arc<Mutex<Blockchain>>,
     event_tx: broadcast::Sender<String>,
+    outbound_tx: mpsc::Sender<NetworkMessage>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let listener = TcpListener::bind(addr).await?;
     tracing::info!("HTTP API listening on http://{}", addr);
@@ -397,12 +440,14 @@ pub async fn serve_http(
         let io = TokioIo::new(stream);
         let chain = Arc::clone(&chain);
         let event_tx = event_tx.clone();
+        let outbound_tx = outbound_tx.clone();
 
         tokio::spawn(async move {
             let service = service_fn(move |req| {
                 let chain = Arc::clone(&chain);
                 let event_tx = event_tx.clone();
-                async move { handle_request(req, chain, event_tx).await }
+                let outbound_tx = outbound_tx.clone();
+                async move { handle_request(req, chain, event_tx, outbound_tx).await }
             });
 
             if let Err(err) = http1::Builder::new().serve_connection(io, service).await {

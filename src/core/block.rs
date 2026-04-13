@@ -7,7 +7,7 @@ use crate::crypto::hash;
 pub const GENESIS_TIMESTAMP: i64 = 1_700_000_000;
 pub const EMPTY_STATE_ROOT_SEED: &[u8] = b"curs3d-empty-state";
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BlockHeader {
     pub version: u32,
     pub height: u64,
@@ -61,12 +61,16 @@ impl Block {
     }
 
     pub fn genesis() -> Self {
-        Self::genesis_with_state_root(hash::sha3_hash(EMPTY_STATE_ROOT_SEED))
+        Self::genesis_with_state_root(hash::sha3_hash(EMPTY_STATE_ROOT_SEED), "curs3d-devnet")
     }
 
-    pub fn genesis_with_state_root(state_root: Vec<u8>) -> Self {
-        let coinbase =
-            Transaction::coinbase_with_timestamp(vec![0; hash::ADDRESS_LEN], 0, GENESIS_TIMESTAMP);
+    pub fn genesis_with_state_root(state_root: Vec<u8>, chain_id: &str) -> Self {
+        let coinbase = Transaction::coinbase_with_timestamp(
+            chain_id,
+            vec![0; hash::ADDRESS_LEN],
+            0,
+            GENESIS_TIMESTAMP,
+        );
         let tx_hashes = vec![coinbase.hash()];
         let merkle_root = hash::merkle_root(&tx_hashes);
 
@@ -145,7 +149,7 @@ mod tests {
             1,
             genesis.hash.clone(),
             hash::sha3_hash(b"state"),
-            vec![Transaction::coinbase(vec![1; hash::ADDRESS_LEN], 50)],
+            vec![Transaction::coinbase("curs3d-devnet", vec![1; hash::ADDRESS_LEN], 50)],
             &validator,
         );
         assert_eq!(block.header.height, 1);

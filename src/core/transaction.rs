@@ -9,10 +9,13 @@ pub enum TransactionKind {
     Stake,
     Unstake,
     Coinbase,
+    DeployContract,
+    CallContract,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Transaction {
+    pub chain_id: String,
     pub kind: TransactionKind,
     pub from: Vec<u8>,
     pub sender_public_key: Vec<u8>,
@@ -22,10 +25,15 @@ pub struct Transaction {
     pub nonce: u64,
     pub timestamp: i64,
     pub signature: Option<Signature>,
+    #[serde(default)]
+    pub gas_limit: u64,
+    #[serde(default)]
+    pub data: Vec<u8>,
 }
 
 #[derive(Serialize)]
 struct SignableTransaction<'a> {
+    chain_id: &'a str,
     kind: &'a TransactionKind,
     from: &'a [u8],
     sender_public_key: &'a [u8],
@@ -34,11 +42,21 @@ struct SignableTransaction<'a> {
     fee: u64,
     nonce: u64,
     timestamp: i64,
+    gas_limit: u64,
+    data: &'a [u8],
 }
 
 impl Transaction {
-    pub fn new(sender_public_key: Vec<u8>, to: Vec<u8>, amount: u64, fee: u64, nonce: u64) -> Self {
+    pub fn new(
+        chain_id: &str,
+        sender_public_key: Vec<u8>,
+        to: Vec<u8>,
+        amount: u64,
+        fee: u64,
+        nonce: u64,
+    ) -> Self {
         Transaction {
+            chain_id: chain_id.to_string(),
             kind: TransactionKind::Transfer,
             from: hash::address_bytes_from_public_key(&sender_public_key),
             sender_public_key,
@@ -48,11 +66,20 @@ impl Transaction {
             nonce,
             timestamp: chrono::Utc::now().timestamp(),
             signature: None,
+            gas_limit: 0,
+            data: Vec::new(),
         }
     }
 
-    pub fn stake(sender_public_key: Vec<u8>, amount: u64, fee: u64, nonce: u64) -> Self {
+    pub fn stake(
+        chain_id: &str,
+        sender_public_key: Vec<u8>,
+        amount: u64,
+        fee: u64,
+        nonce: u64,
+    ) -> Self {
         Transaction {
+            chain_id: chain_id.to_string(),
             kind: TransactionKind::Stake,
             from: hash::address_bytes_from_public_key(&sender_public_key),
             sender_public_key,
@@ -62,15 +89,23 @@ impl Transaction {
             nonce,
             timestamp: chrono::Utc::now().timestamp(),
             signature: None,
+            gas_limit: 0,
+            data: Vec::new(),
         }
     }
 
-    pub fn coinbase(to: Vec<u8>, amount: u64) -> Self {
-        Self::coinbase_with_timestamp(to, amount, chrono::Utc::now().timestamp())
+    pub fn coinbase(chain_id: &str, to: Vec<u8>, amount: u64) -> Self {
+        Self::coinbase_with_timestamp(chain_id, to, amount, chrono::Utc::now().timestamp())
     }
 
-    pub fn coinbase_with_timestamp(to: Vec<u8>, amount: u64, timestamp: i64) -> Self {
+    pub fn coinbase_with_timestamp(
+        chain_id: &str,
+        to: Vec<u8>,
+        amount: u64,
+        timestamp: i64,
+    ) -> Self {
         Transaction {
+            chain_id: chain_id.to_string(),
             kind: TransactionKind::Coinbase,
             from: vec![0; hash::ADDRESS_LEN],
             sender_public_key: Vec::new(),
@@ -80,6 +115,8 @@ impl Transaction {
             nonce: 0,
             timestamp,
             signature: None,
+            gas_limit: 0,
+            data: Vec::new(),
         }
     }
 
@@ -94,6 +131,7 @@ impl Transaction {
 
     fn signable_bytes(&self) -> Vec<u8> {
         let payload = SignableTransaction {
+            chain_id: &self.chain_id,
             kind: &self.kind,
             from: &self.from,
             sender_public_key: &self.sender_public_key,
@@ -102,6 +140,8 @@ impl Transaction {
             fee: self.fee,
             nonce: self.nonce,
             timestamp: self.timestamp,
+            gas_limit: self.gas_limit,
+            data: &self.data,
         };
         bincode::serialize(&payload).expect("failed to serialize transaction payload")
     }
@@ -145,8 +185,73 @@ impl Transaction {
         self.kind == TransactionKind::Unstake
     }
 
-    pub fn unstake(sender_public_key: Vec<u8>, amount: u64, fee: u64, nonce: u64) -> Self {
+    pub fn deploy_contract(
+        chain_id: &str,
+        sender_public_key: Vec<u8>,
+        code: Vec<u8>,
+        gas_limit: u64,
+        fee: u64,
+        nonce: u64,
+    ) -> Self {
         Transaction {
+            chain_id: chain_id.to_string(),
+            kind: TransactionKind::DeployContract,
+            from: hash::address_bytes_from_public_key(&sender_public_key),
+            sender_public_key,
+            to: code,
+            amount: 0,
+            fee,
+            nonce,
+            timestamp: chrono::Utc::now().timestamp(),
+            signature: None,
+            gas_limit,
+            data: Vec::new(),
+        }
+    }
+
+    pub fn call_contract(
+        chain_id: &str,
+        sender_public_key: Vec<u8>,
+        contract_addr: Vec<u8>,
+        input_data: Vec<u8>,
+        value: u64,
+        gas_limit: u64,
+        fee: u64,
+        nonce: u64,
+    ) -> Self {
+        Transaction {
+            chain_id: chain_id.to_string(),
+            kind: TransactionKind::CallContract,
+            from: hash::address_bytes_from_public_key(&sender_public_key),
+            sender_public_key,
+            to: contract_addr,
+            amount: value,
+            fee,
+            nonce,
+            timestamp: chrono::Utc::now().timestamp(),
+            signature: None,
+            gas_limit,
+            data: input_data,
+        }
+    }
+
+    pub fn is_deploy_contract(&self) -> bool {
+        self.kind == TransactionKind::DeployContract
+    }
+
+    pub fn is_call_contract(&self) -> bool {
+        self.kind == TransactionKind::CallContract
+    }
+
+    pub fn unstake(
+        chain_id: &str,
+        sender_public_key: Vec<u8>,
+        amount: u64,
+        fee: u64,
+        nonce: u64,
+    ) -> Self {
+        Transaction {
+            chain_id: chain_id.to_string(),
             kind: TransactionKind::Unstake,
             from: hash::address_bytes_from_public_key(&sender_public_key),
             sender_public_key,
@@ -156,6 +261,8 @@ impl Transaction {
             nonce,
             timestamp: chrono::Utc::now().timestamp(),
             signature: None,
+            gas_limit: 0,
+            data: Vec::new(),
         }
     }
 }
@@ -168,6 +275,7 @@ mod tests {
     fn test_sign_and_verify_transaction() {
         let kp = KeyPair::generate();
         let mut tx = Transaction::new(
+            "test-chain",
             kp.public_key.clone(),
             vec![1; hash::ADDRESS_LEN],
             1000,
@@ -180,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_coinbase_transaction() {
-        let tx = Transaction::coinbase(vec![1; hash::ADDRESS_LEN], 50);
+        let tx = Transaction::coinbase("test-chain", vec![1; hash::ADDRESS_LEN], 50);
         assert!(tx.is_coinbase());
         assert!(tx.verify_signature());
     }
@@ -188,7 +296,7 @@ mod tests {
     #[test]
     fn test_stake_transaction() {
         let kp = KeyPair::generate();
-        let mut tx = Transaction::stake(kp.public_key.clone(), 5000, 10, 0);
+        let mut tx = Transaction::stake("test-chain", kp.public_key.clone(), 5000, 10, 0);
         tx.sign(&kp);
         assert!(tx.is_stake());
         assert!(tx.verify_signature());
@@ -198,7 +306,7 @@ mod tests {
     #[test]
     fn test_unstake_transaction() {
         let kp = KeyPair::generate();
-        let mut tx = Transaction::unstake(kp.public_key.clone(), 5000, 10, 0);
+        let mut tx = Transaction::unstake("test-chain", kp.public_key.clone(), 5000, 10, 0);
         tx.sign(&kp);
         assert!(tx.is_unstake());
         assert!(tx.verify_signature());
@@ -209,6 +317,7 @@ mod tests {
     fn test_rejects_forged_from_address() {
         let kp = KeyPair::generate();
         let mut tx = Transaction::new(
+            "test-chain",
             kp.public_key.clone(),
             vec![1; hash::ADDRESS_LEN],
             1000,

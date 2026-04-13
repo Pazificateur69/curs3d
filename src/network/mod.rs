@@ -49,11 +49,26 @@ pub enum NetworkMessage {
         /// Optional: public key + signature for verified announces
         public_key: Option<Vec<u8>>,
         signature: Option<Signature>,
+        /// Protocol version the peer is running
+        #[serde(default = "default_protocol_version")]
+        protocol_version: u32,
     },
     /// Equivocation evidence — provable slashing
     SlashingEvidence(Vec<u8>),
     /// Finality vote from a validator
     FinalityVote(Vec<u8>),
+    /// Request a state sync snapshot from a peer
+    RequestSnapshot {
+        peer_id: String,
+    },
+    /// Snapshot manifest (bincode-serialized SnapshotManifest)
+    SnapshotManifest(Vec<u8>),
+    /// Snapshot chunk (bincode-serialized StateChunk)
+    SnapshotChunk(Vec<u8>),
+}
+
+fn default_protocol_version() -> u32 {
+    1
 }
 
 // ─── Behaviour ───────────────────────────────────────────────────────
@@ -73,8 +88,12 @@ pub struct NetworkNode {
 }
 
 impl NetworkNode {
-    pub async fn new(port: u16, bootnodes: &[String]) -> Result<Self, Box<dyn std::error::Error>> {
-        let topic = gossipsub::IdentTopic::new("curs3d-mainnet");
+    pub async fn new(
+        port: u16,
+        bootnodes: &[String],
+        topic_name: &str,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let topic = gossipsub::IdentTopic::new(topic_name);
 
         let mut swarm = SwarmBuilder::with_new_identity()
             .with_tokio()
@@ -286,6 +305,11 @@ impl NetworkNode {
                         (None, None)
                     };
 
+                    let protocol_version = {
+                        let chain_lock = chain.lock().await;
+                        chain_lock.protocol_version_at_height(height)
+                    };
+
                     let msg = NetworkMessage::HeightAnnounce {
                         height,
                         latest_hash,
@@ -293,6 +317,7 @@ impl NetworkNode {
                         peer_id: self.peer_id.to_string(),
                         public_key,
                         signature,
+                        protocol_version,
                     };
                     let _ = self.broadcast(&msg);
                 }
@@ -357,6 +382,7 @@ impl NetworkNode {
                                         peer_id: announce_peer_id,
                                         public_key,
                                         signature,
+                                        protocol_version: peer_protocol_version,
                                     } => {
                                         // Verify signature if present
                                         let verified = match (&public_key, &signature) {
@@ -384,6 +410,18 @@ impl NetworkNode {
                                             continue; // Different chain
                                         }
 
+                                        // Reject peers with unknown/incompatible protocol version
+                                        let our_protocol_version = {
+                                            let chain_lock = chain.lock().await;
+                                            chain_lock.protocol_version_at_height(our_height)
+                                        };
+                                        if peer_protocol_version > our_protocol_version {
+                                            warn!(
+                                                "Peer {} running protocol v{} (we: v{}). Upgrade needed.",
+                                                &announce_peer_id, peer_protocol_version, our_protocol_version
+                                            );
+                                        }
+
                                         // Only trigger sync from verified announces
                                         if height > our_height && !sync_requested && verified {
                                             info!(
@@ -404,23 +442,9 @@ impl NetworkNode {
                                                 Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS),
                                             );
                                         } else if height > our_height && !sync_requested && !verified {
-                                            // Unverified announce — still sync but log it
                                             info!(
-                                                "Unverified peer {} at height {} (we: {}). Syncing...",
+                                                "Ignoring unverified peer {} at height {} (we: {}).",
                                                 &announce_peer_id, height, our_height
-                                            );
-                                            let chain_lock = chain.lock().await;
-                                            let msg = NetworkMessage::RequestBlocks {
-                                                from_height: our_height + 1,
-                                                requester_peer_id: self.peer_id.to_string(),
-                                                expected_prev_hash: chain_lock.latest_hash().to_vec(),
-                                                genesis_hash: our_genesis,
-                                            };
-                                            drop(chain_lock);
-                                            let _ = self.broadcast(&msg);
-                                            sync_requested = true;
-                                            sync_deadline = Some(
-                                                Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS),
                                             );
                                         }
                                     }
@@ -450,6 +474,25 @@ impl NetworkNode {
                                                 );
                                             }
                                         }
+                                    }
+                                    NetworkMessage::RequestSnapshot { peer_id: _ } => {
+                                        // Snapshot request handling — respond with manifest
+                                        let chain_lock = chain.lock().await;
+                                        if let Ok(manifest) = chain_lock.create_snapshot() {
+                                            if let Ok(data) = bincode::serialize(&manifest) {
+                                                drop(chain_lock);
+                                                let msg = NetworkMessage::SnapshotManifest(data);
+                                                let _ = self.broadcast(&msg);
+                                            }
+                                        }
+                                    }
+                                    NetworkMessage::SnapshotManifest(_data) => {
+                                        // Snapshot manifest received — log for now
+                                        info!("Received snapshot manifest from network");
+                                    }
+                                    NetworkMessage::SnapshotChunk(_data) => {
+                                        // Snapshot chunk received — log for now
+                                        info!("Received snapshot chunk from network");
                                     }
                                 }
                             }
@@ -559,8 +602,10 @@ impl NetworkNode {
                                             .header
                                             .validator_public_key
                                             .clone(),
+                                        block_header_a: our_block.header.clone(),
                                         block_hash_a: our_block.hash.clone(),
                                         signature_a: sig_a.clone(),
+                                        block_header_b: block.header.clone(),
                                         block_hash_b: block.hash.clone(),
                                         signature_b: sig_b.clone(),
                                     };
