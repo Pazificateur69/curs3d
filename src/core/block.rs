@@ -1,7 +1,11 @@
 use serde::{Deserialize, Serialize};
 
 use crate::core::transaction::Transaction;
+use crate::crypto::dilithium::{self, KeyPair, Signature};
 use crate::crypto::hash;
+
+pub const GENESIS_TIMESTAMP: i64 = 1_700_000_000;
+pub const EMPTY_STATE_ROOT_SEED: &[u8] = b"curs3d-empty-state";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BlockHeader {
@@ -10,7 +14,8 @@ pub struct BlockHeader {
     pub timestamp: i64,
     pub prev_hash: Vec<u8>,
     pub merkle_root: Vec<u8>,
-    pub validator: Vec<u8>,
+    pub state_root: Vec<u8>,
+    pub validator_public_key: Vec<u8>,
     pub nonce: u64,
 }
 
@@ -19,14 +24,16 @@ pub struct Block {
     pub header: BlockHeader,
     pub transactions: Vec<Transaction>,
     pub hash: Vec<u8>,
+    pub signature: Option<Signature>,
 }
 
 impl Block {
     pub fn new(
         height: u64,
         prev_hash: Vec<u8>,
+        state_root: Vec<u8>,
         transactions: Vec<Transaction>,
-        validator: Vec<u8>,
+        validator_keypair: &KeyPair,
     ) -> Self {
         let tx_hashes: Vec<Vec<u8>> = transactions.iter().map(|tx| tx.hash()).collect();
         let merkle_root = hash::merkle_root(&tx_hashes);
@@ -37,31 +44,40 @@ impl Block {
             timestamp: chrono::Utc::now().timestamp(),
             prev_hash,
             merkle_root,
-            validator,
+            state_root,
+            validator_public_key: validator_keypair.public_key.clone(),
             nonce: 0,
         };
 
         let hash = Self::compute_hash(&header);
+        let signature = Some(validator_keypair.sign(&hash));
 
         Block {
             header,
             transactions,
             hash,
+            signature,
         }
     }
 
     pub fn genesis() -> Self {
-        let coinbase = Transaction::coinbase(vec![0; 32], 0);
+        Self::genesis_with_state_root(hash::sha3_hash(EMPTY_STATE_ROOT_SEED))
+    }
+
+    pub fn genesis_with_state_root(state_root: Vec<u8>) -> Self {
+        let coinbase =
+            Transaction::coinbase_with_timestamp(vec![0; hash::ADDRESS_LEN], 0, GENESIS_TIMESTAMP);
         let tx_hashes = vec![coinbase.hash()];
         let merkle_root = hash::merkle_root(&tx_hashes);
 
         let header = BlockHeader {
             version: 1,
             height: 0,
-            timestamp: 1700000000,
+            timestamp: GENESIS_TIMESTAMP,
             prev_hash: vec![0; 32],
             merkle_root,
-            validator: vec![0; 32],
+            state_root,
+            validator_public_key: Vec::new(),
             nonce: 0,
         };
 
@@ -71,10 +87,11 @@ impl Block {
             header,
             transactions: vec![coinbase],
             hash,
+            signature: None,
         }
     }
 
-    fn compute_hash(header: &BlockHeader) -> Vec<u8> {
+    pub fn compute_hash(header: &BlockHeader) -> Vec<u8> {
         let serialized = bincode::serialize(header).expect("failed to serialize header");
         hash::double_hash(&serialized)
     }
@@ -83,14 +100,27 @@ impl Block {
         hex::encode(&self.hash)
     }
 
+    pub fn verify_hash(&self) -> bool {
+        self.hash == Self::compute_hash(&self.header)
+    }
+
+    pub fn verify_signature(&self) -> bool {
+        if self.header.height == 0 {
+            return self.signature.is_none();
+        }
+
+        match &self.signature {
+            Some(signature) => {
+                dilithium::verify(&self.hash, signature, &self.header.validator_public_key)
+            }
+            None => false,
+        }
+    }
+
     pub fn verify_merkle_root(&self) -> bool {
         let tx_hashes: Vec<Vec<u8>> = self.transactions.iter().map(|tx| tx.hash()).collect();
         let computed = hash::merkle_root(&tx_hashes);
         computed == self.header.merkle_root
-    }
-
-    pub fn total_fees(&self) -> u64 {
-        self.transactions.iter().map(|tx| tx.fee).sum()
     }
 }
 
@@ -102,20 +132,26 @@ mod tests {
     fn test_genesis_block() {
         let genesis = Block::genesis();
         assert_eq!(genesis.header.height, 0);
+        assert!(genesis.verify_hash());
         assert!(genesis.verify_merkle_root());
+        assert!(genesis.verify_signature());
     }
 
     #[test]
     fn test_new_block() {
         let genesis = Block::genesis();
+        let validator = KeyPair::generate();
         let block = Block::new(
             1,
             genesis.hash.clone(),
-            vec![Transaction::coinbase(vec![1; 32], 50)],
-            vec![1; 32],
+            hash::sha3_hash(b"state"),
+            vec![Transaction::coinbase(vec![1; hash::ADDRESS_LEN], 50)],
+            &validator,
         );
         assert_eq!(block.header.height, 1);
         assert_eq!(block.header.prev_hash, genesis.hash);
+        assert!(block.verify_hash());
         assert!(block.verify_merkle_root());
+        assert!(block.verify_signature());
     }
 }

@@ -1,5 +1,5 @@
 use pqcrypto_dilithium::dilithium5::{
-    detached_sign, keypair, verify_detached_signature, DetachedSignature, PublicKey, SecretKey,
+    DetachedSignature, PublicKey, SecretKey, detached_sign, keypair, verify_detached_signature,
 };
 use pqcrypto_traits::sign::{DetachedSignature as _, PublicKey as _, SecretKey as _};
 use serde::{Deserialize, Serialize};
@@ -10,7 +10,7 @@ pub struct KeyPair {
     pub secret_key: Vec<u8>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Signature(pub Vec<u8>);
 
 impl KeyPair {
