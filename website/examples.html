@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Examples &amp; Tutorials - CURS3D</title>
+    <meta name="description" content="Step-by-step tutorials for the CURS3D blockchain. Run a node, send transactions, become a validator, set up multi-node networks, and more.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Particle Canvas -->
+    <canvas id="particles"></canvas>
+
+    <!-- Glow Orbs -->
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
+    <!-- Navigation -->
+    <nav id="nav">
+        <div class="nav-container">
+            <a href="index.html" class="logo">
+                <span class="logo-diamond"></span>
+                CURS3D
+            </a>
+            <div class="nav-links" id="navLinks">
+                <a href="docs.html">Docs</a>
+                <a href="examples.html" class="active">Examples</a>
+                <a href="whitepaper.html">Whitepaper</a>
+                <a href="index.html#features">Features</a>
+                <a href="index.html#technology">Technology</a>
+                <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener" class="btn-nav">
+                    GitHub
+                    <span class="btn-nav-arrow">&rarr;</span>
+                </a>
+            </div>
+            <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Mobile Menu -->
+    <div class="mobile-menu" id="mobileMenu">
+        <a href="docs.html">Docs</a>
+        <a href="examples.html">Examples</a>
+        <a href="whitepaper.html">Whitepaper</a>
+        <a href="index.html#features">Features</a>
+        <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub &rarr;</a>
+    </div>
+
+    <!-- Page Hero -->
+    <section class="page-hero">
+        <span class="section-tag">Tutorials</span>
+        <h1>Code <span class="gradient-text">Examples</span></h1>
+        <p class="page-sub">Hands-on tutorials to get you building with CURS3D. From your first node to multi-validator networks.</p>
+    </section>
+
+    <!-- Examples -->
+    <div class="examples-container">
+
+        <!-- Tutorial 1 -->
+        <div class="example-card">
+            <span class="example-number">Tutorial 1</span>
+            <h2>Run Your First Node</h2>
+            <p>Install CURS3D from source and start a blockchain node on your local machine in under five minutes.</p>
+
+            <div class="example-step">
+                <h3><span class="step-num">1</span> Install Rust</h3>
+                <p>CURS3D requires the Rust toolchain. Install it via rustup if you do not have it already.</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env</code></pre>
+                </div>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">2</span> Clone and Build</h3>
+                <p>Clone the repository and compile in release mode.</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>git clone https://github.com/Pazificateur69/curs3d.git
+cd curs3d
+cargo build --release</code></pre>
+                </div>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">3</span> Create a Wallet</h3>
+                <p>Generate a Dilithium Level 5 keypair. You will be prompted to set a password.</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>./target/release/curs3d wallet --output my_wallet.json</code></pre>
+                </div>
+                <p>Expected output:</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">output</span>
+                    </div>
+                    <pre class="code-body"><code>=== CURS3D Wallet Created ===
+Address: CUR7f3a8b1c2d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8
+Saved to: my_wallet.json (AES-256-GCM encrypted)
+Keys: CRYSTALS-Dilithium Level 5</code></pre>
+                </div>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">4</span> Start the Node</h3>
+                <p>Run a relay node (no block production). The node initializes the chain and listens for peers.</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>./target/release/curs3d node --port 4337 --data-dir node1_data</code></pre>
+                </div>
+                <p>You will see the CURS3D ASCII banner followed by chain information, PeerId, and RPC address. Press Ctrl+C to stop.</p>
+            </div>
+        </div>
+
+        <!-- Tutorial 2 -->
+        <div class="example-card">
+            <span class="example-number">Tutorial 2</span>
+            <h2>Send Your First Transaction</h2>
+            <p>Create two wallets, fund one via genesis allocation, and send tokens between them.</p>
+
+            <div class="example-step">
+                <h3><span class="step-num">1</span> Create Two Wallets</h3>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>./target/release/curs3d wallet --output alice.json
+./target/release/curs3d wallet --output bob.json</code></pre>
+                </div>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">2</span> Check Alice's Address</h3>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>./target/release/curs3d info --wallet alice.json
+# Note the Public Key -- you will need this for genesis allocations</code></pre>
+                </div>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">3</span> Create a Genesis Config</h3>
+                <p>Create a <code>genesis.json</code> that pre-funds Alice's account. Use the hex-encoded public key from the previous step.</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">genesis.json</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>{
+  "chain_name": "tutorial-net",
+  "block_reward": 50000000,
+  "minimum_stake": 1000000000,
+  "allocations": [
+    {
+      "public_key": "PASTE_ALICE_HEX_PUBLIC_KEY_HERE",
+      "balance": 10000000000,
+      "staked_balance": 2000000000
+    }
+  ]
+}</code></pre>
+                </div>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">4</span> Start a Validator Node</h3>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>./target/release/curs3d node \
+  --port 4337 \
+  --data-dir tutorial_data \
+  --validator-wallet alice.json \
+  --genesis-config genesis.json</code></pre>
+                </div>
+                <p>The node will produce blocks every 10 seconds because Alice's genesis allocation includes staked balance above the minimum.</p>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">5</span> Send Tokens to Bob</h3>
+                <p>Open a second terminal and send 500 CUR from Alice to Bob. Use Bob's address from <code>curs3d info --wallet bob.json</code>.</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal (new)</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>./target/release/curs3d send \
+  --wallet alice.json \
+  --to BOB_ADDRESS_HERE \
+  --amount 500 \
+  --fee 1000</code></pre>
+                </div>
+                <p>The transaction is submitted via RPC to the running node. It will be included in the next block.</p>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">6</span> Verify</h3>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>./target/release/curs3d status --rpc-addr 127.0.0.1:9545</code></pre>
+                </div>
+                <p>You should see the chain height incrementing and the pending transaction count drop to 0 after inclusion.</p>
+            </div>
+        </div>
+
+        <!-- Tutorial 3 -->
+        <div class="example-card">
+            <span class="example-number">Tutorial 3</span>
+            <h2>Become a Validator</h2>
+            <p>Stake tokens to register your node as a block-producing validator on an existing network.</p>
+
+            <div class="example-step">
+                <h3><span class="step-num">1</span> Ensure Sufficient Balance</h3>
+                <p>Check your account balance. You need at least 1,000 CUR plus the fee to stake.</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>./target/release/curs3d status --rpc-addr 127.0.0.1:9545</code></pre>
+                </div>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">2</span> Submit Stake Transaction</h3>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>./target/release/curs3d stake \
+  --wallet validator.json \
+  --amount 1000 \
+  --fee 1000</code></pre>
+                </div>
+                <p>Expected output:</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">output</span>
+                    </div>
+                    <pre class="code-body"><code>=== CURS3D Stake Submitted ===
+Validator: CUR7f3a...9c2d
+Stake:     1000 CURS3D
+Fee:       1000 microtokens
+TxHash:    b5c6d7e8...
+Route:     rpc 127.0.0.1:9545
+
+Validator becomes active on-chain after inclusion and once
+total stake reaches at least 1000 CURS3D.</code></pre>
+                </div>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">3</span> Run as Validator</h3>
+                <p>Restart your node with the <code>--validator-wallet</code> flag. Once the stake transaction is confirmed, your node will be selected for block production.</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>./target/release/curs3d node \
+  --port 4337 \
+  --data-dir curs3d_data \
+  --validator-wallet validator.json</code></pre>
+                </div>
+                <p>Look for log messages like <code>Produced block #N</code> to confirm block production.</p>
+            </div>
+        </div>
+
+        <!-- Tutorial 4 -->
+        <div class="example-card">
+            <span class="example-number">Tutorial 4</span>
+            <h2>Multi-Node Network</h2>
+            <p>Connect multiple nodes on the same machine and watch them sync blocks via Gossipsub.</p>
+
+            <div class="example-step">
+                <h3><span class="step-num">1</span> Start Node A (Validator)</h3>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal 1</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>./target/release/curs3d node \
+  --port 4337 \
+  --data-dir node_a_data \
+  --validator-wallet alice.json \
+  --genesis-config genesis.json \
+  --rpc-addr 127.0.0.1:9545</code></pre>
+                </div>
+                <p>Note: On a local network, mDNS will automatically discover peers. For remote nodes, use <code>--bootnode</code>.</p>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">2</span> Start Node B (Relay)</h3>
+                <p>In a second terminal, start another node on a different port with a different data directory. Use the bootnode flag if mDNS does not discover the peer.</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal 2</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>./target/release/curs3d node \
+  --port 4338 \
+  --data-dir node_b_data \
+  --genesis-config genesis.json \
+  --rpc-addr 127.0.0.1:9546 \
+  --bootnode /ip4/127.0.0.1/tcp/4337</code></pre>
+                </div>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">3</span> Watch Sync</h3>
+                <p>Node B will discover Node A via mDNS or the bootnode address. You will see log messages indicating peer discovery and block synchronization:</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">node B logs</span>
+                    </div>
+                    <pre class="code-body"><code>Discovered peer: 12D3KooW...
+Verified peer 12D3KooW... at height 15 (we: 0). Syncing...
+Synced 15 blocks. Height: 15
+Accepted block #16 from network</code></pre>
+                </div>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">4</span> Verify Both Nodes</h3>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code># Check Node A
+./target/release/curs3d status --rpc-addr 127.0.0.1:9545
+
+# Check Node B
+./target/release/curs3d status --rpc-addr 127.0.0.1:9546</code></pre>
+                </div>
+                <p>Both nodes should report the same chain height and latest hash.</p>
+            </div>
+        </div>
+
+        <!-- Tutorial 5 -->
+        <div class="example-card">
+            <span class="example-number">Tutorial 5</span>
+            <h2>Custom Genesis Configuration</h2>
+            <p>Create a genesis file that pre-funds multiple accounts with custom token allocations for a private testnet.</p>
+
+            <div class="example-step">
+                <h3><span class="step-num">1</span> Generate Multiple Wallets</h3>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>./target/release/curs3d wallet --output validator1.json
+./target/release/curs3d wallet --output validator2.json
+./target/release/curs3d wallet --output treasury.json</code></pre>
+                </div>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">2</span> Get Public Keys</h3>
+                <p>Extract the hex-encoded public key from each wallet using <code>curs3d info</code>.</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>./target/release/curs3d info --wallet validator1.json
+./target/release/curs3d info --wallet validator2.json
+./target/release/curs3d info --wallet treasury.json</code></pre>
+                </div>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">3</span> Write Genesis File</h3>
+                <p>Create a genesis.json with the public keys from step 2. Give each validator enough staked balance to produce blocks and give the treasury a large liquid balance.</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">genesis.json</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>{
+  "chain_name": "my-private-testnet",
+  "block_reward": 25000000,
+  "minimum_stake": 500000000,
+  "allocations": [
+    {
+      "public_key": "VALIDATOR_1_PUBLIC_KEY_HEX",
+      "balance": 1000000000,
+      "staked_balance": 2000000000
+    },
+    {
+      "public_key": "VALIDATOR_2_PUBLIC_KEY_HEX",
+      "balance": 1000000000,
+      "staked_balance": 2000000000
+    },
+    {
+      "public_key": "TREASURY_PUBLIC_KEY_HEX",
+      "balance": 50000000000,
+      "staked_balance": 0
+    }
+  ]
+}</code></pre>
+                </div>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">4</span> Launch the Network</h3>
+                <p>Start both validators with the custom genesis. The block reward is 25 CUR and minimum stake is 500 CUR.</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code># Terminal 1
+./target/release/curs3d node --port 4337 --data-dir v1_data \
+  --validator-wallet validator1.json --genesis-config genesis.json
+
+# Terminal 2
+./target/release/curs3d node --port 4338 --data-dir v2_data \
+  --validator-wallet validator2.json --genesis-config genesis.json \
+  --bootnode /ip4/127.0.0.1/tcp/4337</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tutorial 6 -->
+        <div class="example-card">
+            <span class="example-number">Tutorial 6</span>
+            <h2>RPC Integration</h2>
+            <p>Interact with a running CURS3D node programmatically using the TCP-based RPC interface.</p>
+
+            <div class="example-step">
+                <h3><span class="step-num">1</span> Ensure a Node is Running</h3>
+                <p>Start a node with the default RPC address <code>127.0.0.1:9545</code>.</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>./target/release/curs3d node --port 4337 --data-dir rpc_test</code></pre>
+                </div>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">2</span> Query Status via TCP</h3>
+                <p>The RPC protocol is newline-delimited JSON over TCP. You can use netcat or any TCP client.</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">terminal</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>echo '"GetStatus"' | nc 127.0.0.1 9545</code></pre>
+                </div>
+                <p>Response:</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">response</span>
+                    </div>
+                    <pre class="code-body"><code>{"Status":{"status":{"chain_name":"curs3d-devnet","height":0,
+"finalized_height":0,"latest_hash":"...","genesis_hash":"...",
+"pending_transactions":0,"active_validators":0}}}</code></pre>
+                </div>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">3</span> Query Account via Python</h3>
+                <p>Here is a minimal Python script to query an account balance:</p>
+                <div class="code-block-full">
+                    <div class="code-header">
+                        <span class="code-filename">query_account.py</span>
+                        <button class="code-copy">Copy</button>
+                    </div>
+                    <pre class="code-body"><code>import socket
+import json
+
+def rpc_request(addr, port, request):
+    with socket.create_connection((addr, port)) as sock:
+        payload = json.dumps(request) + "\n"
+        sock.sendall(payload.encode())
+        response = b""
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            response += chunk
+            if b"\n" in response:
+                break
+    return json.loads(response.decode().strip())
+
+# Query node status
+result = rpc_request("127.0.0.1", 9545, "GetStatus")
+print(json.dumps(result, indent=2))
+
+# Query a specific account (20 bytes as list of ints)
+address_bytes = list(bytes.fromhex("7f3a8b1c2d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a"))
+result = rpc_request("127.0.0.1", 9545, {
+    "GetAccount": {"address": address_bytes}
+})
+print(json.dumps(result, indent=2))</code></pre>
+                </div>
+            </div>
+
+            <div class="example-step">
+                <h3><span class="step-num">4</span> Submit Transaction via RPC</h3>
+                <p>Transaction submission requires a properly signed Dilithium transaction. The recommended approach is to use the CLI (<code>curs3d send</code>) which handles signing automatically. For programmatic access, you would need to implement Dilithium signing in your client language.</p>
+                <div class="note-box">
+                    <p><strong>Note:</strong> The RPC uses Rust-native serde_json serialization. Transaction fields include byte arrays serialized as JSON arrays of integers. Future versions will include a dedicated SDK for multiple languages.</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-container">
+            <div class="footer-top">
+                <div class="footer-brand">
+                    <span class="logo">
+                        <span class="logo-diamond"></span>
+                        CURS3D
+                    </span>
+                    <p>Quantum-resistant blockchain infrastructure for the next century.</p>
+                </div>
+                <div class="footer-links-group">
+                    <span class="footer-heading">Protocol</span>
+                    <a href="index.html#features">Features</a>
+                    <a href="index.html#technology">Technology</a>
+                    <a href="whitepaper.html">Whitepaper</a>
+                </div>
+                <div class="footer-links-group">
+                    <span class="footer-heading">Developers</span>
+                    <a href="docs.html">Documentation</a>
+                    <a href="examples.html">Examples</a>
+                    <a href="docs.html#cli-reference">CLI Reference</a>
+                    <a href="docs.html#rpc-api">RPC API</a>
+                </div>
+                <div class="footer-links-group">
+                    <span class="footer-heading">Community</span>
+                    <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
+                    <a href="#" target="_blank" rel="noopener">Discord</a>
+                    <a href="#" target="_blank" rel="noopener">Twitter / X</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 CURS3D Protocol. MIT License. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>

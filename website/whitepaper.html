@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whitepaper - CURS3D</title>
+    <meta name="description" content="CURS3D Technical Whitepaper. A quantum-resistant Layer 1 blockchain with post-quantum cryptography, BFT Proof of Stake consensus, and libp2p networking.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Particle Canvas -->
+    <canvas id="particles"></canvas>
+
+    <!-- Glow Orbs -->
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
+    <!-- Navigation -->
+    <nav id="nav">
+        <div class="nav-container">
+            <a href="index.html" class="logo">
+                <span class="logo-diamond"></span>
+                CURS3D
+            </a>
+            <div class="nav-links" id="navLinks">
+                <a href="docs.html">Docs</a>
+                <a href="examples.html">Examples</a>
+                <a href="whitepaper.html" class="active">Whitepaper</a>
+                <a href="index.html#features">Features</a>
+                <a href="index.html#technology">Technology</a>
+                <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener" class="btn-nav">
+                    GitHub
+                    <span class="btn-nav-arrow">&rarr;</span>
+                </a>
+            </div>
+            <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Mobile Menu -->
+    <div class="mobile-menu" id="mobileMenu">
+        <a href="docs.html">Docs</a>
+        <a href="examples.html">Examples</a>
+        <a href="whitepaper.html">Whitepaper</a>
+        <a href="index.html#features">Features</a>
+        <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub &rarr;</a>
+    </div>
+
+    <!-- Page Hero -->
+    <section class="page-hero">
+        <span class="section-tag">Whitepaper</span>
+        <h1>CURS3D: A Quantum-Resistant<br><span class="gradient-text">Layer 1 Blockchain</span></h1>
+        <p class="page-sub">Technical specification for a post-quantum blockchain protocol with BFT finality, lattice-based cryptography, and deterministic fork choice.</p>
+    </section>
+
+    <!-- Whitepaper Content -->
+    <div class="wp-container">
+
+        <!-- Meta -->
+        <div class="wp-meta">
+            <span class="version">Version 1.0 -- April 2026</span>
+        </div>
+
+        <!-- Table of Contents -->
+        <div class="wp-toc">
+            <h3>Table of Contents</h3>
+            <ol>
+                <li><a href="#wp-abstract">Abstract</a></li>
+                <li><a href="#wp-introduction">Introduction</a></li>
+                <li><a href="#wp-cryptographic-primitives">Cryptographic Primitives</a></li>
+                <li><a href="#wp-architecture">Blockchain Architecture</a></li>
+                <li><a href="#wp-consensus">Consensus Mechanism</a></li>
+                <li><a href="#wp-fork-choice">Fork Choice Rule</a></li>
+                <li><a href="#wp-network">Network Protocol</a></li>
+                <li><a href="#wp-security">Security Model</a></li>
+                <li><a href="#wp-tokenomics">Tokenomics</a></li>
+                <li><a href="#wp-roadmap">Roadmap</a></li>
+                <li><a href="#wp-conclusion">Conclusion</a></li>
+            </ol>
+        </div>
+
+        <div class="wp-content">
+
+            <!-- Abstract -->
+            <section class="wp-section" id="wp-abstract">
+                <h2>Abstract</h2>
+                <p>We present CURS3D, a Layer 1 blockchain protocol designed to provide long-term security against both classical and quantum adversaries. The protocol employs CRYSTALS-Dilithium Level 5 for all digital signatures, SHA-3 for hashing, and a Byzantine Fault Tolerant Proof of Stake consensus mechanism with deterministic finality. The system is implemented in Rust for memory safety and performance, uses libp2p for decentralized peer-to-peer networking, and persists state to a sled embedded database. This paper describes the protocol's cryptographic foundations, consensus design, fork choice rule, network architecture, and security guarantees.</p>
+            </section>
+
+            <!-- 1. Introduction -->
+            <section class="wp-section" id="wp-introduction">
+                <h2>1. Introduction</h2>
+                <p>The security of existing blockchain protocols rests on the computational hardness of problems such as integer factorization (RSA) and the elliptic curve discrete logarithm problem (ECDLP). These assumptions are vulnerable to quantum algorithms. Shor's algorithm, when executed on a sufficiently powerful quantum computer, can solve both problems in polynomial time, rendering ECDSA and EdDSA signatures -- used by virtually all production blockchains -- insecure.</p>
+                <p>The timeline for cryptographically relevant quantum computers remains uncertain, but the risk is material. Assets secured by classical cryptography today could be retroactively compromised once quantum capability exists. This "harvest now, decrypt later" threat model demands that new blockchain protocols adopt post-quantum cryptographic primitives from the outset rather than retrofitting them later.</p>
+                <p>CURS3D addresses this threat by building on NIST-standardized post-quantum algorithms. Every signature in the protocol -- from wallet transactions to block proposals to consensus votes -- uses CRYSTALS-Dilithium, a lattice-based scheme whose security relies on the hardness of the Module Learning With Errors (MLWE) problem, which is believed to be resistant to quantum attack.</p>
+            </section>
+
+            <!-- 2. Cryptographic Primitives -->
+            <section class="wp-section" id="wp-cryptographic-primitives">
+                <h2>2. Cryptographic Primitives</h2>
+
+                <h3>2.1 CRYSTALS-Dilithium</h3>
+                <p>CURS3D uses CRYSTALS-Dilithium at NIST security Level 5, the highest security tier specified in FIPS 204. Level 5 targets security equivalent to AES-256, meaning an adversary with access to a quantum computer would need computational resources comparable to breaking AES-256 to forge a signature.</p>
+                <p>Dilithium is a lattice-based digital signature scheme based on the Fiat-Shamir with Aborts framework. It provides:</p>
+                <ul>
+                    <li>EUF-CMA security (existential unforgeability under chosen message attack) in both classical and quantum random oracle models</li>
+                    <li>Deterministic signatures, eliminating nonce-reuse vulnerabilities</li>
+                    <li>Relatively compact signatures compared to other post-quantum schemes (approximately 4.6 KB at Level 5)</li>
+                </ul>
+                <p>Dilithium is used for all signature operations in CURS3D: transaction authorization, block proposal signing, finality vote attestation, and authenticated height announcements in the sync protocol.</p>
+
+                <h3>2.2 SHA-3 (Keccak)</h3>
+                <p>SHA3-256 serves as the universal hash function across the protocol. It is used for:</p>
+                <ul>
+                    <li>Block hash computation</li>
+                    <li>Transaction hash computation</li>
+                    <li>Merkle tree construction for transaction inclusion proofs</li>
+                    <li>State root computation over the account set</li>
+                    <li>Address derivation from Dilithium public keys</li>
+                    <li>Validator selection seed generation</li>
+                </ul>
+                <p>SHA-3 was selected over SHA-2 because its sponge construction provides a different mathematical foundation, offering defense-in-depth in the event that structural weaknesses are discovered in Merkle-Damgard-based hash functions.</p>
+
+                <h3>2.3 Address Format</h3>
+                <p>Wallet addresses are derived from Dilithium public keys using the following process:</p>
+                <div class="ascii-diagram">address = "CUR" || hex(SHA3-256(dilithium_public_key)[0..20])
+
+Total length: 3 (prefix) + 40 (hex) = 43 characters
+Example: CUR7f3a8b1c2d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8</div>
+                <p>The 20-byte truncation provides 160 bits of collision resistance, which is sufficient for address uniqueness while keeping addresses compact.</p>
+
+                <h3>2.4 Wallet Encryption</h3>
+                <p>Private keys are stored on disk encrypted with AES-256-GCM. The encryption key is derived from a user-supplied password using Argon2, a memory-hard key derivation function that resists GPU and ASIC-based brute-force attacks. The encrypted wallet file contains the Argon2 salt (16 bytes), AES-GCM nonce (12 bytes), and ciphertext.</p>
+            </section>
+
+            <!-- 3. Blockchain Architecture -->
+            <section class="wp-section" id="wp-architecture">
+                <h2>3. Blockchain Architecture</h2>
+
+                <h3>3.1 Account Model</h3>
+                <p>CURS3D uses an account-based state model (as opposed to UTXO). Each account is identified by its 20-byte address and stores four fields:</p>
+                <ul>
+                    <li><strong>balance</strong> (u64) -- Liquid token balance in microtokens</li>
+                    <li><strong>nonce</strong> (u64) -- Transaction sequence number for replay protection</li>
+                    <li><strong>staked_balance</strong> (u64) -- Tokens locked for validator staking</li>
+                    <li><strong>public_key</strong> (Option) -- Dilithium public key, set on first transaction</li>
+                </ul>
+
+                <h3>3.2 Transactions</h3>
+                <p>The protocol supports two transaction types:</p>
+                <ul>
+                    <li><strong>Transfer</strong> -- Moves tokens from sender to recipient. Debits <code>amount + fee</code> from sender, credits <code>amount</code> to recipient.</li>
+                    <li><strong>Stake</strong> -- Moves tokens from liquid balance to staked balance. Debits <code>amount + fee</code> from balance, credits <code>amount</code> to staked_balance.</li>
+                </ul>
+                <p>Additionally, each block contains a <strong>Coinbase</strong> transaction that credits the block reward to the block producer. Coinbase transactions have no sender and no fee.</p>
+                <p>All non-coinbase transactions must include a valid Dilithium signature over the transaction hash. The nonce must match the sender's current nonce exactly, preventing replay attacks.</p>
+
+                <h3>3.3 Block Structure</h3>
+                <div class="ascii-diagram">+-------------------------------------------------------+
+|                      Block Header                      |
+|-------------------------------------------------------|
+| height          : u64     -- Sequential block number   |
+| timestamp       : i64     -- Unix epoch seconds        |
+| prev_hash       : [u8;32] -- SHA3 hash of parent block |
+| merkle_root     : [u8;32] -- Merkle root of txs       |
+| state_root      : [u8;32] -- SHA3 of sorted accounts  |
+| validator_pubkey: Vec&lt;u8&gt;  -- Dilithium public key     |
++-------------------------------------------------------+
+|                     Transactions                       |
+|-------------------------------------------------------|
+| [0] Coinbase { recipient, amount }                     |
+| [1] Transfer { sender, recipient, amount, fee, nonce } |
+| [2] Stake    { sender, amount, fee, nonce }            |
+| ...                                                    |
++-------------------------------------------------------+
+|                      Signature                         |
+|-------------------------------------------------------|
+| Dilithium Level 5 signature over block hash            |
++-------------------------------------------------------+</div>
+
+                <h3>3.4 State Root</h3>
+                <p>The state root is computed by sorting all accounts deterministically by address, serializing each account state, and computing a SHA3-256 hash over the concatenation. This enables any node to verify that it has arrived at the same global state after processing a block's transactions.</p>
+
+                <h3>3.5 Block Validation Rules</h3>
+                <p>A block is valid if and only if all of the following conditions hold:</p>
+                <ol>
+                    <li>Block height is exactly one greater than the parent block height</li>
+                    <li>prev_hash matches the hash of the parent block</li>
+                    <li>Block hash matches the recomputed hash of the header</li>
+                    <li>Merkle root matches the Merkle tree of the block's transactions</li>
+                    <li>Block timestamp is between the parent timestamp and 30 seconds in the future</li>
+                    <li>Block signature is a valid Dilithium signature from the declared validator</li>
+                    <li>The validator is the selected proposer for this height (or any active validator if no selection applies)</li>
+                    <li>Exactly one coinbase transaction exists, with correct reward amount</li>
+                    <li>All non-coinbase transactions have valid signatures, correct nonces, and sufficient balances</li>
+                    <li>State root matches the state after applying all transactions</li>
+                </ol>
+            </section>
+
+            <!-- 4. Consensus Mechanism -->
+            <section class="wp-section" id="wp-consensus">
+                <h2>4. Consensus Mechanism</h2>
+
+                <h3>4.1 Proof of Stake</h3>
+                <p>CURS3D uses Proof of Stake for Sybil resistance. An account qualifies as a validator by staking a minimum amount of tokens (default: 1,000 CUR = 1,000,000,000 microtokens). The validator set is determined by the current account state: any account with <code>staked_balance >= minimum_stake</code> and a registered public key that has not been slashed is considered active.</p>
+
+                <h3>4.2 Validator Selection</h3>
+                <p>For each block height, a single validator is selected as the block proposer using a deterministic, stake-weighted pseudo-random algorithm:</p>
+                <ol>
+                    <li>Compute a seed: <code>SHA3(block_height || prev_block_hash)</code></li>
+                    <li>Extract a 64-bit selector from the first 8 bytes of the seed</li>
+                    <li>Compute <code>selector = selector % total_active_stake</code></li>
+                    <li>Iterate through validators sorted by address. For each validator, subtract its stake from the selector. The first validator where <code>selector &lt; stake</code> is selected.</li>
+                </ol>
+                <p>This construction ensures that selection probability is proportional to stake, is deterministic given the same chain state, and is unpredictable without knowledge of the next block's prev_hash.</p>
+
+                <h3>4.3 BFT Finality</h3>
+                <p>After a block is produced, validators broadcast finality votes. A FinalityVote is a Dilithium signature over <code>block_hash || block_height</code>. The FinalityTracker collects these votes and checks whether the cumulative staked balance of voters meets or exceeds 2/3 of the total active stake:</p>
+                <div class="ascii-diagram">Finality condition: voted_stake * 3 >= total_active_stake * 2
+
+Example with 3 validators (3000, 3000, 3000 stake each):
+  Total active stake = 9000
+  Required: 6000 (2/3)
+  Vote 1 (3000): 3000 * 3 = 9000 &lt; 9000 * 2 = 18000 -- NOT finalized
+  Vote 2 (3000): 6000 * 3 = 18000 >= 9000 * 2 = 18000 -- FINALIZED</div>
+                <p>Once finalized, a block and all its ancestors become permanent. The BlockTree prunes non-canonical branches at or below the finalized height, preventing long-range reorganizations.</p>
+
+                <h3>4.4 Slashing</h3>
+                <p>Equivocation -- signing two different blocks at the same height -- is a provably detectable offense. Any node that observes two valid signatures from the same validator public key on different block hashes at the same height can construct an EquivocationEvidence proof containing:</p>
+                <ul>
+                    <li>The block height</li>
+                    <li>The validator's Dilithium public key</li>
+                    <li>Two distinct block hashes with their respective valid signatures</li>
+                </ul>
+                <p>This evidence is verified on-chain by confirming both signatures are valid Dilithium signatures and the block hashes differ. Upon successful verification, the validator's staked balance is reduced by 33%, and the validator is permanently excluded from the active set.</p>
+                <p>Equivocation evidence is broadcast to the network via the SlashingEvidence message type, allowing all nodes to apply the penalty independently.</p>
+            </section>
+
+            <!-- 5. Fork Choice Rule -->
+            <section class="wp-section" id="wp-fork-choice">
+                <h2>5. Fork Choice Rule</h2>
+                <p>CURS3D resolves competing chain tips using a <strong>heaviest chain by cumulative proposer-stake weight</strong> rule. The BlockTree maintains a directed acyclic graph of all known blocks. Each block entry stores its cumulative weight, defined as the sum of the proposer's stake for every block in the chain from genesis to that block.</p>
+                <p>When a new block arrives:</p>
+                <ol>
+                    <li>Its parent must exist in the tree (orphan blocks are rejected)</li>
+                    <li>Its height must be above the current finalized height (blocks below finality are rejected)</li>
+                    <li>Its cumulative weight is computed as <code>parent_weight + proposer_stake</code></li>
+                    <li>If the new block's cumulative weight exceeds the current canonical tip, the canonical tip switches (reorg)</li>
+                </ol>
+                <p>This mechanism incentivizes validators with high stake, as their blocks carry more weight. It also provides a deterministic resolution for forks: the chain with the most cumulative validator stake always wins.</p>
+
+                <div class="ascii-diagram">BlockTree Fork Visualization:
+
+Genesis (weight: 0)
+  |
+  +-- Block A1 (validator stake: 5000, weight: 5000)
+  |     |
+  |     +-- Block A2 (validator stake: 3000, weight: 8000) &lt;-- CANONICAL TIP
+  |
+  +-- Block B1 (validator stake: 2000, weight: 2000)
+        |
+        +-- Block B2 (validator stake: 4000, weight: 6000)
+
+Chain A wins: 8000 > 6000 cumulative weight</div>
+
+                <p>When a block is finalized, the tree prunes all non-canonical entries at or below the finalized height. This bounds the memory and storage overhead of fork tracking.</p>
+            </section>
+
+            <!-- 6. Network Protocol -->
+            <section class="wp-section" id="wp-network">
+                <h2>6. Network Protocol</h2>
+
+                <h3>6.1 Transport Layer</h3>
+                <p>CURS3D builds on libp2p with TCP transport, Noise protocol for authenticated encryption, and Yamux for stream multiplexing. Each node is identified by a unique PeerId derived from its libp2p identity keypair (separate from the Dilithium wallet keypair).</p>
+
+                <h3>6.2 Message Dissemination</h3>
+                <p>All protocol messages are disseminated via Gossipsub on a single topic (<code>curs3d-mainnet</code>). Gossipsub is configured with strict message validation, a 10-second heartbeat interval, and a 10 MB maximum message size to accommodate Dilithium signatures (which are larger than classical signatures).</p>
+
+                <h3>6.3 Peer Discovery</h3>
+                <p>Peers are discovered through mDNS for local network environments and explicit bootnode multiaddresses for wide-area connectivity. When a new peer is discovered, it is added to the Gossipsub mesh.</p>
+
+                <h3>6.4 Sync Protocol</h3>
+                <p>Chain synchronization follows this process:</p>
+                <ol>
+                    <li>Validators periodically broadcast signed HeightAnnounce messages containing their current height, latest hash, and genesis hash</li>
+                    <li>A node receiving an announce with a greater height initiates sync by broadcasting a RequestBlocks message</li>
+                    <li>Peers respond with BlockResponse messages containing up to 50 serialized blocks per batch</li>
+                    <li>The requesting node validates and applies blocks sequentially</li>
+                    <li>Sync requests include genesis hash verification to prevent cross-chain contamination</li>
+                    <li>Sync has a 15-second timeout with up to 3 retries before resetting</li>
+                </ol>
+                <p>Signed height announcements (containing a Dilithium signature) are treated as verified, providing stronger assurance that the announcing peer actually holds the claimed chain state. Unsigned announces still trigger sync but are logged as unverified.</p>
+
+                <h3>6.5 Equivocation Detection</h3>
+                <p>When a node receives a block at a height it already has (via the normal NewBlock message), and the block is from the same validator but with a different hash, the node automatically constructs EquivocationEvidence from the two conflicting block signatures and broadcasts it to the network.</p>
+            </section>
+
+            <!-- 7. Security Model -->
+            <section class="wp-section" id="wp-security">
+                <h2>7. Security Model</h2>
+
+                <h3>7.1 Quantum Resistance</h3>
+                <p>All signature operations in CURS3D use CRYSTALS-Dilithium Level 5. The security of Dilithium relies on the hardness of the Module Learning With Errors problem, which is not known to be efficiently solvable by quantum computers. NIST selected Dilithium as the primary post-quantum signature standard (FIPS 204) after a multi-year evaluation process.</p>
+                <p>SHA-3 provides 128-bit quantum security (256/2 via Grover's algorithm), which is considered sufficient for hash function security.</p>
+
+                <h3>7.2 Byzantine Fault Tolerance</h3>
+                <p>The finality mechanism tolerates up to <code>f &lt; n/3</code> Byzantine validators, where <code>n</code> is the total number of active validators weighted by stake. As long as more than 2/3 of total active stake is controlled by honest validators, finalized blocks cannot be reverted.</p>
+
+                <h3>7.3 Equivocation Accountability</h3>
+                <p>Equivocation is cryptographically provable. Any observer who holds two valid signatures from the same validator on different blocks at the same height can construct and verify the evidence independently. The 33% slash penalty provides strong economic disincentive against equivocation.</p>
+
+                <h3>7.4 Fork Choice Safety</h3>
+                <p>The heaviest-chain fork choice rule ensures that an attacker would need to control more cumulative validator stake than the honest chain to override the canonical tip. Combined with finality, this prevents both short-range and long-range attacks once blocks are finalized.</p>
+
+                <h3>7.5 Replay Protection</h3>
+                <p>Each account maintains a nonce that must be incremented with each transaction. Transactions with incorrect nonces are rejected. This prevents replay of previously submitted transactions.</p>
+
+                <h3>7.6 Timestamp Validation</h3>
+                <p>Blocks must have a timestamp between the parent block's timestamp and 30 seconds in the future. This prevents timestamp manipulation while allowing for reasonable clock drift.</p>
+            </section>
+
+            <!-- 8. Tokenomics -->
+            <section class="wp-section" id="wp-tokenomics">
+                <h2>8. Tokenomics</h2>
+
+                <h3>8.1 Token Unit</h3>
+                <p>The native token is CUR. The smallest divisible unit is the microtoken: <code>1 CUR = 1,000,000 microtokens</code>. All internal accounting uses microtokens (u64).</p>
+
+                <h3>8.2 Block Rewards</h3>
+                <p>Each block awards its producer a coinbase reward. The default reward is 50 CUR (50,000,000 microtokens) per block. The reward amount is configurable via the genesis configuration.</p>
+
+                <h3>8.3 Transaction Fees</h3>
+                <p>Every non-coinbase transaction includes a fee denominated in microtokens (default: 1,000 microtokens). Fees are deducted from the sender's balance but are not currently redistributed -- they are burned, reducing circulating supply.</p>
+
+                <h3>8.4 Staking Economics</h3>
+                <p>Validators must stake a minimum of 1,000 CUR (configurable) to be eligible for block production. Selection probability is proportional to stake, creating a direct relationship between economic commitment and block production opportunity. The block reward provides the return on staked capital.</p>
+
+                <h3>8.5 Slashing Economics</h3>
+                <p>Equivocation carries a 33% penalty on staked balance, plus permanent exclusion from the validator set. This asymmetric risk (potential loss of 1/3 of stake for any attempt to double-sign) ensures that the expected value of equivocation is strongly negative.</p>
+            </section>
+
+            <!-- 9. Roadmap -->
+            <section class="wp-section" id="wp-roadmap">
+                <h2>9. Roadmap</h2>
+
+                <h3>Phase 1: Core Protocol (Q2 2026)</h3>
+                <ul>
+                    <li>BFT finality engine with 2/3 threshold voting</li>
+                    <li>CRYSTALS-Dilithium Level 5 wallet system with AES-256-GCM encryption</li>
+                    <li>Heaviest-chain fork choice rule with BlockTree</li>
+                    <li>Provable equivocation slashing</li>
+                    <li>libp2p networking with Gossipsub and mDNS</li>
+                    <li>TCP-based RPC interface</li>
+                    <li>sled-backed persistent storage</li>
+                </ul>
+
+                <h3>Phase 2: Smart Contracts (Q3 2026)</h3>
+                <ul>
+                    <li>WASM-based execution environment</li>
+                    <li>Quantum-safe contract verification</li>
+                    <li>Gas metering and resource limits</li>
+                    <li>Standard contract library</li>
+                </ul>
+
+                <h3>Phase 3: Mainnet Launch (Q4 2026)</h3>
+                <ul>
+                    <li>Genesis block creation with community validator onboarding</li>
+                    <li>Block explorer and chain analytics</li>
+                    <li>Ecosystem tooling: SDK, wallet apps, faucet</li>
+                    <li>Security audit of cryptographic primitives and consensus</li>
+                </ul>
+
+                <h3>Phase 4: Ecosystem Growth (2027)</h3>
+                <ul>
+                    <li>Cross-chain bridges to existing networks</li>
+                    <li>Developer SDK for multiple languages</li>
+                    <li>DeFi primitives (DEX, lending)</li>
+                    <li>On-chain governance framework</li>
+                    <li>Light client protocol</li>
+                </ul>
+            </section>
+
+            <!-- 10. Conclusion -->
+            <section class="wp-section" id="wp-conclusion">
+                <h2>10. Conclusion</h2>
+                <p>CURS3D demonstrates that a blockchain protocol can be built entirely on post-quantum cryptographic primitives without sacrificing the properties expected of a modern Layer 1: deterministic finality, stake-weighted consensus, fork resolution, and efficient peer-to-peer networking.</p>
+                <p>By adopting CRYSTALS-Dilithium Level 5 and SHA-3 from inception, CURS3D avoids the substantial technical debt and upgrade risk associated with retrofitting quantum resistance onto an existing protocol. The BFT finality mechanism provides safety under the standard 2/3 honesty assumption, and the provable slashing system holds validators accountable through cryptographic evidence rather than social consensus.</p>
+                <p>The protocol is implemented in Rust and released under the MIT license. The complete source code is available at <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">github.com/Pazificateur69/curs3d</a>.</p>
+            </section>
+
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-container">
+            <div class="footer-top">
+                <div class="footer-brand">
+                    <span class="logo">
+                        <span class="logo-diamond"></span>
+                        CURS3D
+                    </span>
+                    <p>Quantum-resistant blockchain infrastructure for the next century.</p>
+                </div>
+                <div class="footer-links-group">
+                    <span class="footer-heading">Protocol</span>
+                    <a href="index.html#features">Features</a>
+                    <a href="index.html#technology">Technology</a>
+                    <a href="whitepaper.html">Whitepaper</a>
+                </div>
+                <div class="footer-links-group">
+                    <span class="footer-heading">Developers</span>
+                    <a href="docs.html">Documentation</a>
+                    <a href="examples.html">Examples</a>
+                    <a href="docs.html#cli-reference">CLI Reference</a>
+                    <a href="docs.html#rpc-api">RPC API</a>
+                </div>
+                <div class="footer-links-group">
+                    <span class="footer-heading">Community</span>
+                    <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
+                    <a href="#" target="_blank" rel="noopener">Discord</a>
+                    <a href="#" target="_blank" rel="noopener">Twitter / X</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 CURS3D Protocol. MIT License. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
