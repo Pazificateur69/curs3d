@@ -94,6 +94,7 @@ pub enum SlashingError {
 pub struct FinalityVote {
     pub block_hash: Vec<u8>,
     pub block_height: u64,
+    pub epoch: u64,
     pub voter_public_key: Vec<u8>,
     pub signature: Signature,
 }
@@ -102,14 +103,17 @@ impl FinalityVote {
     pub fn new(
         block_hash: Vec<u8>,
         block_height: u64,
+        epoch: u64,
         keypair: &crate::crypto::dilithium::KeyPair,
     ) -> Self {
         let mut data = block_hash.clone();
         data.extend_from_slice(&block_height.to_le_bytes());
+        data.extend_from_slice(&epoch.to_le_bytes());
         let signature = keypair.sign(&data);
         FinalityVote {
             block_hash,
             block_height,
+            epoch,
             voter_public_key: keypair.public_key.clone(),
             signature,
         }
@@ -118,6 +122,7 @@ impl FinalityVote {
     pub fn verify(&self) -> bool {
         let mut data = self.block_hash.clone();
         data.extend_from_slice(&self.block_height.to_le_bytes());
+        data.extend_from_slice(&self.epoch.to_le_bytes());
         dilithium::verify(&data, &self.signature, &self.voter_public_key)
     }
 }
@@ -160,12 +165,13 @@ impl FinalityTracker {
     pub fn add_vote(
         &mut self,
         vote: FinalityVote,
-        accounts: &HashMap<Vec<u8>, AccountState>,
-        minimum_stake: u64,
-        _slashed: &HashSet<Vec<u8>>,
-        current_height: u64,
+        snapshot: &EpochSnapshot,
     ) -> Option<FinalizedBlock> {
         if !vote.verify() {
+            return None;
+        }
+
+        if vote.epoch != snapshot.epoch {
             return None;
         }
 
@@ -174,14 +180,12 @@ impl FinalityTracker {
             return None;
         }
 
-        // Voter must be an active validator
-        let voter_address =
-            crate::crypto::hash::address_bytes_from_public_key(&vote.voter_public_key);
-        let voter_account = accounts.get(&voter_address)?;
-        if voter_account.staked_balance < minimum_stake {
-            return None;
-        }
-        if voter_account.jailed_until_height > current_height {
+        let validator_stakes: HashMap<Vec<u8>, u64> = snapshot
+            .validators
+            .iter()
+            .map(|validator| (validator.public_key.clone(), validator.stake))
+            .collect();
+        if !validator_stakes.contains_key(&vote.voter_public_key) {
             return None;
         }
 
@@ -204,7 +208,7 @@ impl FinalityTracker {
         }
 
         // Check if 2/3+ threshold reached
-        let total_active_stake = self.total_active_stake(accounts, minimum_stake, current_height);
+        let total_active_stake = snapshot.total_stake;
         if total_active_stake == 0 {
             return None;
         }
@@ -215,11 +219,7 @@ impl FinalityTracker {
             .map(|votes| {
                 votes
                     .iter()
-                    .filter_map(|v| {
-                        let addr =
-                            crate::crypto::hash::address_bytes_from_public_key(&v.voter_public_key);
-                        accounts.get(&addr).map(|a| a.staked_balance)
-                    })
+                    .filter_map(|v| validator_stakes.get(&v.voter_public_key).copied())
                     .sum()
             })
             .unwrap_or(0);
@@ -240,24 +240,6 @@ impl FinalityTracker {
         } else {
             None
         }
-    }
-
-    fn total_active_stake(
-        &self,
-        accounts: &HashMap<Vec<u8>, AccountState>,
-        minimum_stake: u64,
-        current_height: u64,
-    ) -> u64 {
-        accounts
-            .iter()
-            .filter(|(_addr, acc)| {
-                acc.staked_balance >= minimum_stake
-                    && acc.public_key.is_some()
-                    && acc.validator_active_from_height <= current_height
-                    && acc.jailed_until_height <= current_height
-            })
-            .map(|(_, acc)| acc.staked_balance)
-            .sum()
     }
 }
 
@@ -462,6 +444,8 @@ mod tests {
             prev_hash,
             merkle_root: hash::sha3_hash(merkle_seed),
             state_root: hash::sha3_hash(b"state"),
+            gas_used: 0,
+            base_fee_per_gas: 1,
             validator_public_key: kp.public_key.clone(),
             nonce: 0,
         };
@@ -684,7 +668,7 @@ mod tests {
     fn test_finality_vote_verify() {
         let kp = KeyPair::generate();
         let block_hash = hash::sha3_hash(b"test_block");
-        let vote = FinalityVote::new(block_hash, 10, &kp);
+        let vote = FinalityVote::new(block_hash, 10, 0, &kp);
         assert!(vote.verify());
     }
 
@@ -718,19 +702,38 @@ mod tests {
             );
         }
 
-        let slashed = HashSet::new();
         let mut tracker = FinalityTracker::new();
         let block_hash = hash::sha3_hash(b"block_to_finalize");
+        let snapshot = EpochSnapshot {
+            epoch: 0,
+            start_height: 0,
+            validators: vec![
+                Validator {
+                    address: addr1.clone(),
+                    public_key: kp1.public_key.clone(),
+                    stake: 3_000,
+                },
+                Validator {
+                    address: addr2.clone(),
+                    public_key: kp2.public_key.clone(),
+                    stake: 3_000,
+                },
+                Validator {
+                    address: addr3.clone(),
+                    public_key: kp3.public_key.clone(),
+                    stake: 3_000,
+                },
+            ],
+            total_stake: 9_000,
+        };
 
         // 1/3 vote — not enough
-        let vote1 = FinalityVote::new(block_hash.clone(), 5, &kp1);
-        assert!(tracker
-            .add_vote(vote1, &accounts, 1_000, &slashed, 5)
-            .is_none());
+        let vote1 = FinalityVote::new(block_hash.clone(), 5, 0, &kp1);
+        assert!(tracker.add_vote(vote1, &snapshot).is_none());
 
         // 2/3 votes — threshold reached
-        let vote2 = FinalityVote::new(block_hash.clone(), 5, &kp2);
-        let result = tracker.add_vote(vote2, &accounts, 1_000, &slashed, 5);
+        let vote2 = FinalityVote::new(block_hash.clone(), 5, 0, &kp2);
+        let result = tracker.add_vote(vote2, &snapshot);
         assert!(result.is_some());
         assert_eq!(result.unwrap().height, 5);
         assert_eq!(tracker.finalized_height, 5);
@@ -754,20 +757,25 @@ mod tests {
             },
         );
 
-        let slashed = HashSet::new();
         let mut tracker = FinalityTracker::new();
         let block_hash = hash::sha3_hash(b"block");
+        let snapshot = EpochSnapshot {
+            epoch: 0,
+            start_height: 0,
+            validators: vec![Validator {
+                address: hash::address_bytes_from_public_key(&kp.public_key),
+                public_key: kp.public_key.clone(),
+                stake: 10_000,
+            }],
+            total_stake: 10_000,
+        };
 
-        let vote1 = FinalityVote::new(block_hash.clone(), 5, &kp);
-        let vote2 = FinalityVote::new(block_hash.clone(), 5, &kp);
+        let vote1 = FinalityVote::new(block_hash.clone(), 5, 0, &kp);
+        let vote2 = FinalityVote::new(block_hash.clone(), 5, 0, &kp);
 
         // First vote triggers finality (single validator = 100% > 66%)
-        assert!(tracker
-            .add_vote(vote1, &accounts, 1_000, &slashed, 5)
-            .is_some());
+        assert!(tracker.add_vote(vote1, &snapshot).is_some());
         // Duplicate is ignored (block already finalized, height <= finalized)
-        assert!(tracker
-            .add_vote(vote2, &accounts, 1_000, &slashed, 5)
-            .is_none());
+        assert!(tracker.add_vote(vote2, &snapshot).is_none());
     }
 }

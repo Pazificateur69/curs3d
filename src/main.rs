@@ -207,23 +207,17 @@ async fn run_node(
         Ok(chain) => chain,
         Err(e) => {
             eprintln!("Failed to initialize blockchain storage: {}", e);
-            eprintln!("Falling back to in-memory mode...");
-            match genesis_config {
-                Some(config) => match Blockchain::from_genesis(config) {
-                    Ok(chain) => chain,
-                    Err(err) => {
-                        eprintln!("Failed to build in-memory chain from genesis: {}", err);
-                        return;
-                    }
-                },
-                None => Blockchain::new(),
-            }
+            eprintln!("Node startup aborted to avoid joining the network with divergent in-memory state.");
+            return;
         }
     };
 
     let chain_height = chain.height();
     let latest_hash = chain.latest_block().hash_hex();
-    let network_topic = format!("curs3d-{}-v1", chain.chain_id());
+    let network_topic = network::topic_name(
+        chain.chain_id(),
+        chain.protocol_version_at_height(chain.height()),
+    );
     info!(
         "Blockchain loaded. Chain: {}, Height: {}, Latest: {}",
         chain.genesis_config.chain_name,

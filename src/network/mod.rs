@@ -15,6 +15,7 @@ use crate::consensus::{EquivocationEvidence, FinalityVote};
 use crate::core::block::Block;
 use crate::core::chain::{Blockchain, ChainError};
 use crate::crypto::dilithium::{self, KeyPair, Signature};
+use crate::storage::{SnapshotManifest, StateChunk};
 
 const SYNC_TIMEOUT_SECS: u64 = 15;
 const MAX_SYNC_RETRIES: u32 = 3;
@@ -59,12 +60,19 @@ pub enum NetworkMessage {
     FinalityVote(Vec<u8>),
     /// Request a state sync snapshot from a peer
     RequestSnapshot {
-        peer_id: String,
+        requester_peer_id: String,
     },
     /// Snapshot manifest (bincode-serialized SnapshotManifest)
-    SnapshotManifest(Vec<u8>),
+    SnapshotManifest {
+        target_peer_id: String,
+        data: Vec<u8>,
+    },
     /// Snapshot chunk (bincode-serialized StateChunk)
-    SnapshotChunk(Vec<u8>),
+    SnapshotChunk {
+        target_peer_id: String,
+        height: u64,
+        data: Vec<u8>,
+    },
 }
 
 fn default_protocol_version() -> u32 {
@@ -85,6 +93,10 @@ pub struct NetworkNode {
     pub peer_id: PeerId,
     pub swarm: Swarm<CursBehaviour>,
     pub topic: gossipsub::IdentTopic,
+}
+
+pub fn topic_name(chain_id: &str, protocol_version: u32) -> String {
+    format!("curs3d-{}-v{}", chain_id, protocol_version)
 }
 
 impl NetworkNode {
@@ -165,6 +177,17 @@ impl NetworkNode {
         Ok(())
     }
 
+    fn switch_topic(&mut self, topic_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let new_topic = gossipsub::IdentTopic::new(topic_name);
+        if self.topic.hash() == new_topic.hash() {
+            return Ok(());
+        }
+        let _ = self.swarm.behaviour_mut().gossipsub.unsubscribe(&self.topic);
+        self.swarm.behaviour_mut().gossipsub.subscribe(&new_topic)?;
+        self.topic = new_topic;
+        Ok(())
+    }
+
     // ─── Main Event Loop ─────────────────────────────────────────────
 
     pub async fn run_with_chain(
@@ -182,6 +205,8 @@ impl NetworkNode {
 
         // Peer height tracking
         let mut peer_heights: HashMap<String, (u64, Vec<u8>)> = HashMap::new();
+        let mut pending_snapshot_manifest: Option<SnapshotManifest> = None;
+        let mut pending_snapshot_chunks: HashMap<usize, StateChunk> = HashMap::new();
 
         // Block deduplication cache
         let mut seen_block_hashes: HashSet<Vec<u8>> = HashSet::new();
@@ -226,6 +251,17 @@ impl NetworkNode {
 
                 // Block production
                 _ = block_timer.tick() => {
+                    let (chain_id, protocol_version) = {
+                        let chain_lock = chain.lock().await;
+                        (
+                            chain_lock.chain_id().to_string(),
+                            chain_lock.protocol_version_at_height(chain_lock.height()),
+                        )
+                    };
+                    if let Err(err) = self.switch_topic(&topic_name(&chain_id, protocol_version)) {
+                        warn!("Failed to switch network topic: {}", err);
+                    }
+
                     if let Some(ref keypair) = validator_key {
                         let maybe_block = {
                             let chain_lock = chain.lock().await;
@@ -260,9 +296,14 @@ impl NetworkNode {
                                         }
 
                                         // Cast finality vote
+                                        let vote_epoch = {
+                                            let chain_lock = chain.lock().await;
+                                            chain_lock.epoch_for_height(block.header.height)
+                                        };
                                         let vote = FinalityVote::new(
                                             block.hash.clone(),
                                             block.header.height,
+                                            vote_epoch,
                                             keypair,
                                         );
                                         if let Ok(vote_data) = bincode::serialize(&vote) {
@@ -289,11 +330,19 @@ impl NetworkNode {
 
                 // Periodic height announcement
                 _ = announce_timer.tick() => {
-                    let chain_lock = chain.lock().await;
-                    let height = chain_lock.height();
-                    let latest_hash = chain_lock.latest_hash().to_vec();
-                    let genesis_hash = chain_lock.genesis_hash().to_vec();
-                    drop(chain_lock);
+                    let (chain_id, height, latest_hash, genesis_hash, protocol_version) = {
+                        let chain_lock = chain.lock().await;
+                        (
+                            chain_lock.chain_id().to_string(),
+                            chain_lock.height(),
+                            chain_lock.latest_hash().to_vec(),
+                            chain_lock.genesis_hash().to_vec(),
+                            chain_lock.protocol_version_at_height(chain_lock.height()),
+                        )
+                    };
+                    if let Err(err) = self.switch_topic(&topic_name(&chain_id, protocol_version)) {
+                        warn!("Failed to switch network topic: {}", err);
+                    }
 
                     let (public_key, signature) = if let Some(kp) = &validator_key {
                         let mut data = height.to_le_bytes().to_vec();
@@ -303,11 +352,6 @@ impl NetworkNode {
                         (Some(kp.public_key.clone()), Some(sig))
                     } else {
                         (None, None)
-                    };
-
-                    let protocol_version = {
-                        let chain_lock = chain.lock().await;
-                        chain_lock.protocol_version_at_height(height)
                     };
 
                     let msg = NetworkMessage::HeightAnnounce {
@@ -415,11 +459,12 @@ impl NetworkNode {
                                             let chain_lock = chain.lock().await;
                                             chain_lock.protocol_version_at_height(our_height)
                                         };
-                                        if peer_protocol_version > our_protocol_version {
+                                        if peer_protocol_version != our_protocol_version {
                                             warn!(
-                                                "Peer {} running protocol v{} (we: v{}). Upgrade needed.",
+                                                "Peer {} running protocol v{} (we: v{}). Ignoring incompatible peer.",
                                                 &announce_peer_id, peer_protocol_version, our_protocol_version
                                             );
+                                            continue;
                                         }
 
                                         // Only trigger sync from verified announces
@@ -428,14 +473,21 @@ impl NetworkNode {
                                                 "Verified peer {} at height {} (we: {}). Syncing...",
                                                 &announce_peer_id, height, our_height
                                             );
-                                            let chain_lock = chain.lock().await;
-                                            let msg = NetworkMessage::RequestBlocks {
-                                                from_height: our_height + 1,
-                                                requester_peer_id: self.peer_id.to_string(),
-                                                expected_prev_hash: chain_lock.latest_hash().to_vec(),
-                                                genesis_hash: our_genesis,
+                                            let msg = if height.saturating_sub(our_height) > SYNC_BATCH_SIZE {
+                                                NetworkMessage::RequestSnapshot {
+                                                    requester_peer_id: self.peer_id.to_string(),
+                                                }
+                                            } else {
+                                                let chain_lock = chain.lock().await;
+                                                let msg = NetworkMessage::RequestBlocks {
+                                                    from_height: our_height + 1,
+                                                    requester_peer_id: self.peer_id.to_string(),
+                                                    expected_prev_hash: chain_lock.latest_hash().to_vec(),
+                                                    genesis_hash: our_genesis,
+                                                };
+                                                drop(chain_lock);
+                                                msg
                                             };
-                                            drop(chain_lock);
                                             let _ = self.broadcast(&msg);
                                             sync_requested = true;
                                             sync_deadline = Some(
@@ -475,24 +527,100 @@ impl NetworkNode {
                                             }
                                         }
                                     }
-                                    NetworkMessage::RequestSnapshot { peer_id: _ } => {
-                                        // Snapshot request handling — respond with manifest
+                                    NetworkMessage::RequestSnapshot { requester_peer_id } => {
                                         let chain_lock = chain.lock().await;
                                         if let Ok(manifest) = chain_lock.create_snapshot() {
-                                            if let Ok(data) = bincode::serialize(&manifest) {
+                                            let snapshot_height = manifest.height;
+                                            if let (Ok(data), Ok(chunks)) = (
+                                                bincode::serialize(&manifest),
+                                                chain_lock.get_snapshot_chunks(snapshot_height),
+                                            ) {
                                                 drop(chain_lock);
-                                                let msg = NetworkMessage::SnapshotManifest(data);
+                                                let msg = NetworkMessage::SnapshotManifest {
+                                                    target_peer_id: requester_peer_id.clone(),
+                                                    data,
+                                                };
                                                 let _ = self.broadcast(&msg);
+                                                for chunk in chunks {
+                                                    if let Ok(data) = bincode::serialize(&chunk) {
+                                                        let _ = self.broadcast(&NetworkMessage::SnapshotChunk {
+                                                            target_peer_id: requester_peer_id.clone(),
+                                                            height: snapshot_height,
+                                                            data,
+                                                        });
+                                                    }
+                                                }
                                             }
                                         }
                                     }
-                                    NetworkMessage::SnapshotManifest(_data) => {
-                                        // Snapshot manifest received — log for now
-                                        info!("Received snapshot manifest from network");
+                                    NetworkMessage::SnapshotManifest { target_peer_id, data } => {
+                                        if target_peer_id != self.peer_id.to_string() {
+                                            continue;
+                                        }
+                                        match bincode::deserialize::<SnapshotManifest>(&data) {
+                                            Ok(manifest) => {
+                                                info!("Received snapshot manifest for height {}", manifest.height);
+                                                pending_snapshot_chunks.clear();
+                                                pending_snapshot_manifest = Some(manifest);
+                                            }
+                                            Err(err) => warn!("Failed to deserialize snapshot manifest: {}", err),
+                                        }
                                     }
-                                    NetworkMessage::SnapshotChunk(_data) => {
-                                        // Snapshot chunk received — log for now
-                                        info!("Received snapshot chunk from network");
+                                    NetworkMessage::SnapshotChunk { target_peer_id, height, data } => {
+                                        if target_peer_id != self.peer_id.to_string() {
+                                            continue;
+                                        }
+                                        let Some(manifest) = pending_snapshot_manifest.clone() else {
+                                            continue;
+                                        };
+                                        if manifest.height != height {
+                                            continue;
+                                        }
+                                        match bincode::deserialize::<StateChunk>(&data) {
+                                            Ok(chunk) => {
+                                                pending_snapshot_chunks.insert(chunk.index, chunk);
+                                                if pending_snapshot_chunks.len() == manifest.chunk_count {
+                                                    let mut ordered = Vec::with_capacity(manifest.chunk_count);
+                                                    let mut complete = true;
+                                                    for index in 0..manifest.chunk_count {
+                                                        if let Some(chunk) = pending_snapshot_chunks.remove(&index) {
+                                                            ordered.push(chunk);
+                                                        } else {
+                                                            complete = false;
+                                                            break;
+                                                        }
+                                                    }
+                                                    if complete {
+                                                        let mut chain_lock = chain.lock().await;
+                                                        match chain_lock.apply_snapshot(&manifest, &ordered) {
+                                                            Ok(()) => {
+                                                                info!("Applied snapshot at height {}", manifest.height);
+                                                                if manifest.tip_height > manifest.height {
+                                                                    let request = NetworkMessage::RequestBlocks {
+                                                                        from_height: manifest.height.saturating_add(1),
+                                                                        requester_peer_id: self.peer_id.to_string(),
+                                                                        expected_prev_hash: chain_lock.latest_hash().to_vec(),
+                                                                        genesis_hash: chain_lock.genesis_hash().to_vec(),
+                                                                    };
+                                                                    let _ = self.broadcast(&request);
+                                                                    sync_requested = true;
+                                                                    sync_deadline = Some(
+                                                                        Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS),
+                                                                    );
+                                                                } else {
+                                                                    sync_requested = false;
+                                                                    sync_deadline = None;
+                                                                    sync_retries = 0;
+                                                                }
+                                                            }
+                                                            Err(err) => warn!("Failed to apply snapshot: {}", err),
+                                                        }
+                                                        pending_snapshot_manifest = None;
+                                                    }
+                                                }
+                                            }
+                                            Err(err) => warn!("Failed to deserialize snapshot chunk: {}", err),
+                                        }
                                     }
                                 }
                             }
@@ -565,7 +693,12 @@ impl NetworkNode {
 
                 // Cast finality vote if we're a validator
                 if let Some(kp) = &validator_key {
-                    let vote = FinalityVote::new(block_hash, block_height, kp);
+                    let vote = FinalityVote::new(
+                        block_hash,
+                        block_height,
+                        block_height / chain_lock.epoch_length.max(1),
+                        kp,
+                    );
                     if let Ok(vote_data) = bincode::serialize(&vote) {
                         chain_lock.add_finality_vote(vote);
                         drop(chain_lock);

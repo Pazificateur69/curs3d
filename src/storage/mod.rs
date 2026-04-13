@@ -1,5 +1,6 @@
 use serde::{Serialize, de::DeserializeOwned};
 use sled::Db;
+use std::collections::HashMap;
 use std::path::Path;
 
 
@@ -8,8 +9,10 @@ use crate::core::block::Block;
 use crate::core::chain::{
     AccountState, DEFAULT_UNSTAKE_DELAY_BLOCKS, GenesisAllocation, GenesisConfig,
 };
+use crate::core::receipt::Receipt;
 use crate::core::transaction::{Transaction, TransactionKind};
 use crate::crypto::dilithium::Signature;
+use crate::vm::state::ContractState;
 
 const BLOCKS_TREE: &str = "blocks";
 const STATE_TREE: &str = "accounts";
@@ -17,11 +20,13 @@ const META_TREE: &str = "meta";
 const PENDING_TREE: &str = "pending";
 const EVIDENCE_TREE: &str = "slashing_evidence";
 const EPOCH_TREE: &str = "epochs";
+const CONTRACT_TREE: &str = "contracts";
+const RECEIPT_TREE: &str = "receipts";
 const SNAPSHOT_MANIFEST_TREE: &str = "snapshot_manifests";
 const SNAPSHOT_CHUNK_TREE: &str = "snapshot_chunks";
 const HEIGHT_KEY: &[u8] = b"chain_height";
 pub const SCHEMA_VERSION_KEY: &[u8] = b"schema_version";
-pub const CURRENT_SCHEMA_VERSION: u64 = 3;
+pub const CURRENT_SCHEMA_VERSION: u64 = 4;
 
 // ─── State Sync Snapshot Types ──────────────────────────────────────
 
@@ -29,7 +34,18 @@ pub const CURRENT_SCHEMA_VERSION: u64 = 3;
 pub struct SnapshotManifest {
     pub height: u64,
     pub epoch: u64,
+    pub chain_id: String,
+    pub genesis_hash: Vec<u8>,
+    pub latest_hash: Vec<u8>,
+    #[serde(default)]
+    pub tip_height: u64,
+    #[serde(default)]
+    pub tip_hash: Vec<u8>,
+    pub finalized_height: u64,
+    pub finalized_hash: Vec<u8>,
     pub state_root: Vec<u8>,
+    #[serde(default)]
+    pub chunk_root: Vec<u8>,
     pub chunk_count: usize,
     pub chunk_hashes: Vec<Vec<u8>>,
 }
@@ -39,6 +55,21 @@ pub struct StateChunk {
     pub index: usize,
     pub data: Vec<u8>,
     pub hash: Vec<u8>,
+    #[serde(default)]
+    pub proof: Vec<Vec<u8>>,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct SnapshotState {
+    pub blocks: Vec<Block>,
+    pub accounts: Vec<(Vec<u8>, AccountState)>,
+    pub contracts: Vec<(Vec<u8>, ContractState)>,
+    pub receipts: Vec<(Vec<u8>, Receipt)>,
+    pub pending_transactions: Vec<Transaction>,
+    pub slashed_validators: Vec<Vec<u8>>,
+    pub epoch_snapshots: Vec<(u64, EpochSnapshot)>,
+    pub finalized_height: u64,
+    pub finalized_hash: Vec<u8>,
 }
 
 #[derive(serde::Deserialize)]
@@ -231,6 +262,22 @@ impl Storage {
         Ok(())
     }
 
+    pub fn replace_accounts(
+        &self,
+        accounts: &HashMap<Vec<u8>, AccountState>,
+    ) -> Result<(), StorageError> {
+        let tree = self.db.open_tree(STATE_TREE)?;
+        tree.clear()?;
+        let mut entries: Vec<(&Vec<u8>, &AccountState)> = accounts.iter().collect();
+        entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        for (address, state) in entries {
+            let value =
+                bincode::serialize(state).map_err(|e| StorageError::Serialize(e.to_string()))?;
+            tree.insert(address, value)?;
+        }
+        Ok(())
+    }
+
     pub fn get_account(&self, address: &[u8]) -> Result<Option<AccountState>, StorageError> {
         let tree = self.db.open_tree(STATE_TREE)?;
         match tree.get(address)? {
@@ -313,6 +360,82 @@ impl Storage {
         }
         txs.sort_by_key(|tx| (tx.timestamp, tx.nonce));
         Ok(txs)
+    }
+
+    pub fn replace_blocks(&self, blocks: &[Block]) -> Result<(), StorageError> {
+        let tree = self.db.open_tree(BLOCKS_TREE)?;
+        tree.clear()?;
+        let meta = self.db.open_tree(META_TREE)?;
+        for block in blocks {
+            let key = block.header.height.to_be_bytes();
+            let value =
+                bincode::serialize(block).map_err(|e| StorageError::Serialize(e.to_string()))?;
+            tree.insert(key, value)?;
+        }
+        if let Some(last) = blocks.last() {
+            meta.insert(HEIGHT_KEY, &last.header.height.to_be_bytes())?;
+        } else {
+            meta.remove(HEIGHT_KEY)?;
+        }
+        Ok(())
+    }
+
+    pub fn replace_contracts(
+        &self,
+        contracts: &HashMap<Vec<u8>, ContractState>,
+    ) -> Result<(), StorageError> {
+        let tree = self.db.open_tree(CONTRACT_TREE)?;
+        tree.clear()?;
+        let mut entries: Vec<(&Vec<u8>, &ContractState)> = contracts.iter().collect();
+        entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        for (address, contract) in entries {
+            let value = bincode::serialize(contract)
+                .map_err(|e| StorageError::Serialize(e.to_string()))?;
+            tree.insert(address, value)?;
+        }
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn get_all_contracts(&self) -> Result<Vec<(Vec<u8>, ContractState)>, StorageError> {
+        let tree = self.db.open_tree(CONTRACT_TREE)?;
+        let mut contracts = Vec::new();
+        for entry in tree.iter() {
+            let (key, value) = entry?;
+            let contract: ContractState = bincode::deserialize(&value)
+                .map_err(|e| StorageError::Serialize(e.to_string()))?;
+            contracts.push((key.to_vec(), contract));
+        }
+        Ok(contracts)
+    }
+
+    pub fn replace_receipts(
+        &self,
+        receipts: &HashMap<Vec<u8>, Receipt>,
+    ) -> Result<(), StorageError> {
+        let tree = self.db.open_tree(RECEIPT_TREE)?;
+        tree.clear()?;
+        let mut entries: Vec<(&Vec<u8>, &Receipt)> = receipts.iter().collect();
+        entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        for (tx_hash, receipt) in entries {
+            let value =
+                bincode::serialize(receipt).map_err(|e| StorageError::Serialize(e.to_string()))?;
+            tree.insert(tx_hash, value)?;
+        }
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn get_all_receipts(&self) -> Result<Vec<(Vec<u8>, Receipt)>, StorageError> {
+        let tree = self.db.open_tree(RECEIPT_TREE)?;
+        let mut receipts = Vec::new();
+        for entry in tree.iter() {
+            let (key, value) = entry?;
+            let receipt: Receipt = bincode::deserialize(&value)
+                .map_err(|e| StorageError::Serialize(e.to_string()))?;
+            receipts.push((key.to_vec(), receipt));
+        }
+        Ok(receipts)
     }
 
     pub fn get_all_pending_transactions_compat(
@@ -439,6 +562,23 @@ impl Storage {
         Ok(())
     }
 
+    pub fn replace_epoch_snapshots(
+        &self,
+        snapshots: &HashMap<u64, EpochSnapshot>,
+    ) -> Result<(), StorageError> {
+        let tree = self.db.open_tree(EPOCH_TREE)?;
+        tree.clear()?;
+        let mut entries: Vec<(&u64, &EpochSnapshot)> = snapshots.iter().collect();
+        entries.sort_by_key(|(epoch, _)| **epoch);
+        for (epoch, snapshot) in entries {
+            let key = epoch.to_be_bytes();
+            let value = bincode::serialize(snapshot)
+                .map_err(|e| StorageError::Serialize(e.to_string()))?;
+            tree.insert(key, value)?;
+        }
+        Ok(())
+    }
+
     pub fn get_epoch_snapshot(&self, epoch: u64) -> Result<Option<EpochSnapshot>, StorageError> {
         let tree = self.db.open_tree(EPOCH_TREE)?;
         let key = epoch.to_be_bytes();
@@ -496,6 +636,20 @@ impl Storage {
         let value = bincode::serialize(chunk).map_err(|e| StorageError::Serialize(e.to_string()))?;
         tree.insert(key, value)?;
         Ok(())
+    }
+
+    pub fn get_snapshot_chunks(&self, height: u64) -> Result<Vec<StateChunk>, StorageError> {
+        let tree = self.db.open_tree(SNAPSHOT_CHUNK_TREE)?;
+        let prefix = height.to_be_bytes();
+        let mut chunks = Vec::new();
+        for entry in tree.scan_prefix(prefix) {
+            let (_key, value) = entry?;
+            let chunk: StateChunk = bincode::deserialize(&value)
+                .map_err(|e| StorageError::Serialize(e.to_string()))?;
+            chunks.push(chunk);
+        }
+        chunks.sort_by_key(|chunk| chunk.index);
+        Ok(chunks)
     }
 
     pub fn get_snapshot_chunk(&self, height: u64, index: usize) -> Result<Option<StateChunk>, StorageError> {
@@ -649,7 +803,15 @@ mod tests {
         let manifest = SnapshotManifest {
             height: 100,
             epoch: 3,
+            chain_id: "curs3d-test".to_string(),
+            genesis_hash: vec![0x11; 32],
+            latest_hash: vec![0x22; 32],
+            tip_height: 123,
+            tip_hash: vec![0x44; 32],
+            finalized_height: 96,
+            finalized_hash: vec![0x33; 32],
             state_root: vec![0xAA; 32],
+            chunk_root: vec![0xDD; 32],
             chunk_count: 2,
             chunk_hashes: vec![vec![0xBB; 32], vec![0xCC; 32]],
         };
@@ -657,17 +819,21 @@ mod tests {
         storage.put_snapshot_manifest(100, &manifest).unwrap();
         let loaded = storage.get_latest_snapshot_manifest().unwrap().unwrap();
         assert_eq!(loaded.height, 100);
+        assert_eq!(loaded.tip_height, 123);
+        assert_eq!(loaded.chunk_root, vec![0xDD; 32]);
         assert_eq!(loaded.chunk_count, 2);
 
         let chunk = StateChunk {
             index: 0,
             data: vec![1, 2, 3, 4],
             hash: vec![0xBB; 32],
+            proof: vec![vec![0xCC; 32]],
         };
         storage.put_snapshot_chunk(100, &chunk).unwrap();
         let loaded_chunk = storage.get_snapshot_chunk(100, 0).unwrap().unwrap();
         assert_eq!(loaded_chunk.index, 0);
         assert_eq!(loaded_chunk.data, vec![1, 2, 3, 4]);
+        assert_eq!(loaded_chunk.proof.len(), 1);
     }
 
 }

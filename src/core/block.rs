@@ -15,6 +15,10 @@ pub struct BlockHeader {
     pub prev_hash: Vec<u8>,
     pub merkle_root: Vec<u8>,
     pub state_root: Vec<u8>,
+    #[serde(default)]
+    pub gas_used: u64,
+    #[serde(default)]
+    pub base_fee_per_gas: u64,
     pub validator_public_key: Vec<u8>,
     pub nonce: u64,
 }
@@ -29,9 +33,12 @@ pub struct Block {
 
 impl Block {
     pub fn new(
+        version: u32,
         height: u64,
         prev_hash: Vec<u8>,
         state_root: Vec<u8>,
+        gas_used: u64,
+        base_fee_per_gas: u64,
         transactions: Vec<Transaction>,
         validator_keypair: &KeyPair,
     ) -> Self {
@@ -39,12 +46,14 @@ impl Block {
         let merkle_root = hash::merkle_root(&tx_hashes);
 
         let header = BlockHeader {
-            version: 1,
+            version,
             height,
             timestamp: chrono::Utc::now().timestamp(),
             prev_hash,
             merkle_root,
             state_root,
+            gas_used,
+            base_fee_per_gas,
             validator_public_key: validator_keypair.public_key.clone(),
             nonce: 0,
         };
@@ -61,10 +70,18 @@ impl Block {
     }
 
     pub fn genesis() -> Self {
-        Self::genesis_with_state_root(hash::sha3_hash(EMPTY_STATE_ROOT_SEED), "curs3d-devnet")
+        Self::genesis_with_state_root(
+            hash::sha3_hash(EMPTY_STATE_ROOT_SEED),
+            "curs3d-devnet",
+            0,
+        )
     }
 
-    pub fn genesis_with_state_root(state_root: Vec<u8>, chain_id: &str) -> Self {
+    pub fn genesis_with_state_root(
+        state_root: Vec<u8>,
+        chain_id: &str,
+        initial_base_fee_per_gas: u64,
+    ) -> Self {
         let coinbase = Transaction::coinbase_with_timestamp(
             chain_id,
             vec![0; hash::ADDRESS_LEN],
@@ -81,6 +98,8 @@ impl Block {
             prev_hash: vec![0; 32],
             merkle_root,
             state_root,
+            gas_used: 0,
+            base_fee_per_gas: initial_base_fee_per_gas,
             validator_public_key: Vec::new(),
             nonce: 0,
         };
@@ -147,8 +166,11 @@ mod tests {
         let validator = KeyPair::generate();
         let block = Block::new(
             1,
+            1,
             genesis.hash.clone(),
             hash::sha3_hash(b"state"),
+            21_000,
+            1,
             vec![Transaction::coinbase("curs3d-devnet", vec![1; hash::ADDRESS_LEN], 50)],
             &validator,
         );

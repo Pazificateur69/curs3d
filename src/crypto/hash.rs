@@ -52,6 +52,71 @@ pub fn merkle_root(hashes: &[Vec<u8>]) -> Vec<u8> {
     current_level.remove(0)
 }
 
+pub fn merkle_proof(hashes: &[Vec<u8>], index: usize) -> Vec<Vec<u8>> {
+    if hashes.is_empty() || index >= hashes.len() {
+        return Vec::new();
+    }
+    if hashes.len() == 1 {
+        return Vec::new();
+    }
+
+    let mut proof = Vec::new();
+    let mut current_level = hashes.to_vec();
+    let mut current_index = index;
+
+    while current_level.len() > 1 {
+        let sibling_index = if current_index % 2 == 0 {
+            (current_index + 1).min(current_level.len() - 1)
+        } else {
+            current_index - 1
+        };
+        proof.push(current_level[sibling_index].clone());
+
+        let mut next_level = Vec::new();
+        for chunk in current_level.chunks(2) {
+            let mut combined = chunk[0].clone();
+            if chunk.len() == 2 {
+                combined.extend_from_slice(&chunk[1]);
+            } else {
+                combined.extend_from_slice(&chunk[0]);
+            }
+            next_level.push(sha3_hash(&combined));
+        }
+        current_level = next_level;
+        current_index /= 2;
+    }
+
+    proof
+}
+
+pub fn verify_merkle_proof(
+    leaf_hash: &[u8],
+    proof: &[Vec<u8>],
+    index: usize,
+    root: &[u8],
+) -> bool {
+    if root.is_empty() {
+        return false;
+    }
+    let mut current = leaf_hash.to_vec();
+    let mut current_index = index;
+
+    for sibling in proof {
+        let mut combined = Vec::with_capacity(current.len() + sibling.len());
+        if current_index % 2 == 0 {
+            combined.extend_from_slice(&current);
+            combined.extend_from_slice(sibling);
+        } else {
+            combined.extend_from_slice(sibling);
+            combined.extend_from_slice(&current);
+        }
+        current = sha3_hash(&combined);
+        current_index /= 2;
+    }
+
+    current == root
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -68,6 +133,19 @@ mod tests {
         let hashes = vec![sha3_hash(b"tx1"), sha3_hash(b"tx2"), sha3_hash(b"tx3")];
         let root = merkle_root(&hashes);
         assert_eq!(root.len(), 32);
+    }
+
+    #[test]
+    fn test_merkle_proof_roundtrip() {
+        let hashes = vec![
+            sha3_hash(b"chunk1"),
+            sha3_hash(b"chunk2"),
+            sha3_hash(b"chunk3"),
+            sha3_hash(b"chunk4"),
+        ];
+        let root = merkle_root(&hashes);
+        let proof = merkle_proof(&hashes, 2);
+        assert!(verify_merkle_proof(&hashes[2], &proof, 2, &root));
     }
 
     #[test]

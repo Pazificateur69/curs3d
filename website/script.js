@@ -1,6 +1,6 @@
 /* ============================================
    CURS3D - Quantum-Resistant Blockchain
-   Main JavaScript
+   Main JavaScript v4.0
    ============================================ */
 
 (function () {
@@ -9,13 +9,13 @@
     // ===========================
     // Particle Animation System
     // ===========================
-    const canvas = document.getElementById('particles');
+    var canvas = document.getElementById('particles');
     if (canvas) {
-        const ctx = canvas.getContext('2d');
-        let particles = [];
-        let animationId;
-        let mouseX = -1000;
-        let mouseY = -1000;
+        var ctx = canvas.getContext('2d');
+        var particles = [];
+        var animationId;
+        var mouseX = -1000;
+        var mouseY = -1000;
 
         function resizeCanvas() {
             canvas.width = window.innerWidth;
@@ -24,15 +24,17 @@
 
         function createParticles() {
             particles = [];
-            const count = Math.min(80, Math.floor((window.innerWidth * window.innerHeight) / 15000));
-            for (let i = 0; i < count; i++) {
+            var count = Math.min(90, Math.floor((window.innerWidth * window.innerHeight) / 14000));
+            for (var i = 0; i < count; i++) {
+                var hue = Math.random() > 0.6 ? 190 : Math.random() > 0.3 ? 270 : 330;
                 particles.push({
                     x: Math.random() * canvas.width,
                     y: Math.random() * canvas.height,
-                    vx: (Math.random() - 0.5) * 0.3,
-                    vy: (Math.random() - 0.5) * 0.3,
+                    vx: (Math.random() - 0.5) * 0.25,
+                    vy: (Math.random() - 0.5) * 0.25,
                     radius: Math.random() * 1.5 + 0.5,
                     opacity: Math.random() * 0.5 + 0.1,
+                    hue: hue,
                 });
             }
         }
@@ -40,14 +42,14 @@
         function drawParticles() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            for (let i = 0; i < particles.length; i++) {
-                for (let j = i + 1; j < particles.length; j++) {
-                    const dx = particles[i].x - particles[j].x;
-                    const dy = particles[i].y - particles[j].y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
+            for (var i = 0; i < particles.length; i++) {
+                for (var j = i + 1; j < particles.length; j++) {
+                    var dx = particles[i].x - particles[j].x;
+                    var dy = particles[i].y - particles[j].y;
+                    var dist = Math.sqrt(dx * dx + dy * dy);
 
-                    if (dist < 150) {
-                        const alpha = (1 - dist / 150) * 0.12;
+                    if (dist < 140) {
+                        var alpha = (1 - dist / 140) * 0.1;
                         ctx.beginPath();
                         ctx.moveTo(particles[i].x, particles[i].y);
                         ctx.lineTo(particles[j].x, particles[j].y);
@@ -58,21 +60,20 @@
                 }
             }
 
-            for (let i = 0; i < particles.length; i++) {
-                const p = particles[i];
+            for (var k = 0; k < particles.length; k++) {
+                var p = particles[k];
 
-                const dx = mouseX - p.x;
-                const dy = mouseY - p.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist < 200) {
-                    const force = (200 - dist) / 200;
-                    p.vx -= (dx / dist) * force * 0.02;
-                    p.vy -= (dy / dist) * force * 0.02;
+                var dx2 = mouseX - p.x;
+                var dy2 = mouseY - p.y;
+                var dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+                if (dist2 < 200) {
+                    var force = (200 - dist2) / 200;
+                    p.vx -= (dx2 / dist2) * force * 0.015;
+                    p.vy -= (dy2 / dist2) * force * 0.015;
                 }
 
                 p.x += p.vx;
                 p.y += p.vy;
-
                 p.vx *= 0.999;
                 p.vy *= 0.999;
 
@@ -83,7 +84,7 @@
 
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(139, 92, 246, ' + p.opacity + ')';
+                ctx.fillStyle = 'hsla(' + p.hue + ', 70%, 60%, ' + p.opacity + ')';
                 ctx.fill();
             }
 
@@ -94,9 +95,13 @@
         createParticles();
         drawParticles();
 
+        var resizeTimer;
         window.addEventListener('resize', function () {
-            resizeCanvas();
-            createParticles();
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(function () {
+                resizeCanvas();
+                createParticles();
+            }, 150);
         });
 
         document.addEventListener('mousemove', function (e) {
@@ -108,28 +113,26 @@
     // ===========================
     // Scroll Reveal (IntersectionObserver)
     // ===========================
-    const revealElements = document.querySelectorAll('.reveal');
+    var revealElements = document.querySelectorAll('.reveal');
 
     if (revealElements.length > 0) {
-        const revealObserver = new IntersectionObserver(
+        var revealObserver = new IntersectionObserver(
             function (entries) {
                 entries.forEach(function (entry) {
                     if (entry.isIntersecting) {
-                        const parent = entry.target.parentElement;
+                        var parent = entry.target.parentElement;
                         if (parent) {
-                            const siblings = parent.querySelectorAll('.reveal');
-                            let index = 0;
-                            siblings.forEach(function (sib, i) {
-                                if (sib === entry.target) index = i;
-                            });
-                            entry.target.style.transitionDelay = (index * 0.08) + 's';
+                            var siblings = Array.from(parent.querySelectorAll('.reveal'));
+                            var index = siblings.indexOf(entry.target);
+                            if (index === -1) index = 0;
+                            entry.target.style.transitionDelay = (index * 0.07) + 's';
                         }
                         entry.target.classList.add('visible');
                         revealObserver.unobserve(entry.target);
                     }
                 });
             },
-            { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
+            { threshold: 0.08, rootMargin: '0px 0px -50px 0px' }
         );
 
         revealElements.forEach(function (el) {
@@ -142,14 +145,14 @@
     // ===========================
     document.querySelectorAll('a[href^="#"]').forEach(function (anchor) {
         anchor.addEventListener('click', function (e) {
-            const href = this.getAttribute('href');
+            var href = this.getAttribute('href');
             if (href === '#') return;
             e.preventDefault();
-            const target = document.querySelector(href);
+            var target = document.querySelector(href);
             if (target) {
-                const navEl = document.querySelector('nav');
-                const navHeight = navEl ? navEl.offsetHeight : 72;
-                const top = target.getBoundingClientRect().top + window.pageYOffset - navHeight - 20;
+                var navEl = document.querySelector('nav');
+                var navHeight = navEl ? navEl.offsetHeight : 72;
+                var top = target.getBoundingClientRect().top + window.pageYOffset - navHeight - 20;
                 window.scrollTo({ top: top, behavior: 'smooth' });
             }
             closeMobileMenu();
@@ -159,7 +162,7 @@
     // ===========================
     // Nav Background on Scroll
     // ===========================
-    const nav = document.getElementById('nav');
+    var nav = document.getElementById('nav');
 
     if (nav) {
         window.addEventListener('scroll', function () {
@@ -174,8 +177,8 @@
     // ===========================
     // Mobile Hamburger Menu
     // ===========================
-    const hamburger = document.getElementById('hamburger');
-    const mobileMenu = document.getElementById('mobileMenu');
+    var hamburger = document.getElementById('hamburger');
+    var mobileMenu = document.getElementById('mobileMenu');
 
     function closeMobileMenu() {
         if (hamburger && mobileMenu) {
@@ -202,7 +205,7 @@
     }
 
     // ===========================
-    // Code Block Copy Buttons (all pages)
+    // Code Block Copy Buttons
     // ===========================
     document.querySelectorAll('.code-copy').forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -257,13 +260,13 @@
                             setTimeout(function () {
                                 line.style.opacity = '1';
                                 line.style.transform = 'translateY(0)';
-                            }, i * 200);
+                            }, i * 160);
                         });
                         terminalObserver.unobserve(entry.target);
                     }
                 });
             },
-            { threshold: 0.3 }
+            { threshold: 0.2 }
         );
 
         var terminalEl = terminalBody.closest('.terminal');
@@ -298,6 +301,48 @@
 
         docsSections.forEach(function (section) {
             sectionObserver.observe(section);
+        });
+    }
+
+    // ===========================
+    // Counter Animation
+    // ===========================
+    var counterElements = document.querySelectorAll('[data-count]');
+    if (counterElements.length > 0) {
+        var counterObserver = new IntersectionObserver(
+            function (entries) {
+                entries.forEach(function (entry) {
+                    if (entry.isIntersecting) {
+                        var el = entry.target;
+                        var target = parseInt(el.getAttribute('data-count'), 10);
+                        var suffix = el.getAttribute('data-suffix') || '';
+                        var duration = 1500;
+                        var start = 0;
+                        var startTime = null;
+
+                        function animate(ts) {
+                            if (!startTime) startTime = ts;
+                            var progress = Math.min((ts - startTime) / duration, 1);
+                            var eased = 1 - Math.pow(1 - progress, 3);
+                            var current = Math.floor(eased * target);
+                            el.textContent = current.toLocaleString() + suffix;
+                            if (progress < 1) {
+                                requestAnimationFrame(animate);
+                            } else {
+                                el.textContent = target.toLocaleString() + suffix;
+                            }
+                        }
+
+                        requestAnimationFrame(animate);
+                        counterObserver.unobserve(el);
+                    }
+                });
+            },
+            { threshold: 0.5 }
+        );
+
+        counterElements.forEach(function (el) {
+            counterObserver.observe(el);
         });
     }
 

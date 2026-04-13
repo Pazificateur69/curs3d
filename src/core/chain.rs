@@ -23,9 +23,15 @@ pub const DEFAULT_MIN_STAKE: u64 = 1_000_000_000;
 pub const DEFAULT_UNSTAKE_DELAY_BLOCKS: u64 = 10;
 pub const DEFAULT_EPOCH_LENGTH: u64 = 32;
 pub const DEFAULT_JAIL_DURATION_BLOCKS: u64 = 64;
+pub const DEFAULT_INITIAL_BASE_FEE_PER_GAS: u64 = 0;
+pub const DEFAULT_BASE_FEE_CHANGE_DENOMINATOR: u64 = 8;
 const MAX_FUTURE_BLOCK_TIME_SECS: i64 = 30;
+const MAX_FUTURE_TX_TIME_SECS: i64 = 30;
+const MAX_PENDING_TX_AGE_SECS: i64 = 15 * 60;
 const MAX_PENDING_TRANSACTIONS: usize = 10_000;
 const MAX_PENDING_TRANSACTIONS_PER_ACCOUNT: usize = 64;
+const MAX_PENDING_GAS_BUDGET_MULTIPLIER: u64 = 8;
+const MIN_REPLACEMENT_FEE_BUMP_PCT: u64 = 10;
 const CHAIN_CONFIG_KEY: &[u8] = b"chain_config";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -65,6 +71,10 @@ pub struct GenesisConfig {
     pub upgrades: Vec<ProtocolUpgrade>,
     #[serde(default = "default_block_gas_limit")]
     pub block_gas_limit: u64,
+    #[serde(default = "default_initial_base_fee_per_gas")]
+    pub initial_base_fee_per_gas: u64,
+    #[serde(default = "default_base_fee_change_denominator")]
+    pub base_fee_change_denominator: u64,
 }
 
 fn default_chain_id() -> String {
@@ -99,6 +109,14 @@ fn default_block_gas_limit() -> u64 {
     DEFAULT_BLOCK_GAS_LIMIT
 }
 
+fn default_initial_base_fee_per_gas() -> u64 {
+    DEFAULT_INITIAL_BASE_FEE_PER_GAS
+}
+
+fn default_base_fee_change_denominator() -> u64 {
+    DEFAULT_BASE_FEE_CHANGE_DENOMINATOR
+}
+
 impl Default for GenesisConfig {
     fn default() -> Self {
         GenesisConfig {
@@ -112,6 +130,8 @@ impl Default for GenesisConfig {
             allocations: Vec::new(),
             upgrades: Vec::new(),
             block_gas_limit: DEFAULT_BLOCK_GAS_LIMIT,
+            initial_base_fee_per_gas: DEFAULT_INITIAL_BASE_FEE_PER_GAS,
+            base_fee_change_denominator: DEFAULT_BASE_FEE_CHANGE_DENOMINATOR,
         }
     }
 }
@@ -156,6 +176,12 @@ pub enum ChainError {
     InvalidNonce { expected: u64, got: u64 },
     #[error("duplicate transaction")]
     DuplicateTransaction,
+    #[error("replacement transaction fee bump too low")]
+    ReplacementFeeTooLow,
+    #[error("transaction fee too low for current mempool pressure")]
+    FeeTooLow,
+    #[error("invalid block base fee: expected {expected}, got {got}")]
+    InvalidBaseFee { expected: u64, got: u64 },
     #[error("mempool full")]
     MempoolFull,
     #[error("missing coinbase transaction")]
@@ -214,9 +240,17 @@ pub struct Blockchain {
     pub slashed_validators: HashSet<Vec<u8>>,
     pub epoch_snapshots: HashMap<u64, EpochSnapshot>,
     pub block_gas_limit: u64,
+    pub initial_base_fee_per_gas: u64,
+    pub base_fee_change_denominator: u64,
     pub contracts: HashMap<Vec<u8>, ContractState>,
     pub receipts: HashMap<Vec<u8>, Receipt>,
     storage: Option<Storage>,
+}
+
+struct BlockExecution {
+    accounts: HashMap<Vec<u8>, AccountState>,
+    contracts: HashMap<Vec<u8>, ContractState>,
+    receipts: HashMap<Vec<u8>, Receipt>,
 }
 
 impl Blockchain {
@@ -228,8 +262,22 @@ impl Blockchain {
         let accounts = Self::accounts_from_genesis(&genesis_config)?;
         let contracts = HashMap::new();
         let state_root = Self::compute_state_root_full(&accounts, &contracts);
-        let genesis = Block::genesis_with_state_root(state_root, &genesis_config.chain_id);
+        let genesis = Block::genesis_with_state_root(
+            state_root,
+            &genesis_config.chain_id,
+            genesis_config.initial_base_fee_per_gas,
+        );
         let block_tree = BlockTree::from_genesis(&genesis);
+        let mut epoch_snapshots = HashMap::new();
+        epoch_snapshots.insert(
+            0,
+            Self::build_epoch_snapshot_for_accounts(
+                &genesis_config,
+                0,
+                &accounts,
+                &HashSet::new(),
+            ),
+        );
 
         Ok(Blockchain {
             blocks: vec![genesis],
@@ -241,11 +289,13 @@ impl Blockchain {
             epoch_length: genesis_config.epoch_length,
             jail_duration_blocks: genesis_config.jail_duration_blocks,
             block_gas_limit: genesis_config.block_gas_limit,
+            initial_base_fee_per_gas: genesis_config.initial_base_fee_per_gas,
+            base_fee_change_denominator: genesis_config.base_fee_change_denominator,
             genesis_config,
             block_tree,
             finality_tracker: FinalityTracker::new(),
             slashed_validators: HashSet::new(),
-            epoch_snapshots: HashMap::new(),
+            epoch_snapshots,
             contracts,
             receipts: HashMap::new(),
             storage: None,
@@ -274,6 +324,7 @@ impl Blockchain {
             let expected_genesis_hash = Block::genesis_with_state_root(
                 Self::compute_state_root_full(&expected_accounts, &HashMap::new()),
                 &stored_genesis.chain_id,
+                stored_genesis.initial_base_fee_per_gas,
             )
             .hash;
 
@@ -290,20 +341,19 @@ impl Blockchain {
                 return Err(ChainError::GenesisMismatch);
             }
 
-            let mut accounts = HashMap::new();
-            for (addr, state) in storage.get_all_accounts_compat()? {
-                accounts.insert(addr, state);
-            }
-
             let pending_transactions =
                 storage.get_all_pending_transactions_compat(&stored_genesis.chain_id)?;
             let slashed_validators = storage.get_slashed_addresses()?;
+            let loaded_accounts_for_weights: HashMap<Vec<u8>, AccountState> = storage
+                .get_all_accounts_compat()?
+                .into_iter()
+                .collect();
 
             // Rebuild block tree from stored blocks
             let block_tree = if !blocks.is_empty() {
                 let mut tree = BlockTree::from_genesis(&blocks[0]);
                 for block in blocks.iter().skip(1) {
-                    let proposer_stake = accounts
+                    let proposer_stake = loaded_accounts_for_weights
                         .get(&hash::address_bytes_from_public_key(
                             &block.header.validator_public_key,
                         ))
@@ -332,23 +382,15 @@ impl Blockchain {
                 "Loaded blockchain from disk: chain={}, height={}, accounts={}, pending={}, slashed={}, finalized={}",
                 stored_genesis.chain_name,
                 stored_height,
-                accounts.len(),
+                storage.get_all_accounts_compat()?.len(),
                 pending_transactions.len(),
                 slashed_validators.len(),
                 finalized_height,
             );
 
-            // Load epoch snapshots from storage
-            let mut epoch_snapshots = HashMap::new();
-            if let Ok(snapshots) = storage.get_all_epoch_snapshots() {
-                for (epoch, snapshot) in snapshots {
-                    epoch_snapshots.insert(epoch, snapshot);
-                }
-            }
-
-            let chain = Blockchain {
+            let mut chain = Blockchain {
                 blocks,
-                accounts,
+                accounts: HashMap::new(),
                 pending_transactions,
                 block_reward: stored_genesis.block_reward,
                 minimum_stake: stored_genesis.minimum_stake,
@@ -356,53 +398,29 @@ impl Blockchain {
                 epoch_length: stored_genesis.epoch_length,
                 jail_duration_blocks: stored_genesis.jail_duration_blocks,
                 block_gas_limit: stored_genesis.block_gas_limit,
+                initial_base_fee_per_gas: stored_genesis.initial_base_fee_per_gas,
+                base_fee_change_denominator: stored_genesis.base_fee_change_denominator,
                 genesis_config: stored_genesis,
                 block_tree,
                 finality_tracker,
                 slashed_validators,
-                epoch_snapshots,
+                epoch_snapshots: HashMap::new(),
                 contracts: HashMap::new(),
                 receipts: HashMap::new(),
                 storage: Some(storage),
             };
 
+            chain.rebuild_canonical_state()?;
+
             if schema_version < crate::storage::CURRENT_SCHEMA_VERSION {
-                if let Some(ref storage) = chain.storage {
-                    storage.put_meta(CHAIN_CONFIG_KEY, &chain.genesis_config)?;
-                    storage.put_meta(
-                        crate::storage::SCHEMA_VERSION_KEY,
-                        &crate::storage::CURRENT_SCHEMA_VERSION,
-                    )?;
-                    for block in &chain.blocks {
-                        storage.put_block(block)?;
-                    }
-                    for (address, state) in &chain.accounts {
-                        storage.put_account(address, state)?;
-                    }
-                    storage.replace_pending_transactions(&chain.pending_transactions)?;
-                    storage.flush()?;
-                }
+                chain.persist_full_state()?;
             }
 
             Ok(chain)
         } else {
             let mut chain = Self::from_genesis(genesis_config.cloned().unwrap_or_default())?;
             chain.storage = Some(storage);
-
-            if let Some(ref storage) = chain.storage {
-                storage.put_meta(CHAIN_CONFIG_KEY, &chain.genesis_config)?;
-                storage.put_block(chain.latest_block())?;
-                for (address, state) in &chain.accounts {
-                    storage.put_account(address, state)?;
-                }
-                storage.replace_pending_transactions(&[])?;
-                storage.put_meta(b"finalized_height", &0u64)?;
-                storage.put_meta(
-                    crate::storage::SCHEMA_VERSION_KEY,
-                    &crate::storage::CURRENT_SCHEMA_VERSION,
-                )?;
-                storage.flush()?;
-            }
+            chain.persist_full_state()?;
 
             tracing::info!(
                 "Initialized new blockchain from genesis config: {}",
@@ -435,6 +453,48 @@ impl Blockchain {
         &self.genesis_config.chain_id
     }
 
+    #[allow(dead_code)]
+    pub fn current_base_fee_per_gas(&self) -> u64 {
+        self.latest_block().header.base_fee_per_gas
+    }
+
+    fn target_block_gas_usage(&self) -> u64 {
+        (self.block_gas_limit / 2).max(1)
+    }
+
+    fn next_base_fee_per_gas(&self, parent: &Block) -> u64 {
+        let parent_base_fee = if parent.header.height == 0 {
+            parent.header.base_fee_per_gas.max(self.initial_base_fee_per_gas)
+        } else {
+            parent.header.base_fee_per_gas
+        };
+        let target = self.target_block_gas_usage();
+        if parent.header.gas_used == target {
+            return parent_base_fee;
+        }
+        if parent_base_fee == 0 && parent.header.gas_used <= target {
+            return 0;
+        }
+
+        let delta = if parent.header.gas_used > target {
+            parent.header.gas_used - target
+        } else {
+            target - parent.header.gas_used
+        };
+        let change = parent_base_fee
+            .max(1)
+            .saturating_mul(delta)
+            .checked_div(target.saturating_mul(self.base_fee_change_denominator.max(1)))
+            .unwrap_or(0)
+            .max(1);
+
+        if parent.header.gas_used > target {
+            parent_base_fee.saturating_add(change)
+        } else {
+            parent_base_fee.saturating_sub(change)
+        }
+    }
+
     pub fn current_epoch(&self) -> u64 {
         self.height() / self.epoch_length.max(1)
     }
@@ -447,32 +507,49 @@ impl Blockchain {
         height / self.epoch_length.max(1)
     }
 
-    /// Compute and store an EpochSnapshot for the given epoch using the current accounts.
-    pub fn create_epoch_snapshot(&mut self, epoch: u64) {
-        let start_height = epoch * self.epoch_length.max(1);
+    fn build_epoch_snapshot_for_accounts(
+        genesis_config: &GenesisConfig,
+        epoch: u64,
+        accounts: &HashMap<Vec<u8>, AccountState>,
+        slashed_validators: &HashSet<Vec<u8>>,
+    ) -> EpochSnapshot {
+        let start_height = epoch * genesis_config.epoch_length.max(1);
         let pos = ProofOfStake::with_slashed(
-            self.minimum_stake,
-            self.slashed_validators.clone(),
+            genesis_config.minimum_stake,
+            slashed_validators.clone(),
             start_height,
         );
-        let validators = pos.active_validators(&self.accounts);
+        let validators = pos.active_validators(accounts);
         let total_stake: u64 = validators.iter().map(|v| v.stake).sum();
-        let snapshot = EpochSnapshot {
+        EpochSnapshot {
             epoch,
             start_height,
             validators,
             total_stake,
-        };
-
-        // Persist to storage
-        if let Some(ref storage) = self.storage {
-            let _ = storage.put_epoch_snapshot(epoch, &snapshot);
         }
+    }
 
+    fn snapshot_for_accounts(&self, epoch: u64, accounts: &HashMap<Vec<u8>, AccountState>) -> EpochSnapshot {
+        Self::build_epoch_snapshot_for_accounts(
+            &self.genesis_config,
+            epoch,
+            accounts,
+            &self.slashed_validators,
+        )
+    }
+
+    /// Compute and store an EpochSnapshot for the given epoch using the provided pre-epoch state.
+    pub fn create_epoch_snapshot_from_accounts(
+        &mut self,
+        epoch: u64,
+        accounts: &HashMap<Vec<u8>, AccountState>,
+    ) {
+        let snapshot = self.snapshot_for_accounts(epoch, accounts);
         self.epoch_snapshots.insert(epoch, snapshot);
     }
 
     /// Get the EpochSnapshot for a given epoch, if it exists.
+    #[allow(dead_code)]
     pub fn get_epoch_snapshot(&self, epoch: u64) -> Option<&EpochSnapshot> {
         self.epoch_snapshots.get(&epoch)
     }
@@ -490,59 +567,131 @@ impl Blockchain {
 
     /// Create a state sync snapshot from the current chain state.
     pub fn create_snapshot(&self) -> Result<crate::storage::SnapshotManifest, ChainError> {
-        let mut all_accounts: Vec<(&Vec<u8>, &AccountState)> = self.accounts.iter().collect();
-        all_accounts.sort_by(|(a, _), (b, _)| a.cmp(b));
+        let snapshot_height = if self.finality_tracker.finalized_height > 0 {
+            self.finality_tracker.finalized_height.min(self.height())
+        } else {
+            self.height()
+        };
+        let snapshot_hash = self
+            .blocks
+            .get(snapshot_height as usize)
+            .map(|block| block.hash.clone())
+            .ok_or_else(|| ChainError::SnapshotError("snapshot height missing".to_string()))?;
+        let (snapshot_accounts, snapshot_contracts, snapshot_receipts) =
+            self.replay_state_to_canonical_height(snapshot_height)?;
+        let mut accounts: Vec<(Vec<u8>, AccountState)> = snapshot_accounts
+            .iter()
+            .map(|(address, state)| (address.clone(), state.clone()))
+            .collect();
+        accounts.sort_by(|(a, _), (b, _)| a.cmp(b));
 
-        let chunk_size = 1000;
+        let mut contracts: Vec<(Vec<u8>, ContractState)> = snapshot_contracts
+            .iter()
+            .map(|(address, state)| (address.clone(), state.clone()))
+            .collect();
+        contracts.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+        let mut receipts: Vec<(Vec<u8>, Receipt)> = snapshot_receipts
+            .iter()
+            .map(|(tx_hash, receipt)| (tx_hash.clone(), receipt.clone()))
+            .collect();
+        receipts.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+        let mut epoch_snapshots: Vec<(u64, EpochSnapshot)> = self
+            .epoch_snapshots
+            .iter()
+            .filter(|(epoch, _)| **epoch <= self.epoch_for_height(snapshot_height))
+            .map(|(epoch, snapshot)| (*epoch, snapshot.clone()))
+            .collect();
+        epoch_snapshots.sort_by_key(|(epoch, _)| *epoch);
+
+        let snapshot_state = crate::storage::SnapshotState {
+            blocks: self.blocks[..=snapshot_height as usize].to_vec(),
+            accounts,
+            contracts,
+            receipts,
+            pending_transactions: Vec::new(),
+            slashed_validators: self.slashed_validators.iter().cloned().collect(),
+            epoch_snapshots,
+            finalized_height: snapshot_height,
+            finalized_hash: snapshot_hash.clone(),
+        };
+
+        let snapshot_bytes = bincode::serialize(&snapshot_state)
+            .map_err(|e| ChainError::SnapshotError(e.to_string()))?;
+
+        let chunk_size = 256 * 1024;
         let mut chunks = Vec::new();
         let mut chunk_hashes = Vec::new();
-
-        for chunk_accounts in all_accounts.chunks(chunk_size) {
-            let data = bincode::serialize(&chunk_accounts)
-                .map_err(|e| ChainError::SnapshotError(e.to_string()))?;
-            let chunk_hash = hash::sha3_hash(&data);
+        for (index, data) in snapshot_bytes.chunks(chunk_size).enumerate() {
+            let chunk_hash = hash::sha3_hash(data);
             chunk_hashes.push(chunk_hash.clone());
-            chunks.push(crate::storage::StateChunk {
-                index: chunks.len(),
+            chunks.push((index, data.to_vec(), chunk_hash));
+        }
+        let chunk_root = hash::merkle_root(&chunk_hashes);
+        let mut chunks: Vec<crate::storage::StateChunk> = chunks
+            .into_iter()
+            .map(|(index, data, chunk_hash)| crate::storage::StateChunk {
+                index,
                 data,
                 hash: chunk_hash,
+                proof: hash::merkle_proof(&chunk_hashes, index),
+            })
+            .collect();
+        if chunks.is_empty() {
+            chunks.push(crate::storage::StateChunk {
+                index: 0,
+                data: Vec::new(),
+                hash: hash::sha3_hash(&[]),
+                proof: Vec::new(),
             });
         }
 
-        let height = self.height();
-        let epoch = self.current_epoch();
-        let state_root = Self::compute_state_root(&self.accounts);
-
-        // Persist chunks to storage
-        if let Some(ref storage) = self.storage {
-            for chunk in &chunks {
-                let _ = storage.put_snapshot_chunk(height, chunk);
-            }
-        }
-
+        let epoch = self.epoch_for_height(snapshot_height);
+        let state_root = Self::compute_state_root_full(&snapshot_accounts, &snapshot_contracts);
         let manifest = crate::storage::SnapshotManifest {
-            height,
+            height: snapshot_height,
             epoch,
+            chain_id: self.chain_id().to_string(),
+            genesis_hash: self.genesis_hash().to_vec(),
+            latest_hash: snapshot_hash.clone(),
+            tip_height: self.height(),
+            tip_hash: self.latest_hash().to_vec(),
+            finalized_height: snapshot_height,
+            finalized_hash: snapshot_hash,
             state_root,
+            chunk_root,
             chunk_count: chunks.len(),
             chunk_hashes,
         };
 
-        // Persist manifest
+        // Persist chunks to storage
         if let Some(ref storage) = self.storage {
-            let _ = storage.put_snapshot_manifest(height, &manifest);
+            for chunk in &chunks {
+                let _ = storage.put_snapshot_chunk(snapshot_height, chunk);
+            }
+            let _ = storage.put_snapshot_manifest(snapshot_height, &manifest);
         }
 
         Ok(manifest)
     }
 
-    /// Load a blockchain from a state sync snapshot.
-    pub fn load_from_snapshot(
+    pub fn get_snapshot_chunks(
+        &self,
+        height: u64,
+    ) -> Result<Vec<crate::storage::StateChunk>, ChainError> {
+        if let Some(ref storage) = self.storage {
+            return storage.get_snapshot_chunks(height).map_err(ChainError::from);
+        }
+        Err(ChainError::SnapshotError(
+            "snapshot chunks unavailable without storage backend".to_string(),
+        ))
+    }
+
+    fn decode_snapshot_state(
         manifest: &crate::storage::SnapshotManifest,
         chunks: &[crate::storage::StateChunk],
-        genesis_config: GenesisConfig,
-    ) -> Result<Self, ChainError> {
-        // Verify chunk hashes
+    ) -> Result<crate::storage::SnapshotState, ChainError> {
         if chunks.len() != manifest.chunk_count {
             return Err(ChainError::SnapshotError(format!(
                 "expected {} chunks, got {}",
@@ -551,6 +700,12 @@ impl Blockchain {
             )));
         }
         for (i, chunk) in chunks.iter().enumerate() {
+            if chunk.index != i {
+                return Err(ChainError::SnapshotError(format!(
+                    "unexpected chunk order: expected {}, got {}",
+                    i, chunk.index
+                )));
+            }
             let computed_hash = hash::sha3_hash(&chunk.data);
             if i >= manifest.chunk_hashes.len() || computed_hash != manifest.chunk_hashes[i] {
                 return Err(ChainError::SnapshotError(format!(
@@ -558,52 +713,116 @@ impl Blockchain {
                     i
                 )));
             }
-        }
-
-        // Reconstruct accounts from chunks
-        let mut accounts = HashMap::new();
-        for chunk in chunks {
-            let chunk_accounts: Vec<(Vec<u8>, AccountState)> =
-                bincode::deserialize(&chunk.data)
-                    .map_err(|e| ChainError::SnapshotError(e.to_string()))?;
-            for (addr, state) in chunk_accounts {
-                accounts.insert(addr, state);
+            if !hash::verify_merkle_proof(&computed_hash, &chunk.proof, i, &manifest.chunk_root) {
+                return Err(ChainError::SnapshotError(format!(
+                    "chunk {} proof mismatch",
+                    i
+                )));
             }
         }
 
-        // Verify state root
-        let computed_root = Self::compute_state_root(&accounts);
+        let payload: Vec<u8> = chunks.iter().flat_map(|chunk| chunk.data.clone()).collect();
+        let snapshot_state: crate::storage::SnapshotState = bincode::deserialize(&payload)
+            .map_err(|e| ChainError::SnapshotError(e.to_string()))?;
+
+        let accounts: HashMap<Vec<u8>, AccountState> =
+            snapshot_state.accounts.iter().cloned().collect();
+        let contracts: HashMap<Vec<u8>, ContractState> =
+            snapshot_state.contracts.iter().cloned().collect();
+        let computed_root = Self::compute_state_root_full(&accounts, &contracts);
         if computed_root != manifest.state_root {
             return Err(ChainError::SnapshotError(
                 "state root mismatch".to_string(),
             ));
         }
 
-        // Build a minimal chain from genesis
-        let genesis_accounts = Self::accounts_from_genesis(&genesis_config)?;
-        let state_root = Self::compute_state_root(&genesis_accounts);
-        let genesis = Block::genesis_with_state_root(state_root, &genesis_config.chain_id);
-        let block_tree = BlockTree::from_genesis(&genesis);
+        if snapshot_state.blocks.is_empty() {
+            return Err(ChainError::SnapshotError(
+                "snapshot does not contain canonical blocks".to_string(),
+            ));
+        }
+        if snapshot_state.blocks[0].hash != manifest.genesis_hash {
+            return Err(ChainError::SnapshotError(
+                "snapshot genesis hash mismatch".to_string(),
+            ));
+        }
+        if snapshot_state
+            .blocks
+            .last()
+            .map(|block| block.hash.clone())
+            .unwrap_or_default()
+            != manifest.latest_hash
+        {
+            return Err(ChainError::SnapshotError(
+                "snapshot latest hash mismatch".to_string(),
+            ));
+        }
 
-        Ok(Blockchain {
-            blocks: vec![genesis],
-            accounts,
-            pending_transactions: Vec::new(),
-            block_reward: genesis_config.block_reward,
-            minimum_stake: genesis_config.minimum_stake,
-            unstake_delay_blocks: genesis_config.unstake_delay_blocks,
-            epoch_length: genesis_config.epoch_length,
-            jail_duration_blocks: genesis_config.jail_duration_blocks,
-            block_gas_limit: genesis_config.block_gas_limit,
-            genesis_config,
-            block_tree,
-            finality_tracker: FinalityTracker::new(),
-            slashed_validators: HashSet::new(),
-            epoch_snapshots: HashMap::new(),
-            contracts: HashMap::new(),
-            receipts: HashMap::new(),
-            storage: None,
-        })
+        Ok(snapshot_state)
+    }
+
+    pub fn apply_snapshot(
+        &mut self,
+        manifest: &crate::storage::SnapshotManifest,
+        chunks: &[crate::storage::StateChunk],
+    ) -> Result<(), ChainError> {
+        if manifest.chain_id != self.chain_id() {
+            return Err(ChainError::SnapshotError(
+                "snapshot chain_id mismatch".to_string(),
+            ));
+        }
+        if self.finality_tracker.finalized_height >= manifest.height
+            && !self.finality_tracker.finalized_hash.is_empty()
+            && self.finality_tracker.finalized_height == manifest.finalized_height
+            && self.finality_tracker.finalized_hash != manifest.finalized_hash
+        {
+            return Err(ChainError::SnapshotError(
+                "snapshot finalized hash conflicts with local finalized checkpoint".to_string(),
+            ));
+        }
+        if let Some(local_block) = self.blocks.get(manifest.height as usize)
+            && local_block.hash != manifest.latest_hash
+        {
+            return Err(ChainError::SnapshotError(
+                "snapshot latest hash conflicts with local canonical block".to_string(),
+            ));
+        }
+
+        let snapshot_state = Self::decode_snapshot_state(manifest, chunks)?;
+
+        self.blocks = snapshot_state.blocks;
+        self.accounts = snapshot_state.accounts.into_iter().collect();
+        self.contracts = snapshot_state.contracts.into_iter().collect();
+        self.receipts = snapshot_state.receipts.into_iter().collect();
+        self.pending_transactions = snapshot_state.pending_transactions;
+        self.slashed_validators = snapshot_state.slashed_validators.into_iter().collect();
+        self.epoch_snapshots = snapshot_state.epoch_snapshots.into_iter().collect();
+
+        let mut block_tree = BlockTree::from_genesis(
+            self.blocks
+                .first()
+                .ok_or_else(|| ChainError::SnapshotError("missing genesis block".to_string()))?,
+        );
+        for block in self.blocks.iter().skip(1) {
+            let proposer_address =
+                hash::address_bytes_from_public_key(&block.header.validator_public_key);
+            let proposer_stake = self
+                .accounts
+                .get(&proposer_address)
+                .map(|account| account.staked_balance)
+                .unwrap_or(0);
+            let _ = block_tree.insert(block.clone(), proposer_stake);
+        }
+        block_tree.set_finalized(
+            manifest.finalized_hash.clone(),
+            manifest.finalized_height,
+        );
+        self.block_tree = block_tree;
+        self.finality_tracker =
+            FinalityTracker::with_finalized(manifest.finalized_height, manifest.finalized_hash.clone());
+
+        self.persist_full_state()?;
+        Ok(())
     }
 
     pub fn get_balance(&self, address: &[u8]) -> u64 {
@@ -622,6 +841,8 @@ impl Blockchain {
     }
 
     pub fn add_transaction(&mut self, tx: Transaction) -> Result<(), ChainError> {
+        self.prune_pending_transactions();
+
         if tx.is_coinbase() {
             return Err(ChainError::InvalidTransactionFormat(
                 "coinbase transactions cannot enter the mempool",
@@ -635,7 +856,23 @@ impl Blockchain {
             });
         }
 
-        if self.pending_transactions.len() >= MAX_PENDING_TRANSACTIONS {
+        let now = chrono::Utc::now().timestamp();
+        if tx.timestamp > now + MAX_FUTURE_TX_TIME_SECS {
+            return Err(ChainError::InvalidTransactionFormat(
+                "transaction timestamp too far in the future",
+            ));
+        }
+        let pending_base_fee = self.next_base_fee_per_gas(self.latest_block());
+        if tx.fee < self.minimum_admission_fee(&tx, pending_base_fee) {
+            return Err(ChainError::FeeTooLow);
+        }
+
+        let replacement_index = self
+            .pending_transactions
+            .iter()
+            .position(|pending| pending.from == tx.from && pending.nonce == tx.nonce);
+
+        if self.pending_transactions.len() >= MAX_PENDING_TRANSACTIONS && replacement_index.is_none() {
             return Err(ChainError::MempoolFull);
         }
 
@@ -644,7 +881,7 @@ impl Blockchain {
             .iter()
             .filter(|pending| pending.from == tx.from)
             .count();
-        if sender_pending >= MAX_PENDING_TRANSACTIONS_PER_ACCOUNT {
+        if sender_pending >= MAX_PENDING_TRANSACTIONS_PER_ACCOUNT && replacement_index.is_none() {
             return Err(ChainError::MempoolFull);
         }
 
@@ -657,11 +894,25 @@ impl Blockchain {
             return Err(ChainError::DuplicateTransaction);
         }
 
+        if let Some(index) = replacement_index {
+            let existing = &self.pending_transactions[index];
+            let min_fee = existing
+                .fee
+                .saturating_add(existing.fee.saturating_mul(MIN_REPLACEMENT_FEE_BUMP_PCT) / 100)
+                .max(existing.fee.saturating_add(1));
+            if tx.fee < min_fee {
+                return Err(ChainError::ReplacementFeeTooLow);
+            }
+        }
+
         let mut projected_accounts = self.accounts.clone();
         let mut projected_contracts = self.contracts.clone();
         let mut projected_receipts = HashMap::new();
         let mut seen_hashes = HashSet::new();
-        for pending in &self.pending_transactions {
+        for (index, pending) in self.pending_transactions.iter().enumerate() {
+            if replacement_index == Some(index) {
+                continue;
+            }
             let pending_hash = pending.hash();
             if !seen_hashes.insert(pending_hash) {
                 return Err(ChainError::DuplicateTransaction);
@@ -675,6 +926,7 @@ impl Blockchain {
                 self.unstake_delay_blocks,
                 self.epoch_length,
                 self.minimum_stake,
+                pending_base_fee,
             )?;
         }
 
@@ -687,10 +939,23 @@ impl Blockchain {
             self.unstake_delay_blocks,
             self.epoch_length,
             self.minimum_stake,
+            pending_base_fee,
         )?;
-        self.pending_transactions.push(tx);
-        self.pending_transactions
-            .sort_by(|a, b| b.fee.cmp(&a.fee).then_with(|| a.timestamp.cmp(&b.timestamp)).then_with(|| a.nonce.cmp(&b.nonce)));
+        let protected_from = tx.from.clone();
+        let protected_nonce = tx.nonce;
+        if let Some(index) = replacement_index {
+            self.pending_transactions[index] = tx;
+        } else {
+            self.pending_transactions.push(tx);
+        }
+        let protected_hash = self
+            .pending_transactions
+            .iter()
+            .find(|pending| pending.from == protected_from && pending.nonce == protected_nonce)
+            .map(Transaction::hash)
+            .unwrap_or_default();
+        self.enforce_mempool_limits(&protected_hash)?;
+        self.sort_pending_transactions();
         self.persist_pending_transactions()?;
         Ok(())
     }
@@ -699,6 +964,8 @@ impl Blockchain {
         let prev_block = self.latest_block();
         let height = prev_block.header.height + 1;
         let prev_hash = prev_block.hash.clone();
+        let protocol_version = self.protocol_version_at_height(height);
+        let base_fee_per_gas = self.next_base_fee_per_gas(prev_block);
 
         let proposer_public_key = validator_keypair.public_key.clone();
         let proposer_address = hash::address_bytes_from_public_key(&proposer_public_key);
@@ -709,7 +976,8 @@ impl Blockchain {
         let mut projected_receipts = HashMap::new();
         Self::apply_unstake_unlocks(&mut projected_accounts, height);
         let mut block_txs = Vec::new();
-        let mut total_fees = 0u64;
+        let mut total_priority_fees = 0u64;
+        let mut total_gas_used = 0u64;
         let mut seen_hashes = HashSet::new();
 
         for pending in &self.pending_transactions {
@@ -718,7 +986,7 @@ impl Blockchain {
                 continue;
             }
 
-            if Self::apply_user_transaction(
+            match Self::apply_user_transaction(
                 &mut projected_accounts,
                 &mut projected_contracts,
                 &mut projected_receipts,
@@ -727,18 +995,23 @@ impl Blockchain {
                 self.unstake_delay_blocks,
                 self.epoch_length,
                 self.minimum_stake,
-            )
-            .is_ok()
-            {
-                total_fees = total_fees.saturating_add(pending.fee);
-                block_txs.push(pending.clone());
+                base_fee_per_gas,
+            ) {
+                Ok(gas_used) if total_gas_used.saturating_add(gas_used) <= self.block_gas_limit => {
+                    total_gas_used = total_gas_used.saturating_add(gas_used);
+                    total_priority_fees = total_priority_fees
+                        .saturating_add(Self::priority_fee_for_transaction(pending, gas_used, base_fee_per_gas));
+                    block_txs.push(pending.clone());
+                }
+                Ok(_) => {}
+                Err(_) => {}
             }
         }
 
         let coinbase = Transaction::coinbase(
             &self.genesis_config.chain_id,
             proposer_address.clone(),
-            self.block_reward.saturating_add(total_fees),
+            self.block_reward.saturating_add(total_priority_fees),
         );
         Self::apply_coinbase_transaction(&mut projected_accounts, &coinbase)?;
 
@@ -746,72 +1019,46 @@ impl Blockchain {
         transactions.extend(block_txs);
 
         Ok(Block::new(
+            protocol_version,
             height,
             prev_hash,
             Self::compute_state_root_full(&projected_accounts, &projected_contracts),
+            total_gas_used,
+            base_fee_per_gas,
             transactions,
             validator_keypair,
         ))
     }
 
     pub fn add_block(&mut self, block: Block) -> Result<(), ChainError> {
-        let prev = self.latest_block();
-        let projected_accounts = self.validate_block_against_state(&block, prev, &self.accounts)?;
-
-        // Apply contract state changes from block transactions
-        for tx in &block.transactions {
-            match tx.kind {
-                TransactionKind::DeployContract => {
-                    if let Ok((contract, mut receipt)) =
-                        Vm::deploy(&tx.to, &tx.from, tx.nonce.wrapping_sub(1), tx.gas_limit)
-                    {
-                        let tx_hash = tx.hash();
-                        receipt.tx_hash = tx_hash.clone();
-                        if let Some(ref addr) = receipt.contract_address {
-                            self.contracts.insert(addr.clone(), contract);
-                        }
-                        self.receipts.insert(tx_hash, receipt);
-                    }
-                }
-                TransactionKind::CallContract => {
-                    if let Some(contract) = self.contracts.get_mut(&tx.to) {
-                        if let Ok(mut receipt) =
-                            Vm::call(contract, &tx.data, &tx.from, tx.amount, tx.gas_limit)
-                        {
-                            let tx_hash = tx.hash();
-                            receipt.tx_hash = tx_hash.clone();
-                            self.receipts.insert(tx_hash, receipt);
-                        }
-                    }
-                }
-                _ => {}
+        let prev_accounts = self.accounts.clone();
+        if block.header.height > 0 && block.header.height % self.epoch_length.max(1) == 0 {
+            let epoch = self.epoch_for_height(block.header.height);
+            if !self.epoch_snapshots.contains_key(&epoch) {
+                self.create_epoch_snapshot_from_accounts(epoch, &prev_accounts);
             }
         }
+        let prev = self.latest_block();
+        let execution =
+            self.validate_block_against_state(&block, prev, &self.accounts, &self.contracts)?;
 
         // Insert into block tree for fork tracking
         let proposer_address =
             hash::address_bytes_from_public_key(&block.header.validator_public_key);
-        let proposer_stake = projected_accounts
+        let proposer_stake = execution
+            .accounts
             .get(&proposer_address)
             .map(|a| a.staked_balance)
             .unwrap_or(0);
         // Ignore block tree errors for blocks already in the tree
         let _ = self.block_tree.insert(block.clone(), proposer_stake);
 
-        let block_height = block.header.height;
-        self.accounts = projected_accounts;
+        self.accounts = execution.accounts;
+        self.contracts = execution.contracts;
+        self.receipts.extend(execution.receipts);
         self.blocks.push(block.clone());
         self.remove_block_transactions_from_mempool(&block);
-        self.persist_block_state(&block)?;
-
-        // Create epoch snapshot at epoch boundaries (height > 0 and height % epoch_length == 0)
-        let epoch_len = self.epoch_length.max(1);
-        if block_height > 0 && block_height % epoch_len == 0 {
-            let epoch = block_height / epoch_len;
-            if !self.epoch_snapshots.contains_key(&epoch) {
-                self.create_epoch_snapshot(epoch);
-            }
-        }
+        self.persist_full_state()?;
 
         Ok(())
     }
@@ -822,17 +1069,16 @@ impl Blockchain {
         if voted_block.header.height != vote.block_height {
             return None;
         }
+        let vote_epoch = self.epoch_for_height(vote.block_height);
+        if vote.epoch != vote_epoch {
+            return None;
+        }
         if !self.block_tree.is_on_canonical_chain(&vote.block_hash) {
             return None;
         }
+        let snapshot = self.epoch_snapshots.get(&vote_epoch)?;
 
-        let result = self.finality_tracker.add_vote(
-            vote,
-            &self.accounts,
-            self.minimum_stake,
-            &self.slashed_validators,
-            self.height(),
-        );
+        let result = self.finality_tracker.add_vote(vote, snapshot);
 
         if let Some(ref finalized) = result {
             self.block_tree
@@ -911,7 +1157,7 @@ impl Blockchain {
             }
         }
 
-        replay.accounts == self.accounts
+        replay.accounts == self.accounts && replay.contracts == self.contracts
     }
 
     /// Attempt to add a block that may fork from the current canonical chain.
@@ -930,14 +1176,15 @@ impl Blockchain {
             .get(&block.header.prev_hash)
             .ok_or(BlockTreeError::OrphanBlock)?
             .clone();
-        let parent_accounts = self.replay_accounts_to_tip(&parent.hash)?;
-        let projected_accounts =
-            self.validate_block_against_state(&block, &parent, &parent_accounts)?;
+        let (parent_accounts, parent_contracts, _) = self.replay_state_to_tip(&parent.hash)?;
+        let execution =
+            self.validate_block_against_state(&block, &parent, &parent_accounts, &parent_contracts)?;
 
         // Get proposer stake for weight calculation
         let proposer_address =
             hash::address_bytes_from_public_key(&block.header.validator_public_key);
-        let proposer_stake = projected_accounts
+        let proposer_stake = execution
+            .accounts
             .get(&proposer_address)
             .map(|a| a.staked_balance)
             .unwrap_or(0);
@@ -1003,19 +1250,8 @@ impl Blockchain {
             }
         }
 
-        // Rebuild from genesis
-        let mut accounts = Self::accounts_from_genesis(&self.genesis_config)?;
-        let mut new_blocks = vec![canonical[0].clone()]; // genesis
-
-        for block in canonical.iter().skip(1) {
-            let parent = new_blocks.last().expect("canonical chain includes genesis");
-            accounts = self.validate_block_against_state(block, parent, &accounts)?;
-
-            new_blocks.push((*block).clone());
-        }
-
-        self.accounts = accounts;
-        self.blocks = new_blocks;
+        self.blocks = canonical.iter().cloned().cloned().collect();
+        self.rebuild_canonical_state()?;
         self.persist_full_state()?;
 
         tracing::info!(
@@ -1029,18 +1265,21 @@ impl Blockchain {
 
     fn persist_full_state(&self) -> Result<(), ChainError> {
         if let Some(ref storage) = self.storage {
-            for block in &self.blocks {
-                storage.put_block(block)?;
-            }
-            for (address, state) in &self.accounts {
-                storage.put_account(address, state)?;
-            }
+            storage.put_meta(CHAIN_CONFIG_KEY, &self.genesis_config)?;
+            storage.put_meta(b"finalized_height", &self.finality_tracker.finalized_height)?;
+            storage.put_meta(crate::storage::SCHEMA_VERSION_KEY, &crate::storage::CURRENT_SCHEMA_VERSION)?;
+            storage.replace_blocks(&self.blocks)?;
+            storage.replace_accounts(&self.accounts)?;
+            storage.replace_contracts(&self.contracts)?;
+            storage.replace_receipts(&self.receipts)?;
+            storage.replace_epoch_snapshots(&self.epoch_snapshots)?;
             storage.replace_pending_transactions(&self.pending_transactions)?;
             storage.flush()?;
         }
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn compute_state_root(accounts: &HashMap<Vec<u8>, AccountState>) -> Vec<u8> {
         Self::compute_state_root_full(accounts, &HashMap::new())
     }
@@ -1136,6 +1375,7 @@ impl Blockchain {
     ) -> Result<(), ChainError> {
         self.ensure_validator_is_authorized_for_accounts(
             &self.accounts,
+            &self.epoch_snapshots,
             validator_public_key,
             block_height,
             prev_hash,
@@ -1145,14 +1385,24 @@ impl Blockchain {
     fn ensure_validator_is_authorized_for_accounts(
         &self,
         accounts: &HashMap<Vec<u8>, AccountState>,
+        epoch_snapshots: &HashMap<u64, EpochSnapshot>,
         validator_public_key: &[u8],
         block_height: u64,
         prev_hash: &[u8],
     ) -> Result<(), ChainError> {
         // Try to use frozen epoch snapshot for validator selection
         let epoch = block_height / self.epoch_length.max(1);
-        if let Some(snapshot) = self.epoch_snapshots.get(&epoch) {
+        if let Some(snapshot) = epoch_snapshots.get(&epoch) {
             match ProofOfStake::select_validator_from_snapshot(snapshot, block_height, prev_hash) {
+                Some(expected) if expected.public_key == validator_public_key => return Ok(()),
+                Some(_) => return Err(ChainError::UnauthorizedValidator),
+                None => return Ok(()),
+            }
+        }
+
+        if epoch > 0 && block_height % self.epoch_length.max(1) == 0 {
+            let snapshot = self.snapshot_for_accounts(epoch, accounts);
+            match ProofOfStake::select_validator_from_snapshot(&snapshot, block_height, prev_hash) {
                 Some(expected) if expected.public_key == validator_public_key => return Ok(()),
                 Some(_) => return Err(ChainError::UnauthorizedValidator),
                 None => return Ok(()),
@@ -1178,7 +1428,8 @@ impl Blockchain {
         block: &Block,
         parent: &Block,
         parent_accounts: &HashMap<Vec<u8>, AccountState>,
-    ) -> Result<HashMap<Vec<u8>, AccountState>, ChainError> {
+        parent_contracts: &HashMap<Vec<u8>, ContractState>,
+    ) -> Result<BlockExecution, ChainError> {
         if block.header.height != parent.header.height + 1 {
             return Err(ChainError::InvalidHeight {
                 expected: parent.header.height + 1,
@@ -1221,9 +1472,17 @@ impl Blockchain {
                 got: block.header.version,
             });
         }
+        let expected_base_fee = self.next_base_fee_per_gas(parent);
+        if block.header.base_fee_per_gas != expected_base_fee {
+            return Err(ChainError::InvalidBaseFee {
+                expected: expected_base_fee,
+                got: block.header.base_fee_per_gas,
+            });
+        }
 
         self.ensure_validator_is_authorized_for_accounts(
             parent_accounts,
+            &self.epoch_snapshots,
             &block.header.validator_public_key,
             block.header.height,
             &block.header.prev_hash,
@@ -1232,11 +1491,12 @@ impl Blockchain {
         let proposer_address =
             hash::address_bytes_from_public_key(&block.header.validator_public_key);
         let mut projected_accounts = parent_accounts.clone();
-        let mut projected_contracts = self.contracts.clone();
+        let mut projected_contracts = parent_contracts.clone();
         let mut projected_receipts = HashMap::new();
         Self::apply_unstake_unlocks(&mut projected_accounts, block.header.height);
         let mut tx_hashes = HashSet::new();
-        let mut user_fees = 0u64;
+        let mut priority_fees = 0u64;
+        let mut total_gas_used = 0u64;
         let mut coinbase: Option<&Transaction> = None;
 
         for (index, tx) in block.transactions.iter().enumerate() {
@@ -1263,8 +1523,7 @@ impl Blockchain {
                 continue;
             }
 
-            user_fees = user_fees.saturating_add(tx.fee);
-            Self::apply_user_transaction(
+            let gas_used = Self::apply_user_transaction(
                 &mut projected_accounts,
                 &mut projected_contracts,
                 &mut projected_receipts,
@@ -1273,14 +1532,31 @@ impl Blockchain {
                 self.unstake_delay_blocks,
                 self.epoch_length,
                 self.minimum_stake,
+                block.header.base_fee_per_gas,
             )?;
+            priority_fees = priority_fees.saturating_add(Self::priority_fee_for_transaction(
+                tx,
+                gas_used,
+                block.header.base_fee_per_gas,
+            ));
+            total_gas_used = total_gas_used.saturating_add(gas_used);
+            if total_gas_used > self.block_gas_limit {
+                return Err(ChainError::InvalidTransactionFormat(
+                    "block gas limit exceeded",
+                ));
+            }
+        }
+        if block.header.gas_used != total_gas_used {
+            return Err(ChainError::InvalidTransactionFormat(
+                "block gas accounting mismatch",
+            ));
         }
 
         let coinbase = coinbase.ok_or(ChainError::MissingCoinbase)?;
         if coinbase.to != proposer_address {
             return Err(ChainError::InvalidCoinbase);
         }
-        if coinbase.amount != self.block_reward.saturating_add(user_fees) {
+        if coinbase.amount != self.block_reward.saturating_add(priority_fees) {
             return Err(ChainError::InvalidCoinbase);
         }
         Self::apply_coinbase_transaction(&mut projected_accounts, coinbase)?;
@@ -1291,13 +1567,24 @@ impl Blockchain {
             return Err(ChainError::InvalidStateRoot);
         }
 
-        Ok(projected_accounts)
+        Ok(BlockExecution {
+            accounts: projected_accounts,
+            contracts: projected_contracts,
+            receipts: projected_receipts,
+        })
     }
 
-    fn replay_accounts_to_tip(
+    fn replay_state_to_tip(
         &self,
         tip_hash: &[u8],
-    ) -> Result<HashMap<Vec<u8>, AccountState>, ChainError> {
+    ) -> Result<
+        (
+            HashMap<Vec<u8>, AccountState>,
+            HashMap<Vec<u8>, ContractState>,
+            HashMap<Vec<u8>, Receipt>,
+        ),
+        ChainError,
+    > {
         let mut lineage = Vec::new();
         let mut current = tip_hash.to_vec();
 
@@ -1322,16 +1609,61 @@ impl Blockchain {
         lineage.reverse();
 
         let mut accounts = Self::accounts_from_genesis(&self.genesis_config)?;
+        let mut contracts = HashMap::new();
+        let mut receipts = HashMap::new();
         let mut previous = lineage
             .first()
             .cloned()
             .expect("lineage always includes genesis");
         for block in lineage.iter().skip(1) {
-            accounts = self.validate_block_against_state(block, &previous, &accounts)?;
+            let execution =
+                self.validate_block_against_state(block, &previous, &accounts, &contracts)?;
+            accounts = execution.accounts;
+            contracts = execution.contracts;
+            receipts.extend(execution.receipts);
             previous = block.clone();
         }
 
-        Ok(accounts)
+        Ok((accounts, contracts, receipts))
+    }
+
+    fn replay_state_to_canonical_height(
+        &self,
+        target_height: u64,
+    ) -> Result<
+        (
+            HashMap<Vec<u8>, AccountState>,
+            HashMap<Vec<u8>, ContractState>,
+            HashMap<Vec<u8>, Receipt>,
+        ),
+        ChainError,
+    > {
+        let block = self
+            .blocks
+            .get(target_height as usize)
+            .ok_or_else(|| ChainError::SnapshotError("target height missing".to_string()))?;
+        self.replay_state_to_tip(&block.hash)
+    }
+
+    fn ensure_transaction_fee_covers_base(
+        tx: &Transaction,
+        gas_used: u64,
+        base_fee_per_gas: u64,
+    ) -> Result<(), ChainError> {
+        let required = gas_used.saturating_mul(base_fee_per_gas);
+        if tx.fee < required {
+            return Err(ChainError::FeeTooLow);
+        }
+        Ok(())
+    }
+
+    fn priority_fee_for_transaction(
+        tx: &Transaction,
+        gas_used: u64,
+        base_fee_per_gas: u64,
+    ) -> u64 {
+        tx.fee
+            .saturating_sub(gas_used.saturating_mul(base_fee_per_gas))
     }
 
     fn apply_user_transaction(
@@ -1343,7 +1675,8 @@ impl Blockchain {
         unstake_delay_blocks: u64,
         epoch_length: u64,
         minimum_stake: u64,
-    ) -> Result<(), ChainError> {
+        base_fee_per_gas: u64,
+    ) -> Result<u64, ChainError> {
         Self::validate_transaction_shape(tx)?;
 
         if !tx.verify_signature() {
@@ -1415,22 +1748,36 @@ impl Blockchain {
             TransactionKind::Transfer => {
                 let recipient = accounts.entry(tx.to.clone()).or_default();
                 recipient.balance = recipient.balance.saturating_add(tx.amount);
+                let gas_used = crate::vm::gas::GAS_BASE_TX;
+                Self::ensure_transaction_fee_covers_base(tx, gas_used, base_fee_per_gas)?;
+                Ok(gas_used)
             }
-            TransactionKind::Stake => {}
-            TransactionKind::Unstake => {}
+            TransactionKind::Stake => {
+                let gas_used = crate::vm::gas::GAS_BASE_TX;
+                Self::ensure_transaction_fee_covers_base(tx, gas_used, base_fee_per_gas)?;
+                Ok(gas_used)
+            }
+            TransactionKind::Unstake => {
+                let gas_used = crate::vm::gas::GAS_BASE_TX;
+                Self::ensure_transaction_fee_covers_base(tx, gas_used, base_fee_per_gas)?;
+                Ok(gas_used)
+            }
             TransactionKind::Coinbase => {
-                return Err(ChainError::InvalidTransactionFormat(
+                Err(ChainError::InvalidTransactionFormat(
                     "coinbase not allowed in user transaction flow",
-                ));
+                ))
             }
             TransactionKind::DeployContract => {
                 let (contract, mut receipt) =
                     Vm::deploy(&tx.to, &tx.from, tx.nonce.wrapping_sub(1), tx.gas_limit)?;
+                let gas_used = receipt.gas_used;
                 receipt.tx_hash = tx_hash.clone();
                 if let Some(ref addr) = receipt.contract_address {
                     contracts.insert(addr.clone(), contract);
                 }
+                Self::ensure_transaction_fee_covers_base(tx, gas_used, base_fee_per_gas)?;
                 receipts.insert(tx_hash, receipt);
+                Ok(gas_used)
             }
             TransactionKind::CallContract => {
                 let contract = contracts.get_mut(&tx.to).ok_or_else(|| {
@@ -1438,17 +1785,18 @@ impl Blockchain {
                 })?;
                 let mut receipt =
                     Vm::call(contract, &tx.data, &tx.from, tx.amount, tx.gas_limit)?;
+                let gas_used = receipt.gas_used;
                 receipt.tx_hash = tx_hash.clone();
                 // Credit the contract's implicit balance via the recipient account
                 if tx.amount > 0 {
                     let recipient = accounts.entry(tx.to.clone()).or_default();
                     recipient.balance = recipient.balance.saturating_add(tx.amount);
                 }
+                Self::ensure_transaction_fee_covers_base(tx, gas_used, base_fee_per_gas)?;
                 receipts.insert(tx_hash, receipt);
+                Ok(gas_used)
             }
         }
-
-        Ok(())
     }
 
     fn apply_coinbase_transaction(
@@ -1594,6 +1942,134 @@ impl Blockchain {
             .retain(|pending| !included_hashes.contains(&pending.hash()));
     }
 
+    fn sort_pending_transactions(&mut self) {
+        let base_fee_per_gas = self.next_base_fee_per_gas(self.latest_block());
+        self.pending_transactions.sort_by(|a, b| {
+            if a.from == b.from {
+                a.nonce.cmp(&b.nonce).then_with(|| b.fee.cmp(&a.fee))
+            } else {
+                Self::compare_fee_priority(a, b, base_fee_per_gas)
+                    .then_with(|| a.timestamp.cmp(&b.timestamp))
+                    .then_with(|| b.fee.cmp(&a.fee))
+            }
+        });
+    }
+
+    fn prune_pending_transactions(&mut self) {
+        let cutoff = chrono::Utc::now().timestamp() - MAX_PENDING_TX_AGE_SECS;
+        self.pending_transactions
+            .retain(|pending| pending.timestamp >= cutoff);
+        self.sort_pending_transactions();
+    }
+
+    fn compare_fee_priority(
+        a: &Transaction,
+        b: &Transaction,
+        base_fee_per_gas: u64,
+    ) -> std::cmp::Ordering {
+        let a_gas = a.estimated_gas_for_admission().max(1) as u128;
+        let b_gas = b.estimated_gas_for_admission().max(1) as u128;
+        let a_fee = a
+            .fee
+            .saturating_sub(a.estimated_gas_for_admission().saturating_mul(base_fee_per_gas))
+            as u128;
+        let b_fee = b
+            .fee
+            .saturating_sub(b.estimated_gas_for_admission().saturating_mul(base_fee_per_gas))
+            as u128;
+        (b_fee.saturating_mul(a_gas))
+            .cmp(&a_fee.saturating_mul(b_gas))
+            .then_with(|| b.fee.cmp(&a.fee))
+    }
+
+    fn pending_gas_budget(&self) -> u64 {
+        self.block_gas_limit
+            .saturating_mul(MAX_PENDING_GAS_BUDGET_MULTIPLIER)
+    }
+
+    fn pending_gas_usage(&self) -> u64 {
+        self.pending_transactions
+            .iter()
+            .map(Transaction::estimated_gas_for_admission)
+            .sum()
+    }
+
+    fn minimum_admission_fee(&self, tx: &Transaction, base_fee_per_gas: u64) -> u64 {
+        let required_base = tx
+            .estimated_gas_for_admission()
+            .saturating_mul(base_fee_per_gas);
+        let usage = self.pending_gas_usage();
+        let budget = self.pending_gas_budget().max(1);
+        let occupancy_pct = usage.saturating_mul(100) / budget;
+        let surcharge = if occupancy_pct >= 95 {
+            8
+        } else if occupancy_pct >= 85 {
+            4
+        } else if occupancy_pct >= 70 {
+            2
+        } else if occupancy_pct >= 50 {
+            1
+        } else {
+            0
+        };
+        if surcharge == 0 {
+            return required_base;
+        }
+        let units = tx
+            .estimated_gas_for_admission()
+            .saturating_add(99_999)
+            / 100_000;
+        required_base.saturating_add(units.max(1).saturating_mul(surcharge))
+    }
+
+    fn worst_pending_transaction_index(&self) -> Option<usize> {
+        let base_fee_per_gas = self.next_base_fee_per_gas(self.latest_block());
+        self.pending_transactions
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| {
+                if a.from == b.from {
+                    b.nonce.cmp(&a.nonce).then_with(|| a.fee.cmp(&b.fee))
+                } else {
+                    Self::compare_fee_priority(a, b, base_fee_per_gas).reverse()
+                }
+            })
+            .map(|(index, _)| index)
+    }
+
+    fn evict_transaction_and_dependents(&mut self, index: usize) {
+        if index >= self.pending_transactions.len() {
+            return;
+        }
+        let evicted = self.pending_transactions.remove(index);
+        self.pending_transactions.retain(|pending| {
+            !(pending.from == evicted.from && pending.nonce > evicted.nonce)
+        });
+    }
+
+    fn enforce_mempool_limits(&mut self, protected_hash: &[u8]) -> Result<(), ChainError> {
+        loop {
+            let over_count = self.pending_transactions.len() > MAX_PENDING_TRANSACTIONS;
+            let over_gas = self.pending_gas_usage() > self.pending_gas_budget();
+            if !over_count && !over_gas {
+                break;
+            }
+
+            let Some(index) = self.worst_pending_transaction_index() else {
+                break;
+            };
+            let is_protected = self.pending_transactions[index].hash() == protected_hash;
+            if is_protected {
+                if over_gas {
+                    return Err(ChainError::FeeTooLow);
+                }
+                return Err(ChainError::MempoolFull);
+            }
+            self.evict_transaction_and_dependents(index);
+        }
+        Ok(())
+    }
+
     fn persist_pending_transactions(&self) -> Result<(), ChainError> {
         if let Some(ref storage) = self.storage {
             storage.replace_pending_transactions(&self.pending_transactions)?;
@@ -1602,15 +2078,36 @@ impl Blockchain {
         Ok(())
     }
 
-    fn persist_block_state(&self, block: &Block) -> Result<(), ChainError> {
-        if let Some(ref storage) = self.storage {
-            storage.put_block(block)?;
-            for (address, state) in &self.accounts {
-                storage.put_account(address, state)?;
+    fn rebuild_canonical_state(&mut self) -> Result<(), ChainError> {
+        let blocks = self.blocks.clone();
+        let mut accounts = Self::accounts_from_genesis(&self.genesis_config)?;
+        let mut contracts = HashMap::new();
+        let mut receipts = HashMap::new();
+        self.epoch_snapshots.clear();
+        self.epoch_snapshots.insert(0, self.snapshot_for_accounts(0, &accounts));
+
+        let mut previous = blocks
+            .first()
+            .cloned()
+            .ok_or_else(|| ChainError::InvalidGenesis("missing genesis block".to_string()))?;
+        for block in blocks.iter().skip(1) {
+            if block.header.height > 0 && block.header.height % self.epoch_length.max(1) == 0 {
+                let epoch = self.epoch_for_height(block.header.height);
+                if !self.epoch_snapshots.contains_key(&epoch) {
+                    self.create_epoch_snapshot_from_accounts(epoch, &accounts);
+                }
             }
-            storage.replace_pending_transactions(&self.pending_transactions)?;
-            storage.flush()?;
+            let execution =
+                self.validate_block_against_state(block, &previous, &accounts, &contracts)?;
+            accounts = execution.accounts;
+            contracts = execution.contracts;
+            receipts.extend(execution.receipts);
+            previous = block.clone();
         }
+
+        self.accounts = accounts;
+        self.contracts = contracts;
+        self.receipts = receipts;
         Ok(())
     }
 }
@@ -1659,6 +2156,53 @@ mod tests {
         chain.add_block(block).unwrap();
         assert_eq!(chain.height(), 1);
         assert!(chain.is_valid());
+    }
+
+    #[test]
+    fn test_base_fee_rises_after_busy_block() {
+        let validator = KeyPair::generate();
+        let mut chain = Blockchain::from_genesis(GenesisConfig {
+            chain_id: "base-fee-test".to_string(),
+            chain_name: "base-fee-test".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            unstake_delay_blocks: DEFAULT_UNSTAKE_DELAY_BLOCKS,
+            epoch_length: DEFAULT_EPOCH_LENGTH,
+            jail_duration_blocks: DEFAULT_JAIL_DURATION_BLOCKS,
+            block_gas_limit: 100_000,
+            allocations: vec![GenesisAllocation {
+                public_key: hex::encode(&validator.public_key),
+                balance: 1_000_000_000,
+                staked_balance: 5_000,
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+
+        let wasm_code = br#"(module
+            (memory (export "memory") 1)
+            (func (export "curs3d_call"))
+        )"#
+        .to_vec();
+        let mut deploy_tx = Transaction::deploy_contract(
+            chain.chain_id(),
+            validator.public_key.clone(),
+            wasm_code,
+            80_000,
+            100_000,
+            0,
+        );
+        deploy_tx.sign(&validator);
+        chain.add_transaction(deploy_tx).unwrap();
+
+        assert_eq!(chain.current_base_fee_per_gas(), 0);
+        let block1 = chain.create_block(&validator).unwrap();
+        assert_eq!(block1.header.base_fee_per_gas, 0);
+        assert!(block1.header.gas_used > chain.target_block_gas_usage());
+        chain.add_block(block1).unwrap();
+
+        let block2 = chain.create_block(&validator).unwrap();
+        assert!(block2.header.base_fee_per_gas > 0);
     }
 
     #[test]
@@ -1763,6 +2307,84 @@ mod tests {
     }
 
     #[test]
+    fn test_mempool_evicts_low_fee_under_gas_pressure() {
+        let kp1 = KeyPair::generate();
+        let kp2 = KeyPair::generate();
+        let kp3 = KeyPair::generate();
+        let mut chain = Blockchain::from_genesis(GenesisConfig {
+            chain_id: "mempool-pressure-test".to_string(),
+            chain_name: "mempool-pressure-test".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            unstake_delay_blocks: DEFAULT_UNSTAKE_DELAY_BLOCKS,
+            epoch_length: DEFAULT_EPOCH_LENGTH,
+            jail_duration_blocks: DEFAULT_JAIL_DURATION_BLOCKS,
+            block_gas_limit: 100_000,
+            allocations: vec![
+                GenesisAllocation {
+                    public_key: hex::encode(&kp1.public_key),
+                    balance: 10_000_000,
+                    staked_balance: 0,
+                },
+                GenesisAllocation {
+                    public_key: hex::encode(&kp2.public_key),
+                    balance: 10_000_000,
+                    staked_balance: 0,
+                },
+                GenesisAllocation {
+                    public_key: hex::encode(&kp3.public_key),
+                    balance: 10_000_000,
+                    staked_balance: 0,
+                },
+            ],
+            ..Default::default()
+        })
+        .unwrap();
+
+        let wasm_code = br#"(module (memory (export "memory") 1) (func (export "curs3d_call")))"#
+            .to_vec();
+        let mut tx1 = Transaction::deploy_contract(
+            chain.chain_id(),
+            kp1.public_key.clone(),
+            wasm_code.clone(),
+            400_000,
+            5,
+            0,
+        );
+        tx1.sign(&kp1);
+        chain.add_transaction(tx1.clone()).unwrap();
+
+        let mut tx2 = Transaction::deploy_contract(
+            chain.chain_id(),
+            kp2.public_key.clone(),
+            wasm_code.clone(),
+            400_000,
+            5,
+            0,
+        );
+        tx2.sign(&kp2);
+        chain.add_transaction(tx2.clone()).unwrap();
+
+        let mut tx3 = Transaction::deploy_contract(
+            chain.chain_id(),
+            kp3.public_key.clone(),
+            wasm_code,
+            400_000,
+            50,
+            0,
+        );
+        tx3.sign(&kp3);
+        chain.add_transaction(tx3.clone()).unwrap();
+
+        assert_eq!(chain.pending_transactions.len(), 2);
+        assert!(chain
+            .pending_transactions
+            .iter()
+            .any(|pending| pending.hash() == tx3.hash()));
+        assert!(chain.pending_gas_usage() <= chain.pending_gas_budget());
+    }
+
+    #[test]
     fn test_unstake_unlocks_funds() {
         let mut chain = Blockchain::new();
         let validator = KeyPair::generate();
@@ -1833,7 +2455,7 @@ mod tests {
     fn test_rejects_unknown_finality_vote_hash() {
         let mut chain = Blockchain::new();
         let voter = KeyPair::generate();
-        let vote = FinalityVote::new(hash::sha3_hash(b"unknown"), 1, &voter);
+        let vote = FinalityVote::new(hash::sha3_hash(b"unknown"), 1, 0, &voter);
         assert!(chain.add_finality_vote(vote).is_none());
     }
 
@@ -1882,8 +2504,11 @@ mod tests {
         let block = chain.create_block(&validator).unwrap();
         chain.add_block(block).unwrap();
 
-        // Deploy a contract with minimal valid WASM header
-        let wasm_code = b"\0asm\x01\x00\x00\x00".to_vec();
+        let wasm_code = br#"(module
+            (func (export "curs3d_call") (result i32)
+                i32.const 7)
+        )"#
+        .to_vec();
         let mut deploy_tx = Transaction::deploy_contract(
             chain.chain_id(),
             validator.public_key.clone(),
@@ -1918,8 +2543,11 @@ mod tests {
         let block = chain.create_block(&validator).unwrap();
         chain.add_block(block).unwrap();
 
-        // Deploy a contract
-        let wasm_code = b"\0asm\x01\x00\x00\x00".to_vec();
+        let wasm_code = br#"(module
+            (func (export "curs3d_call") (result i32)
+                i32.const 7)
+        )"#
+        .to_vec();
         let mut deploy_tx = Transaction::deploy_contract(
             chain.chain_id(),
             validator.public_key.clone(),
@@ -1970,6 +2598,7 @@ mod tests {
             .unwrap();
         assert!(call_receipt.success);
         assert!(call_receipt.gas_used > 0);
+        assert_eq!(call_receipt.return_data, 7i32.to_le_bytes().to_vec());
     }
 
     #[test]
@@ -2077,6 +2706,7 @@ mod tests {
 
     #[test]
     fn test_snapshot_create_and_verify() {
+        let dir = tempfile::tempdir().unwrap();
         let validator = KeyPair::generate();
         let genesis = GenesisConfig {
             chain_id: "curs3d-snapshot-test".to_string(),
@@ -2093,7 +2723,11 @@ mod tests {
             }],
             ..Default::default()
         };
-        let mut chain = Blockchain::from_genesis(genesis.clone()).unwrap();
+        let mut chain = Blockchain::with_storage(
+            dir.path().to_str().unwrap(),
+            Some(&genesis),
+        )
+        .unwrap();
 
         // Mine a few blocks
         for _ in 0..3 {
@@ -2101,15 +2735,190 @@ mod tests {
             chain.add_block(block).unwrap();
         }
 
+        let wasm_code = br#"(module
+            (func (export "curs3d_call") (result i32)
+                i32.const 9)
+        )"#
+        .to_vec();
+        let mut deploy_tx = Transaction::deploy_contract(
+            chain.chain_id(),
+            validator.public_key.clone(),
+            wasm_code,
+            1_000_000,
+            100,
+            0,
+        );
+        deploy_tx.sign(&validator);
+        chain.add_transaction(deploy_tx).unwrap();
+
+        let block = chain.create_block(&validator).unwrap();
+        chain.add_block(block).unwrap();
+
         // Create a snapshot
         let manifest = chain.create_snapshot().unwrap();
-        assert_eq!(manifest.height, 3);
+        let chunks = chain.get_snapshot_chunks(manifest.height).unwrap();
+        assert_eq!(manifest.height, 4);
         assert!(manifest.chunk_count > 0);
         assert_eq!(manifest.chunk_hashes.len(), manifest.chunk_count);
 
         // Verify state root matches
-        let expected_root = Blockchain::compute_state_root(&chain.accounts);
+        let expected_root = Blockchain::compute_state_root_full(&chain.accounts, &chain.contracts);
         assert_eq!(manifest.state_root, expected_root);
+
+        let mut restored = Blockchain::from_genesis(genesis).unwrap();
+        restored.apply_snapshot(&manifest, &chunks).unwrap();
+        assert_eq!(restored.accounts, chain.accounts);
+        assert_eq!(restored.contracts, chain.contracts);
+        assert_eq!(restored.receipts.len(), chain.receipts.len());
+        for (tx_hash, receipt) in &chain.receipts {
+            let restored_receipt = restored.receipts.get(tx_hash).unwrap();
+            assert_eq!(restored_receipt.success, receipt.success);
+            assert_eq!(restored_receipt.gas_used, receipt.gas_used);
+            assert_eq!(restored_receipt.contract_address, receipt.contract_address);
+            assert_eq!(restored_receipt.return_data, receipt.return_data);
+        }
+        assert_eq!(restored.height(), chain.height());
+    }
+
+    #[test]
+    fn test_snapshot_uses_finalized_base_and_tracks_tip() {
+        let validator = KeyPair::generate();
+        let mut chain = Blockchain::from_genesis(GenesisConfig {
+            chain_id: "snapshot-finalized-test".to_string(),
+            chain_name: "snapshot-finalized-test".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            unstake_delay_blocks: DEFAULT_UNSTAKE_DELAY_BLOCKS,
+            epoch_length: DEFAULT_EPOCH_LENGTH,
+            jail_duration_blocks: DEFAULT_JAIL_DURATION_BLOCKS,
+            allocations: vec![GenesisAllocation {
+                public_key: hex::encode(&validator.public_key),
+                balance: 1_000_000_000,
+                staked_balance: 5_000,
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+
+        let block1 = chain.create_block(&validator).unwrap();
+        chain.add_block(block1.clone()).unwrap();
+        chain
+            .block_tree
+            .set_finalized(block1.hash.clone(), block1.header.height);
+        chain.finality_tracker =
+            FinalityTracker::with_finalized(block1.header.height, block1.hash.clone());
+
+        let block2 = chain.create_block(&validator).unwrap();
+        chain.add_block(block2.clone()).unwrap();
+
+        let manifest = chain.create_snapshot().unwrap();
+        assert_eq!(manifest.height, 1);
+        assert_eq!(manifest.latest_hash, block1.hash);
+        assert_eq!(manifest.tip_height, 2);
+        assert_eq!(manifest.tip_hash, block2.hash);
+    }
+
+    #[test]
+    fn test_snapshot_rejects_tampered_chunk_proof() {
+        let dir = tempfile::tempdir().unwrap();
+        let validator = KeyPair::generate();
+        let genesis = GenesisConfig {
+            chain_id: "curs3d-snapshot-proof-test".to_string(),
+            chain_name: "curs3d-snapshot-proof-test".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            unstake_delay_blocks: DEFAULT_UNSTAKE_DELAY_BLOCKS,
+            epoch_length: DEFAULT_EPOCH_LENGTH,
+            jail_duration_blocks: DEFAULT_JAIL_DURATION_BLOCKS,
+            allocations: vec![GenesisAllocation {
+                public_key: hex::encode(&validator.public_key),
+                balance: 1_000_000_000,
+                staked_balance: 5_000,
+            }],
+            ..Default::default()
+        };
+        let mut chain =
+            Blockchain::with_storage(dir.path().to_str().unwrap(), Some(&genesis)).unwrap();
+        let block = chain.create_block(&validator).unwrap();
+        chain.add_block(block).unwrap();
+
+        let manifest = chain.create_snapshot().unwrap();
+        let mut chunks = chain.get_snapshot_chunks(manifest.height).unwrap();
+        if let Some(first) = chunks.first_mut() {
+            if let Some(proof_hash) = first.proof.first_mut() {
+                proof_hash[0] ^= 0xFF;
+            } else {
+                first.proof.push(vec![0xAA; 32]);
+            }
+        }
+
+        let mut restored = Blockchain::from_genesis(genesis).unwrap();
+        let err = restored.apply_snapshot(&manifest, &chunks).unwrap_err();
+        assert!(matches!(err, ChainError::SnapshotError(_)));
+    }
+
+    #[test]
+    fn test_restart_restores_contracts_and_receipts() {
+        let dir = tempfile::tempdir().unwrap();
+        let validator = KeyPair::generate();
+        let genesis = GenesisConfig {
+            chain_id: "curs3d-restart-test".to_string(),
+            chain_name: "curs3d-restart-test".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            unstake_delay_blocks: DEFAULT_UNSTAKE_DELAY_BLOCKS,
+            epoch_length: DEFAULT_EPOCH_LENGTH,
+            jail_duration_blocks: DEFAULT_JAIL_DURATION_BLOCKS,
+            allocations: vec![GenesisAllocation {
+                public_key: hex::encode(&validator.public_key),
+                balance: 1_000_000_000,
+                staked_balance: 5_000,
+            }],
+            ..Default::default()
+        };
+
+        let data_dir = dir.path().join("chain_db");
+        let data_dir_str = data_dir.to_str().unwrap();
+
+        let mut chain = Blockchain::with_storage(data_dir_str, Some(&genesis)).unwrap();
+        let block = chain.create_block(&validator).unwrap();
+        chain.add_block(block).unwrap();
+
+        let wasm_code = br#"(module
+            (func (export "curs3d_call") (result i32)
+                i32.const 11)
+        )"#
+        .to_vec();
+        let mut deploy_tx = Transaction::deploy_contract(
+            chain.chain_id(),
+            validator.public_key.clone(),
+            wasm_code,
+            1_000_000,
+            100,
+            0,
+        );
+        deploy_tx.sign(&validator);
+        chain.add_transaction(deploy_tx).unwrap();
+
+        let block = chain.create_block(&validator).unwrap();
+        chain.add_block(block).unwrap();
+
+        let expected_contracts = chain.contracts.clone();
+        let expected_receipts = chain.receipts.clone();
+        let expected_height = chain.height();
+
+        drop(chain);
+
+        let restarted = Blockchain::with_storage(data_dir_str, Some(&genesis)).unwrap();
+        assert_eq!(restarted.height(), expected_height);
+        assert_eq!(restarted.contracts, expected_contracts);
+        assert_eq!(restarted.receipts.len(), expected_receipts.len());
+        for (tx_hash, receipt) in expected_receipts {
+            let restored = restarted.receipts.get(&tx_hash).unwrap();
+            assert_eq!(restored.success, receipt.success);
+            assert_eq!(restored.gas_used, receipt.gas_used);
+            assert_eq!(restored.contract_address, receipt.contract_address);
+        }
     }
 
     #[test]

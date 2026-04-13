@@ -4,17 +4,26 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Semaphore, Mutex, mpsc};
 
 use crate::core::chain::{AccountState, Blockchain};
 use crate::core::transaction::Transaction;
 use crate::network::NetworkMessage;
 
-#[derive(Debug, Serialize, Deserialize)]
+const MAX_RPC_CONNECTIONS: usize = 128;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RpcRequest {
     SubmitTransaction { transaction: Transaction },
     GetAccount { address: Vec<u8> },
     GetStatus,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct RpcEnvelope {
+    #[serde(default)]
+    token: Option<String>,
+    request: RpcRequest,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -61,12 +70,17 @@ pub async fn serve(
     outbound_tx: mpsc::Sender<NetworkMessage>,
 ) -> Result<(), RpcError> {
     let listener = TcpListener::bind(addr).await?;
+    let connection_limit = Arc::new(Semaphore::new(MAX_RPC_CONNECTIONS));
 
     loop {
         let (stream, _) = listener.accept().await?;
         let chain = Arc::clone(&chain);
         let outbound_tx = outbound_tx.clone();
+        let connection_limit = Arc::clone(&connection_limit);
         tokio::spawn(async move {
+            let Ok(_permit) = connection_limit.acquire_owned().await else {
+                return;
+            };
             if let Err(err) = handle_connection(stream, chain, outbound_tx).await {
                 tracing::warn!("RPC connection error: {}", err);
             }
@@ -76,7 +90,11 @@ pub async fn serve(
 
 pub async fn send_request(addr: &str, request: &RpcRequest) -> Result<RpcResponse, RpcError> {
     let mut stream = TcpStream::connect(addr).await?;
-    let payload = serde_json::to_vec(request)?;
+    let envelope = RpcEnvelope {
+        token: rpc_token(),
+        request: request.clone(),
+    };
+    let payload = serde_json::to_vec(&envelope)?;
     stream.write_all(&payload).await?;
     stream.write_all(b"\n").await?;
 
@@ -104,12 +122,33 @@ async fn handle_connection(
         return Ok(());
     }
 
-    let request = serde_json::from_str::<RpcRequest>(line.trim_end())?;
+    let request = parse_request(line.trim_end())?;
     let response = handle_request(request, chain, outbound_tx).await;
     let json = serde_json::to_string(&response)?;
     writer_half.write_all(json.as_bytes()).await?;
     writer_half.write_all(b"\n").await?;
     Ok(())
+}
+
+fn rpc_token() -> Option<String> {
+    std::env::var("CURS3D_RPC_TOKEN").ok().filter(|value| !value.is_empty())
+}
+
+fn parse_request(payload: &str) -> Result<RpcRequest, RpcError> {
+    if let Ok(envelope) = serde_json::from_str::<RpcEnvelope>(payload) {
+        if let Some(expected) = rpc_token() {
+            if envelope.token.as_deref() != Some(expected.as_str()) {
+                return Err(RpcError::Remote("missing or invalid RPC token".to_string()));
+            }
+        }
+        return Ok(envelope.request);
+    }
+
+    if rpc_token().is_some() {
+        return Err(RpcError::Remote("missing or invalid RPC token".to_string()));
+    }
+
+    Ok(serde_json::from_str::<RpcRequest>(payload)?)
 }
 
 async fn handle_request(

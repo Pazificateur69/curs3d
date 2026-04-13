@@ -259,9 +259,12 @@ mod tests {
     fn make_block(height: u64, prev_hash: Vec<u8>, kp: &KeyPair) -> Block {
         let coinbase = Transaction::coinbase("curs3d-devnet", vec![1; hash::ADDRESS_LEN], 50);
         Block::new(
+            1,
             height,
             prev_hash,
             hash::sha3_hash(b"state"),
+            0,
+            1,
             vec![coinbase],
             kp,
         )

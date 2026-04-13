@@ -47,6 +47,37 @@ struct SignableTransaction<'a> {
 }
 
 impl Transaction {
+    pub fn intrinsic_gas(&self) -> u64 {
+        let payload_bytes = match self.kind {
+            TransactionKind::Transfer => self.data.len(),
+            TransactionKind::Stake | TransactionKind::Unstake | TransactionKind::Coinbase => 0,
+            TransactionKind::DeployContract => self.to.len().saturating_add(self.data.len()),
+            TransactionKind::CallContract => self.data.len(),
+        } as u64;
+
+        let kind_gas = match self.kind {
+            TransactionKind::Transfer
+            | TransactionKind::Stake
+            | TransactionKind::Unstake
+            | TransactionKind::Coinbase => crate::vm::gas::GAS_BASE_TX,
+            TransactionKind::DeployContract => crate::vm::gas::GAS_BASE_TX
+                .saturating_add(crate::vm::gas::GAS_DEPLOY),
+            TransactionKind::CallContract => crate::vm::gas::GAS_BASE_TX
+                .saturating_add(crate::vm::gas::GAS_CALL),
+        };
+
+        kind_gas.saturating_add(payload_bytes.saturating_mul(crate::vm::gas::GAS_PER_BYTE))
+    }
+
+    pub fn estimated_gas_for_admission(&self) -> u64 {
+        match self.kind {
+            TransactionKind::DeployContract | TransactionKind::CallContract => {
+                self.gas_limit.max(self.intrinsic_gas())
+            }
+            _ => self.intrinsic_gas(),
+        }
+    }
+
     pub fn new(
         chain_id: &str,
         sender_public_key: Vec<u8>,
@@ -235,10 +266,12 @@ impl Transaction {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_deploy_contract(&self) -> bool {
         self.kind == TransactionKind::DeployContract
     }
 
+    #[allow(dead_code)]
     pub fn is_call_contract(&self) -> bool {
         self.kind == TransactionKind::CallContract
     }

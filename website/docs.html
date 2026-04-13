@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Documentation - CURS3D</title>
-    <meta name="description" content="Complete documentation for CURS3D quantum-resistant blockchain. CLI reference, REST API, Docker, consensus mechanism, and more.">
+    <meta name="description" content="Complete documentation for CURS3D quantum-resistant blockchain with smart contracts. CLI reference, REST API, WASM VM, Docker, consensus, and more.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -12,10 +12,7 @@
 </head>
 <body>
 
-    <!-- Particle Canvas -->
     <canvas id="particles"></canvas>
-
-    <!-- Glow Orbs -->
     <div class="orb orb-1"></div>
     <div class="orb orb-2"></div>
     <div class="orb orb-3"></div>
@@ -23,29 +20,18 @@
     <!-- Navigation -->
     <nav id="nav">
         <div class="nav-container">
-            <a href="index.html" class="logo">
-                <span class="logo-diamond"></span>
-                CURS3D
-            </a>
+            <a href="index.html" class="logo"><span class="logo-diamond"></span> CURS3D</a>
             <div class="nav-links" id="navLinks">
                 <a href="docs.html" class="active">Docs</a>
                 <a href="examples.html">Examples</a>
                 <a href="whitepaper.html">Whitepaper</a>
                 <a href="explorer.html">Explorer</a>
-                <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener" class="btn-nav">
-                    GitHub
-                    <span class="btn-nav-arrow">&rarr;</span>
-                </a>
+                <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener" class="btn-nav">GitHub <span class="btn-nav-arrow">&rarr;</span></a>
             </div>
-            <button class="hamburger" id="hamburger" aria-label="Toggle menu">
-                <span></span>
-                <span></span>
-                <span></span>
-            </button>
+            <button class="hamburger" id="hamburger" aria-label="Toggle menu"><span></span><span></span><span></span></button>
         </div>
     </nav>
 
-    <!-- Mobile Menu -->
     <div class="mobile-menu" id="mobileMenu">
         <a href="docs.html">Docs</a>
         <a href="examples.html">Examples</a>
@@ -54,52 +40,57 @@
         <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub &rarr;</a>
     </div>
 
-    <!-- Page Hero -->
     <section class="page-hero">
         <span class="section-tag">Documentation</span>
         <h1>CURS3D <span class="gradient-text">Developer Docs</span></h1>
-        <p class="page-sub">Everything you need to build on, operate, and understand the CURS3D quantum-resistant blockchain.</p>
+        <p class="page-sub">Everything you need to build on, operate, and understand the CURS3D quantum-resistant blockchain with smart contracts.</p>
     </section>
 
-    <!-- Docs Layout -->
     <div class="docs-layout">
         <!-- Sidebar -->
         <aside class="docs-sidebar">
             <div class="sidebar-group">
-                <div class="sidebar-group-title">Getting Started</div>
-                <a href="#getting-started" class="sidebar-link active">Installation</a>
-                <a href="#building" class="sidebar-link">Building</a>
-                <a href="#first-node" class="sidebar-link">First Node</a>
-                <a href="#docker" class="sidebar-link">Docker</a>
+                <span class="sidebar-heading">Getting Started</span>
+                <a href="#getting-started" class="sidebar-link active">Overview</a>
+                <a href="#installation" class="sidebar-link">Installation</a>
             </div>
             <div class="sidebar-group">
-                <div class="sidebar-group-title">CLI Reference</div>
-                <a href="#cli-reference" class="sidebar-link">Overview</a>
-                <a href="#cli-node" class="sidebar-link">curs3d node</a>
-                <a href="#cli-wallet" class="sidebar-link">curs3d wallet</a>
-                <a href="#cli-info" class="sidebar-link">curs3d info</a>
-                <a href="#cli-send" class="sidebar-link">curs3d send</a>
-                <a href="#cli-stake" class="sidebar-link">curs3d stake</a>
-                <a href="#cli-status" class="sidebar-link">curs3d status</a>
+                <span class="sidebar-heading">CLI Reference</span>
+                <a href="#cli-node" class="sidebar-link">node</a>
+                <a href="#cli-wallet" class="sidebar-link">wallet</a>
+                <a href="#cli-info" class="sidebar-link">info</a>
+                <a href="#cli-send" class="sidebar-link">send</a>
+                <a href="#cli-stake" class="sidebar-link">stake</a>
+                <a href="#cli-status" class="sidebar-link">status</a>
             </div>
             <div class="sidebar-group">
-                <div class="sidebar-group-title">Architecture</div>
-                <a href="#architecture" class="sidebar-link">Module Overview</a>
-                <a href="#consensus" class="sidebar-link">Consensus</a>
-                <a href="#transactions" class="sidebar-link">Transactions</a>
-                <a href="#cryptography" class="sidebar-link">Cryptography</a>
+                <span class="sidebar-heading">Architecture</span>
+                <a href="#architecture" class="sidebar-link">20 Modules</a>
+                <a href="#state-model" class="sidebar-link">State Model</a>
+            </div>
+            <div class="sidebar-group">
+                <span class="sidebar-heading">Smart Contracts</span>
+                <a href="#smart-contracts" class="sidebar-link">WASM VM</a>
+                <a href="#gas-model" class="sidebar-link">Gas Model</a>
+                <a href="#receipts" class="sidebar-link">Receipts</a>
+            </div>
+            <div class="sidebar-group">
+                <span class="sidebar-heading">Consensus</span>
+                <a href="#consensus" class="sidebar-link">BFT PoS</a>
+                <a href="#epochs" class="sidebar-link">Epochs</a>
+                <a href="#slashing" class="sidebar-link">Slashing</a>
+                <a href="#fork-choice" class="sidebar-link">Fork Choice</a>
+            </div>
+            <div class="sidebar-group">
+                <span class="sidebar-heading">Infrastructure</span>
+                <a href="#crypto" class="sidebar-link">Cryptography</a>
                 <a href="#networking" class="sidebar-link">Networking</a>
                 <a href="#storage" class="sidebar-link">Storage</a>
-            </div>
-            <div class="sidebar-group">
-                <div class="sidebar-group-title">API</div>
                 <a href="#rest-api" class="sidebar-link">REST API</a>
-                <a href="#rpc-api" class="sidebar-link">TCP RPC</a>
                 <a href="#genesis-config" class="sidebar-link">Genesis Config</a>
-            </div>
-            <div class="sidebar-group">
-                <div class="sidebar-group-title">Tools</div>
-                <a href="#block-explorer" class="sidebar-link">Block Explorer</a>
+                <a href="#state-sync" class="sidebar-link">State Sync</a>
+                <a href="#governance" class="sidebar-link">Governance</a>
+                <a href="#docker" class="sidebar-link">Docker</a>
             </div>
         </aside>
 
@@ -107,531 +98,538 @@
         <main class="docs-content">
 
             <!-- Getting Started -->
-            <section class="docs-section" id="getting-started">
+            <section id="getting-started" class="docs-section">
                 <h2>Getting Started</h2>
-                <p>CURS3D is written in Rust and requires the Rust toolchain to build from source. This guide walks you through installing dependencies, compiling the binary, and running your first node.</p>
+                <p>CURS3D is a quantum-resistant Layer 1 blockchain written entirely in Rust from scratch. It is not a fork of any existing blockchain. Every component -- consensus, cryptography, networking, storage, smart contracts, and APIs -- is implemented from zero.</p>
+                <p>The project currently has <strong>20 modules</strong>, <strong>67 tests</strong>, and ships with a full REST API, block explorer, Docker support, and CI pipeline.</p>
 
+                <div class="info-box">
+                    Rust edition 2024. Minimum toolchain: stable 1.94+. All amounts are in <strong>microtokens</strong> (1 CUR = 1,000,000 microtokens).
+                </div>
+
+                <h3>Quick Start</h3>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Clone and build</span>
+git clone https://github.com/Pazificateur69/curs3d.git
+cd curs3d
+cargo build --release
+
+<span class="cm"># Create a wallet</span>
+./target/release/curs3d wallet --output my_wallet.json
+
+<span class="cm"># Start a node</span>
+./target/release/curs3d node --validator-wallet my_wallet.json
+
+<span class="cm"># Run all 67 tests</span>
+cargo test</code></pre>
+                </div>
+            </section>
+
+            <!-- Installation -->
+            <section id="installation" class="docs-section">
+                <h2>Installation</h2>
                 <h3>Prerequisites</h3>
                 <ul>
-                    <li><strong>Rust 1.75+</strong> -- Install via <a href="https://rustup.rs" target="_blank" rel="noopener">rustup.rs</a></li>
-                    <li><strong>Git</strong> -- For cloning the repository</li>
-                    <li>A C compiler (gcc or clang) for native dependencies</li>
+                    <li>Rust 1.94+ (edition 2024)</li>
+                    <li>A C compiler (for pqcrypto-dilithium native bindings)</li>
+                    <li>Git</li>
                 </ul>
 
-                <h3>Install Rust</h3>
-                <div class="code-block-full">
-                    <div class="code-header">
-                        <span class="code-filename">terminal</span>
-                        <button class="code-copy">Copy</button>
-                    </div>
-                    <pre class="code-body"><code>curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source $HOME/.cargo/env
-rustc --version</code></pre>
-                </div>
-
-                <h3>Clone the Repository</h3>
-                <div class="code-block-full">
-                    <div class="code-header">
-                        <span class="code-filename">terminal</span>
-                        <button class="code-copy">Copy</button>
-                    </div>
-                    <pre class="code-body"><code>git clone https://github.com/Pazificateur69/curs3d.git
-cd curs3d</code></pre>
-                </div>
-            </section>
-
-            <section class="docs-section" id="building">
-                <h2>Building</h2>
-                <p>Build the project in release mode for optimal performance:</p>
-                <div class="code-block-full">
-                    <div class="code-header">
-                        <span class="code-filename">terminal</span>
-                        <button class="code-copy">Copy</button>
-                    </div>
-                    <pre class="code-body"><code>cargo build --release</code></pre>
-                </div>
-                <p>The compiled binary will be located at <code>target/release/curs3d</code>. You can optionally install it system-wide:</p>
-                <div class="code-block-full">
-                    <div class="code-header">
-                        <span class="code-filename">terminal</span>
-                        <button class="code-copy">Copy</button>
-                    </div>
-                    <pre class="code-body"><code>cargo install --path .</code></pre>
-                </div>
-                <p>Run the test suite (46 tests across 16 modules):</p>
-                <div class="code-block-full">
-                    <div class="code-header">
-                        <span class="code-filename">terminal</span>
-                        <button class="code-copy">Copy</button>
-                    </div>
-                    <pre class="code-body"><code>cargo test</code></pre>
-                </div>
-            </section>
-
-            <section class="docs-section" id="first-node">
-                <h2>Running Your First Node</h2>
-                <p>Once built, you can start a node immediately. Without a validator wallet, the node runs in <strong>relay mode</strong> -- it syncs and relays blocks but does not produce them.</p>
-                <div class="code-block-full">
-                    <div class="code-header">
-                        <span class="code-filename">terminal</span>
-                        <button class="code-copy">Copy</button>
-                    </div>
-                    <pre class="code-body"><code># Create a wallet first
-curs3d wallet --output my_wallet.json
-
-# Start the node (relay mode)
-curs3d node --port 4337 --data-dir curs3d_data
-
-# Start as validator (block production)
-curs3d node --port 4337 --validator-wallet my_wallet.json</code></pre>
-                </div>
-                <p>The node starts both a TCP RPC server on port 9545 and an HTTP REST API on port 8080. Use <code>curs3d status --rpc-addr 127.0.0.1:9545</code> or <code>curl localhost:8080/api/status</code> to check chain state.</p>
-                <div class="note-box">
-                    <p><strong>Note:</strong> Validator block production requires your wallet to have staked at least 1,000 CUR (the default minimum stake). See the <a href="#cli-stake">staking command</a> for details.</p>
-                </div>
-            </section>
-
-            <!-- Docker -->
-            <section class="docs-section" id="docker">
-                <h2>Docker</h2>
-                <p>CURS3D includes a multi-stage Docker build and a docker-compose configuration for running a 2-node network.</p>
-
-                <h3>Build the Docker Image</h3>
-                <div class="code-block-full">
-                    <div class="code-header">
-                        <span class="code-filename">terminal</span>
-                        <button class="code-copy">Copy</button>
-                    </div>
-                    <pre class="code-body"><code>docker build -t curs3d .</code></pre>
-                </div>
-
-                <h3>Run with docker-compose</h3>
-                <p>The included <code>docker-compose.yml</code> launches two connected nodes:</p>
-                <div class="code-block-full">
-                    <div class="code-header">
-                        <span class="code-filename">terminal</span>
-                        <button class="code-copy">Copy</button>
-                    </div>
-                    <pre class="code-body"><code>docker-compose up -d
-
-# Node 1: port 4337 (libp2p), 9545 (RPC), 8080 (HTTP)
-# Node 2: port 4338 (libp2p), 9546 (RPC), 8081 (HTTP)
-
-# Check logs
-docker-compose logs -f
-
-# Stop
-docker-compose down</code></pre>
-                </div>
-                <p>Node 2 uses Node 1 as a bootnode and will automatically sync blocks via Gossipsub.</p>
-            </section>
-
-            <!-- CLI Reference -->
-            <section class="docs-section" id="cli-reference">
-                <h2>CLI Reference</h2>
-                <p>The <code>curs3d</code> binary provides six subcommands for node operation, wallet management, and chain interaction. Default values are shown below; all flags are optional unless noted.</p>
-            </section>
-
-            <section class="docs-section" id="cli-node">
-                <h2>curs3d node</h2>
-                <p>Starts a CURS3D blockchain node. In relay mode (no validator wallet), the node syncs and gossips blocks. With a validator wallet and sufficient stake, the node produces blocks. The node runs both a TCP RPC server and an HTTP REST API concurrently.</p>
-
-                <table class="cli-table">
-                    <thead>
-                        <tr><th>Flag</th><th>Default</th><th>Description</th></tr>
-                    </thead>
-                    <tbody>
-                        <tr><td>--port, -p</td><td>4337</td><td>TCP port for libp2p networking</td></tr>
-                        <tr><td>--data-dir, -d</td><td>curs3d_data</td><td>Directory for sled database and chain state</td></tr>
-                        <tr><td>--validator-wallet</td><td>None</td><td>Path to wallet.json for block production</td></tr>
-                        <tr><td>--bootnode</td><td>None</td><td>Multiaddr of peer to connect to (repeatable)</td></tr>
-                        <tr><td>--rpc-addr</td><td>127.0.0.1:9545</td><td>Address for the TCP RPC server</td></tr>
-                        <tr><td>--genesis-config</td><td>None</td><td>Path to a custom genesis.json file</td></tr>
-                    </tbody>
-                </table>
-
-                <h3>Example</h3>
-                <div class="code-block-full">
-                    <div class="code-header">
-                        <span class="code-filename">terminal</span>
-                        <button class="code-copy">Copy</button>
-                    </div>
-                    <pre class="code-body"><code># Full validator node with bootnode, custom genesis, and both APIs
-curs3d node \
-  --port 4337 \
-  --data-dir ./my_chain \
-  --validator-wallet wallet.json \
-  --bootnode /ip4/192.168.1.100/tcp/4337 \
-  --rpc-addr 0.0.0.0:9545 \
-  --genesis-config genesis.json
-# HTTP API automatically starts on :8080 (derived from RPC addr)</code></pre>
-                </div>
-            </section>
-
-            <section class="docs-section" id="cli-wallet">
-                <h2>curs3d wallet</h2>
-                <p>Creates a new CRYSTALS-Dilithium Level 5 keypair and saves it as an AES-256-GCM encrypted wallet file. The wallet password is set interactively and must be at least 8 characters. The key derivation uses Argon2.</p>
-
-                <table class="cli-table">
-                    <thead><tr><th>Flag</th><th>Default</th><th>Description</th></tr></thead>
-                    <tbody>
-                        <tr><td>--output, -o</td><td>wallet.json</td><td>Output file path for the encrypted wallet</td></tr>
-                    </tbody>
-                </table>
-
-                <div class="code-block-full">
-                    <div class="code-header">
-                        <span class="code-filename">terminal</span>
-                        <button class="code-copy">Copy</button>
-                    </div>
-                    <pre class="code-body"><code>curs3d wallet --output validator.json
-# Create wallet password: ********
-# Confirm password: ********
-#
-# === CURS3D Wallet Created ===
-# Address: CUR7f3a...9c2d
-# Saved to: validator.json (AES-256-GCM encrypted)
-# Keys: CRYSTALS-Dilithium Level 5</code></pre>
-                </div>
-
-                <div class="warning-box">
-                    <p><strong>Important:</strong> There is no password recovery mechanism. If you lose your password, the wallet and all associated funds are permanently inaccessible.</p>
-                </div>
-            </section>
-
-            <section class="docs-section" id="cli-info">
-                <h2>curs3d info</h2>
-                <p>Displays wallet details including address, public key (truncated), algorithm, and encryption method.</p>
-                <table class="cli-table">
-                    <thead><tr><th>Flag</th><th>Default</th><th>Description</th></tr></thead>
-                    <tbody>
-                        <tr><td>--wallet, -w</td><td>wallet.json</td><td>Path to the encrypted wallet file</td></tr>
-                    </tbody>
-                </table>
-                <div class="code-block-full">
+                <h3>Build Commands</h3>
+                <div class="code-block">
                     <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                    <pre class="code-body"><code>curs3d info --wallet validator.json
-# === CURS3D Wallet ===
-# Address:    CUR7f3a...9c2d
-# Public Key: a1b2c3d4...
-# Algorithm:  CRYSTALS-Dilithium (Level 5)
-# Encryption: AES-256-GCM + Argon2</code></pre>
+                    <pre class="code-body"><code>cargo build --release    <span class="cm"># Build optimized binary</span>
+cargo test               <span class="cm"># Run all 67 tests</span>
+cargo clippy             <span class="cm"># Lint (must pass with no warnings)</span>
+cargo fmt --check        <span class="cm"># Format check</span></code></pre>
                 </div>
             </section>
 
-            <section class="docs-section" id="cli-send">
-                <h2>curs3d send</h2>
-                <p>Sends a transfer transaction. Amount is in whole CUR units (internally multiplied by 1,000,000 for microtokens). Submitted via RPC if a node is running, otherwise falls back to local chain storage.</p>
-                <table class="cli-table">
+            <!-- CLI: node -->
+            <section id="cli-node" class="docs-section">
+                <h2>CLI: <code>node</code></h2>
+                <p>Start a full CURS3D node with optional validator mode, custom data directory, bootnodes, and genesis configuration.</p>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code>curs3d node [OPTIONS]</code></pre>
+                </div>
+                <table class="param-table">
                     <thead><tr><th>Flag</th><th>Default</th><th>Description</th></tr></thead>
                     <tbody>
-                        <tr><td>--wallet, -w</td><td>wallet.json</td><td>Sender wallet file</td></tr>
-                        <tr><td>--to, -t</td><td>(required)</td><td>Recipient address (hex, with or without CUR prefix)</td></tr>
-                        <tr><td>--amount, -a</td><td>(required)</td><td>Amount in CUR (whole units)</td></tr>
-                        <tr><td>--fee, -f</td><td>1000</td><td>Transaction fee in microtokens</td></tr>
-                        <tr><td>--data-dir</td><td>curs3d_data</td><td>Blockchain data directory (fallback)</td></tr>
-                        <tr><td>--rpc-addr</td><td>127.0.0.1:9545</td><td>RPC server to submit transaction to</td></tr>
+                        <tr><td>-p, --port</td><td>4337</td><td>P2P listen port</td></tr>
+                        <tr><td>-d, --data-dir</td><td>curs3d_data</td><td>Data directory for sled storage</td></tr>
+                        <tr><td>--validator-wallet</td><td>None</td><td>Path to wallet file (enables validator mode)</td></tr>
+                        <tr><td>--bootnode</td><td>[]</td><td>Multiaddr of bootnodes (repeatable)</td></tr>
+                        <tr><td>--rpc-addr</td><td>127.0.0.1:9545</td><td>TCP RPC listen address</td></tr>
+                        <tr><td>--genesis-config</td><td>None</td><td>Path to genesis config JSON</td></tr>
                     </tbody>
                 </table>
-                <div class="code-block-full">
-                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                    <pre class="code-body"><code>curs3d send \
-  --wallet sender.json \
-  --to CUR8a4f2b1c3d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9 \
-  --amount 100 \
-  --fee 1000</code></pre>
+                <div class="info-box">
+                    When a node starts, it binds the TCP RPC on port 9545 (for CLI) and the HTTP REST API on port 8080 (for browsers/apps). Gossipsub + mDNS discovery activate automatically.
                 </div>
             </section>
 
-            <section class="docs-section" id="cli-stake">
-                <h2>curs3d stake</h2>
-                <p>Stakes tokens from your wallet to register as a validator. The minimum stake required is <strong>1,000 CUR</strong> (1,000,000,000 microtokens) by default.</p>
-                <table class="cli-table">
+            <!-- CLI: wallet -->
+            <section id="cli-wallet" class="docs-section">
+                <h2>CLI: <code>wallet</code></h2>
+                <p>Create a new CURS3D wallet with CRYSTALS-Dilithium Level 5 keypair, encrypted with AES-256-GCM using an Argon2-derived key.</p>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code>curs3d wallet [OPTIONS]</code></pre>
+                </div>
+                <table class="param-table">
                     <thead><tr><th>Flag</th><th>Default</th><th>Description</th></tr></thead>
                     <tbody>
-                        <tr><td>--wallet, -w</td><td>wallet.json</td><td>Validator wallet file</td></tr>
-                        <tr><td>--amount, -a</td><td>(required)</td><td>Amount to stake in CUR (whole units)</td></tr>
-                        <tr><td>--fee, -f</td><td>1000</td><td>Transaction fee in microtokens</td></tr>
-                        <tr><td>--data-dir</td><td>curs3d_data</td><td>Blockchain data directory</td></tr>
-                        <tr><td>--rpc-addr</td><td>127.0.0.1:9545</td><td>RPC server address</td></tr>
+                        <tr><td>-o, --output</td><td>wallet.json</td><td>Output file path for the encrypted wallet</td></tr>
                     </tbody>
                 </table>
-                <div class="code-block-full">
-                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                    <pre class="code-body"><code>curs3d stake --wallet validator.json --amount 1000 --fee 1000
-# === CURS3D Stake Submitted ===
-# Validator: CUR7f3a...9c2d
-# Stake:     1000 CURS3D
-# Fee:       1000 microtokens
-# TxHash:    b5c6d7e8f9...
-# Route:     rpc 127.0.0.1:9545</code></pre>
-                </div>
-                <div class="note-box">
-                    <p><strong>Note:</strong> Unstaking is supported via the Unstake transaction type. The CLI command for unstake will be available in a future release. Currently, unstake transactions can be submitted programmatically via the REST API.</p>
-                </div>
+                <p>The wallet file is encrypted at rest. You will be prompted for a password. Addresses follow the format <code>CUR</code> + 40 hex characters (derived from SHA-3 of the public key, first 20 bytes).</p>
             </section>
 
-            <section class="docs-section" id="cli-status">
-                <h2>curs3d status</h2>
-                <p>Displays the current state of the blockchain including chain height, <strong>finalized height</strong>, active validators, pending transactions, and supply statistics.</p>
-                <table class="cli-table">
+            <!-- CLI: info -->
+            <section id="cli-info" class="docs-section">
+                <h2>CLI: <code>info</code></h2>
+                <p>Display wallet address and public key from an encrypted wallet file.</p>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code>curs3d info --wallet my_wallet.json</code></pre>
+                </div>
+                <table class="param-table">
                     <thead><tr><th>Flag</th><th>Default</th><th>Description</th></tr></thead>
                     <tbody>
-                        <tr><td>--data-dir, -s</td><td>curs3d_data</td><td>Blockchain data directory</td></tr>
-                        <tr><td>--rpc-addr</td><td>None</td><td>Query a running node via RPC instead of local storage</td></tr>
+                        <tr><td>-w, --wallet</td><td>wallet.json</td><td>Path to wallet file</td></tr>
                     </tbody>
                 </table>
-                <div class="code-block-full">
+            </section>
+
+            <!-- CLI: send -->
+            <section id="cli-send" class="docs-section">
+                <h2>CLI: <code>send</code></h2>
+                <p>Send CUR tokens to another address via RPC.</p>
+                <div class="code-block">
                     <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                    <pre class="code-body"><code>curs3d status --rpc-addr 127.0.0.1:9545
-# === CURS3D Node Status ===
-# Chain:             curs3d-devnet
-# Height:            142
-# Finalized:         139
-# Latest Hash:       a1b2c3d4...
-# Genesis Hash:      f0e1d2c3...
-# Pending Txs:       3
-# Active Validators: 2
-# Source:            RPC 127.0.0.1:9545</code></pre>
+                    <pre class="code-body"><code>curs3d send --wallet sender.json --to CUR7f3a...9c2d --amount 100 --fee 1000</code></pre>
                 </div>
+                <table class="param-table">
+                    <thead><tr><th>Flag</th><th>Default</th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td>-w, --wallet</td><td>wallet.json</td><td>Sender wallet file</td></tr>
+                        <tr><td>-t, --to</td><td>required</td><td>Recipient address (CUR + 40 hex)</td></tr>
+                        <tr><td>-a, --amount</td><td>required</td><td>Amount in CUR</td></tr>
+                        <tr><td>-f, --fee</td><td>1000</td><td>Transaction fee (microtokens)</td></tr>
+                        <tr><td>--data-dir</td><td>curs3d_data</td><td>Data directory</td></tr>
+                        <tr><td>--rpc-addr</td><td>127.0.0.1:9545</td><td>RPC address</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- CLI: stake -->
+            <section id="cli-stake" class="docs-section">
+                <h2>CLI: <code>stake</code></h2>
+                <p>Stake CUR tokens to become a validator. Minimum stake: 1,000 CUR (1,000,000,000 microtokens).</p>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code>curs3d stake --wallet validator.json --amount 1000 --fee 1000</code></pre>
+                </div>
+                <table class="param-table">
+                    <thead><tr><th>Flag</th><th>Default</th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td>-w, --wallet</td><td>wallet.json</td><td>Wallet file</td></tr>
+                        <tr><td>-a, --amount</td><td>required</td><td>Stake amount in CUR</td></tr>
+                        <tr><td>-f, --fee</td><td>1000</td><td>Transaction fee (microtokens)</td></tr>
+                        <tr><td>--data-dir</td><td>curs3d_data</td><td>Data directory</td></tr>
+                        <tr><td>--rpc-addr</td><td>127.0.0.1:9545</td><td>RPC address</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- CLI: status -->
+            <section id="cli-status" class="docs-section">
+                <h2>CLI: <code>status</code></h2>
+                <p>Query the chain status from a running node via RPC.</p>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code>curs3d status --data-dir curs3d_data</code></pre>
+                </div>
+                <table class="param-table">
+                    <thead><tr><th>Flag</th><th>Default</th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td>-s, --data-dir</td><td>curs3d_data</td><td>Data directory</td></tr>
+                        <tr><td>--rpc-addr</td><td>None</td><td>Optional RPC address for remote status</td></tr>
+                    </tbody>
+                </table>
             </section>
 
             <!-- Architecture -->
-            <section class="docs-section" id="architecture">
-                <h2>Architecture</h2>
-                <p>CURS3D is organized into eight modules, each responsible for a distinct layer of the protocol stack:</p>
-                <table class="cli-table">
-                    <thead><tr><th>Module</th><th>Responsibility</th></tr></thead>
+            <section id="architecture" class="docs-section">
+                <h2>Architecture: 20 Modules</h2>
+                <p>CURS3D is organized into the following module structure:</p>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">src/</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code>src/
+  main.rs              <span class="cm"># CLI entry point (clap)</span>
+  lib.rs               <span class="cm"># Module declarations</span>
+  api/mod.rs           <span class="cm"># HTTP REST API (hyper 1.x, port 8080)</span>
+  consensus/mod.rs     <span class="cm"># BFT PoS, FinalityVote, FinalityTracker, slashing</span>
+  core/
+    block.rs           <span class="cm"># BlockHeader, Block, genesis, signatures</span>
+    blocktree.rs       <span class="cm"># BlockTree, fork choice, pruning</span>
+    chain.rs           <span class="cm"># Blockchain struct, state, validation, reorg</span>
+    receipt.rs         <span class="cm"># Transaction receipts with logs</span>
+    transaction.rs     <span class="cm"># Transaction, TransactionKind (6 types)</span>
+  crypto/
+    dilithium.rs       <span class="cm"># CRYSTALS-Dilithium Level 5</span>
+    hash.rs            <span class="cm"># SHA-3, double_hash, merkle_root</span>
+  network/mod.rs       <span class="cm"># libp2p P2P, Gossipsub, mDNS, sync</span>
+  rpc/mod.rs           <span class="cm"># TCP JSON RPC (port 9545)</span>
+  storage/mod.rs       <span class="cm"># sled DB with schema versioning</span>
+  vm/
+    mod.rs             <span class="cm"># WASM VM (Wasmer), contract execution</span>
+    gas.rs             <span class="cm"># Gas cost constants (15 operations)</span>
+    state.rs           <span class="cm"># ContractState (per-contract storage)</span>
+  wallet/mod.rs        <span class="cm"># AES-256-GCM + Argon2 encrypted wallets</span></code></pre>
+                </div>
+            </section>
+
+            <!-- State Model -->
+            <section id="state-model" class="docs-section">
+                <h2>State Model</h2>
+                <p>CURS3D uses an account-based state model. Every address has an <code>AccountState</code>:</p>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">AccountState</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="kw">pub struct</span> <span class="ty">AccountState</span> {
+    <span class="kw">pub</span> balance: <span class="ty">u64</span>,
+    <span class="kw">pub</span> nonce: <span class="ty">u64</span>,
+    <span class="kw">pub</span> staked_balance: <span class="ty">u64</span>,
+    <span class="kw">pub</span> public_key: <span class="ty">Option</span>&lt;<span class="ty">Vec</span>&lt;<span class="ty">u8</span>&gt;&gt;,
+}</code></pre>
+                </div>
+                <p>Every block contains a <strong>state root</strong> -- the Merkle root of all accounts and contract storage. Block hashes use double-SHA3: <code>sha3(sha3(bincode(header)))</code>.</p>
+                <p>Addresses are 20 bytes internally, displayed as <code>CUR</code> + 40 hex characters. The address is derived from <code>SHA-3(public_key)[0..20]</code>.</p>
+            </section>
+
+            <!-- Smart Contracts -->
+            <section id="smart-contracts" class="docs-section">
+                <h2>Smart Contracts: WASM VM</h2>
+                <p>CURS3D runs a deterministic WebAssembly virtual machine powered by the Wasmer runtime. Contracts are compiled to WASM and deployed on-chain.</p>
+
+                <h3>Transaction Types</h3>
+                <ul>
+                    <li><strong>DeployContract</strong> -- Deploy WASM bytecode. The <code>data</code> field contains the bytecode. A new contract address is derived from the deployer and nonce.</li>
+                    <li><strong>CallContract</strong> -- Call a deployed contract. The <code>to</code> field is the contract address. The <code>data</code> field contains the function selector and arguments.</li>
+                </ul>
+
+                <h3>Host Functions</h3>
+                <p>Contracts can call the following host functions provided by the VM:</p>
+                <ul>
+                    <li><code>storage_read(key_ptr, key_len)</code> -- Read from contract storage (200 gas)</li>
+                    <li><code>storage_write(key_ptr, key_len, val_ptr, val_len)</code> -- Write to contract storage (5,000 gas)</li>
+                    <li><code>emit_log(data_ptr, data_len)</code> -- Emit a log entry (375 gas)</li>
+                    <li><code>get_caller()</code> -- Get the caller address</li>
+                    <li><code>get_input()</code> -- Get the input data</li>
+                    <li><code>set_return(data_ptr, data_len)</code> -- Set the return data</li>
+                </ul>
+
+                <h3>Contract Storage</h3>
+                <p>Each contract has its own key-value storage namespace. Keys and values are arbitrary byte arrays. Storage is persisted in the sled database and included in the state root calculation.</p>
+            </section>
+
+            <!-- Gas Model -->
+            <section id="gas-model" class="docs-section">
+                <h2>Gas Model</h2>
+                <p>Every operation in the VM consumes gas. The block gas limit is <strong>10,000,000</strong> (configurable in genesis). Base fee follows an EIP-1559-style adjustment mechanism.</p>
+
+                <table class="param-table">
+                    <thead><tr><th>Operation</th><th>Gas Cost</th><th>Constant</th></tr></thead>
                     <tbody>
-                        <tr><td>core/</td><td>Block, transaction (Transfer, Stake, Unstake, Coinbase), chain state, blocktree (fork choice), Merkle trees, state roots</td></tr>
-                        <tr><td>consensus/</td><td>Proof of Stake validator selection, finality tracker (2/3 threshold), equivocation evidence, slashing (33% penalty)</td></tr>
-                        <tr><td>crypto/</td><td>CRYSTALS-Dilithium Level 5 signatures, SHA-3 hashing, double-hash block headers, address derivation</td></tr>
-                        <tr><td>network/</td><td>libp2p node, Gossipsub messaging, mDNS discovery, bootnode support, signed HeightAnnounce, sync with timeout/retry</td></tr>
-                        <tr><td>storage/</td><td>sled-backed persistent storage for blocks, accounts, and chain configuration</td></tr>
-                        <tr><td>wallet/</td><td>Keypair generation, AES-256-GCM encryption with Argon2 key derivation, address formatting</td></tr>
-                        <tr><td>rpc/</td><td>TCP-based JSON-RPC server for transaction submission, account queries, and status</td></tr>
-                        <tr><td>api/</td><td>HTTP REST API with 10 endpoints, full CORS support, for browsers and external applications</td></tr>
+                        <tr><td>GAS_BASE_TX</td><td>21,000</td><td>Base cost per transaction</td></tr>
+                        <tr><td>GAS_DEPLOY</td><td>32,000</td><td>Additional cost for contract deployment</td></tr>
+                        <tr><td>GAS_CALL</td><td>2,600</td><td>Additional cost for contract call</td></tr>
+                        <tr><td>GAS_STORAGE_READ</td><td>200</td><td>Read from contract storage</td></tr>
+                        <tr><td>GAS_STORAGE_WRITE</td><td>5,000</td><td>Write to contract storage</td></tr>
+                        <tr><td>GAS_LOG</td><td>375</td><td>Emit a log entry</td></tr>
+                        <tr><td>GAS_PER_BYTE</td><td>16</td><td>Per byte of transaction data</td></tr>
+                        <tr><td>GAS_MEMORY_READ_BYTE</td><td>3</td><td>Read byte from WASM memory</td></tr>
+                        <tr><td>GAS_MEMORY_WRITE_BYTE</td><td>6</td><td>Write byte to WASM memory</td></tr>
+                        <tr><td>GAS_HOST_CALL_OVERHEAD</td><td>40</td><td>Overhead per host function call</td></tr>
+                        <tr><td>GAS_WASM_DEFAULT_OP</td><td>2</td><td>Default WASM instruction cost</td></tr>
+                        <tr><td>GAS_WASM_MEMORY_OP</td><td>8</td><td>Memory-related WASM ops</td></tr>
+                        <tr><td>GAS_WASM_CONTROL_OP</td><td>4</td><td>Control flow WASM ops</td></tr>
+                        <tr><td>GAS_WASM_CALL_OP</td><td>12</td><td>WASM call/call_indirect</td></tr>
+                        <tr><td>GAS_WASM_NUMERIC_OP</td><td>3</td><td>Numeric WASM ops</td></tr>
                     </tbody>
                 </table>
+            </section>
+
+            <!-- Receipts -->
+            <section id="receipts" class="docs-section">
+                <h2>Transaction Receipts</h2>
+                <p>Every transaction that executes produces a <code>Receipt</code> containing:</p>
+                <ul>
+                    <li><strong>status</strong> -- Success or failure with error message</li>
+                    <li><strong>gas_used</strong> -- Total gas consumed</li>
+                    <li><strong>logs</strong> -- Array of LogEntry objects (contract_id, data)</li>
+                    <li><strong>return_data</strong> -- Bytes returned by the contract (if any)</li>
+                </ul>
+                <p>Receipts are stored alongside the block and accessible via the REST API when querying transactions.</p>
             </section>
 
             <!-- Consensus -->
-            <section class="docs-section" id="consensus">
-                <h2>Consensus Mechanism</h2>
-                <p>CURS3D uses a <strong>Proof of Stake</strong> consensus with <strong>BFT finality</strong>. The system is designed around three core properties: liveness, safety, and accountability.</p>
+            <section id="consensus" class="docs-section">
+                <h2>Consensus: BFT Proof of Stake</h2>
+                <p>CURS3D uses Byzantine Fault Tolerant Proof of Stake consensus. The protocol guarantees safety as long as fewer than 1/3 of the staked tokens are controlled by malicious actors.</p>
 
                 <h3>Validator Selection</h3>
-                <p>Validators are accounts with a staked balance meeting or exceeding the minimum stake (default: 1,000 CUR). For each block height, a validator is selected pseudo-randomly weighted by stake:</p>
-                <div class="code-block-full">
-                    <div class="code-header"><span class="code-filename">algorithm</span></div>
-                    <pre class="code-body"><code>seed = SHA3(block_height || prev_block_hash)
-selector = u64_from_le_bytes(seed[0..8]) % total_stake
--- Walk validators sorted by address, subtract stake until selector < stake</code></pre>
-                </div>
+                <p>Validators are selected from the <strong>epoch snapshot</strong> -- a frozen set of validators captured at epoch boundaries. Selection is <strong>stake-weighted and deterministic</strong>: given the same block height and epoch snapshot, every node computes the same proposer.</p>
 
-                <h3>BFT Finality</h3>
-                <p>After producing a block, validators broadcast <strong>FinalityVote</strong> attestations -- Dilithium signatures over <code>block_hash || block_height</code>. A block is finalized when votes from validators representing at least <strong>2/3 of total active stake</strong> are collected:</p>
-                <div class="code-block-full">
-                    <div class="code-header"><span class="code-filename">finality check</span></div>
-                    <pre class="code-body"><code>voted_stake * 3 >= total_active_stake * 2</code></pre>
-                </div>
-                <p>Once finalized, all non-canonical branches at or below the finalized height are pruned from the blocktree.</p>
-
-                <h3>Slashing</h3>
-                <p>Equivocation (signing two different blocks at the same height) results in slashing. An <code>EquivocationEvidence</code> contains the block height, validator public key, and two distinct block hashes with valid Dilithium signatures. The penalty is <strong>33% of the validator's staked balance</strong>, plus permanent jailing from the validator set.</p>
-
-                <h3>Fork Choice Rule</h3>
-                <p>CURS3D uses a <strong>heaviest chain by cumulative proposer-stake weight</strong> fork choice rule. Each block in the BlockTree tracks its cumulative weight. The canonical tip is the block with the highest cumulative weight. Blocks that would fork below the finalized height are rejected.</p>
+                <h3>Finality</h3>
+                <p>Blocks achieve finality through the <code>FinalityVote</code> and <code>CheckpointVote</code> system. When 2/3 of the stake in the current epoch votes for a block, it becomes finalized. Finalized blocks cannot be reverted.</p>
             </section>
 
-            <!-- Transactions -->
-            <section class="docs-section" id="transactions">
-                <h2>Transaction Types</h2>
-                <p>CURS3D supports four transaction types:</p>
-                <table class="cli-table">
-                    <thead><tr><th>Type</th><th>Description</th></tr></thead>
-                    <tbody>
-                        <tr><td>Transfer</td><td>Moves tokens from sender to recipient. Debits amount + fee from sender, credits amount to recipient.</td></tr>
-                        <tr><td>Stake</td><td>Moves tokens from liquid balance to staked balance. Registers the account as a validator candidate.</td></tr>
-                        <tr><td>Unstake</td><td>Moves tokens from staked balance back to liquid balance. Reduces validator stake; if below minimum, deactivates validator.</td></tr>
-                        <tr><td>Coinbase</td><td>Block reward transaction. Credits the block reward to the block producer. No sender, no fee, no signature required.</td></tr>
-                    </tbody>
-                </table>
-                <p>All non-coinbase transactions require a valid Dilithium signature and correct nonce for replay protection.</p>
+            <!-- Epochs -->
+            <section id="epochs" class="docs-section">
+                <h2>Epoch Snapshots</h2>
+                <p>The validator set is frozen at epoch boundaries (every 32 blocks by default). This ensures consistent proposer selection within an epoch, even if stake changes occur mid-epoch.</p>
+                <p>Each <code>EpochSnapshot</code> records the active validators and their stakes at the start of the epoch. The snapshot is used for all block production and finality voting within that epoch.</p>
+            </section>
+
+            <!-- Slashing -->
+            <section id="slashing" class="docs-section">
+                <h2>Provable Slashing</h2>
+                <p>If a validator signs two different blocks at the same height (equivocation), anyone can submit an <code>EquivocationEvidence</code> containing both signed block headers.</p>
+                <ul>
+                    <li>The evidence is cryptographically verified using the validator's Dilithium public key</li>
+                    <li><strong>33% of the validator's stake</strong> is slashed (burned)</li>
+                    <li>The validator is <strong>jailed</strong> for a configurable duration (default: 64 blocks)</li>
+                    <li>Jailed validators cannot propose blocks or vote during the jail period</li>
+                </ul>
+            </section>
+
+            <!-- Fork Choice -->
+            <section id="fork-choice" class="docs-section">
+                <h2>Fork Choice</h2>
+                <p>CURS3D uses a <code>BlockTree</code> that tracks all known blocks, including forks. The fork choice rule selects the <strong>heaviest chain</strong> by cumulative proposer stake.</p>
+                <ul>
+                    <li>Automatic reorg when a heavier fork is detected</li>
+                    <li>Finality boundary prevents reorganizations below finalized height</li>
+                    <li>Non-canonical branches are pruned after finalization</li>
+                    <li>Common ancestor calculation for efficient chain comparison</li>
+                </ul>
             </section>
 
             <!-- Cryptography -->
-            <section class="docs-section" id="cryptography">
+            <section id="crypto" class="docs-section">
                 <h2>Cryptography</h2>
+                <h3>Signatures</h3>
+                <p>All signatures use <strong>CRYSTALS-Dilithium Level 5</strong> (NIST FIPS 204), the highest security level of the NIST post-quantum digital signature standard. This includes block signatures, transaction signatures, and finality votes.</p>
 
-                <h3>CRYSTALS-Dilithium Level 5</h3>
-                <p>All signatures use CRYSTALS-Dilithium at NIST security Level 5 (FIPS 204), targeting AES-256 equivalent security. Used for:</p>
-                <ul>
-                    <li>Transaction signatures</li>
-                    <li>Block proposal signatures (double-hash headers)</li>
-                    <li>Finality vote attestations</li>
-                    <li>Signed height announcements for sync protocol authentication</li>
-                    <li>Equivocation evidence verification</li>
-                </ul>
-
-                <h3>SHA-3 (Keccak-256)</h3>
-                <p>Used for block hashing, transaction hashing, Merkle tree construction, state root computation, address derivation, and validator selection seed generation.</p>
+                <h3>Hashing</h3>
+                <p><strong>SHA-3 Keccak-256</strong> is used for all hashing operations. Blocks use double-hashing: <code>sha3(sha3(bincode(header)))</code>. Merkle trees are computed over accounts and contract storage for the state root.</p>
 
                 <h3>Wallet Encryption</h3>
-                <p>Private keys are encrypted with <strong>AES-256-GCM</strong>. The encryption key is derived from a user password using <strong>Argon2</strong> (memory-hard KDF). The wallet file contains the Argon2 salt (16 bytes), AES-GCM nonce (12 bytes), and ciphertext.</p>
+                <p>Wallet files at rest are encrypted with <strong>AES-256-GCM</strong>. The encryption key is derived from the user's password using <strong>Argon2</strong> (memory-hard KDF). Legacy plaintext wallets are auto-migrated to encrypted format on first load.</p>
             </section>
 
             <!-- Networking -->
-            <section class="docs-section" id="networking">
+            <section id="networking" class="docs-section">
                 <h2>Networking</h2>
-                <p>CURS3D uses <strong>libp2p</strong> with TCP transport, Noise encryption, and Yamux multiplexing.</p>
+                <p>CURS3D uses <strong>libp2p</strong> for peer-to-peer communication with the following components:</p>
                 <ul>
-                    <li><strong>Gossipsub</strong> for block and transaction dissemination on a single topic</li>
-                    <li><strong>mDNS</strong> for local peer discovery</li>
-                    <li><strong>Bootnode</strong> multiaddresses for remote peer connections</li>
-                    <li><strong>Signed HeightAnnounce</strong> messages with Dilithium signatures for authenticated sync</li>
-                    <li><strong>Sync protocol</strong> with 15-second timeout and 3 retries max</li>
-                    <li><strong>Block deduplication cache</strong> to prevent redundant processing</li>
-                    <li><strong>Equivocation detection</strong> and automatic evidence broadcast</li>
+                    <li><strong>Gossipsub</strong> -- Publish/subscribe protocol for broadcasting blocks, transactions, and votes</li>
+                    <li><strong>mDNS</strong> -- Automatic local peer discovery</li>
+                    <li><strong>Bootnodes</strong> -- Configurable bootstrap nodes for initial connection</li>
                 </ul>
+
+                <h3>Network Messages</h3>
+                <p>The following message types are exchanged over the network:</p>
+                <ul>
+                    <li><code>NewBlock</code> -- Broadcast a newly produced block</li>
+                    <li><code>NewTransaction</code> -- Broadcast a new transaction</li>
+                    <li><code>RequestBlocks</code> / <code>BlockResponse</code> -- Block sync (batches of 50)</li>
+                    <li><code>HeightAnnounce</code> -- Signed height announcement (every 30s) with protocol version</li>
+                    <li><code>SlashingEvidence</code> -- Broadcast equivocation proof</li>
+                    <li><code>FinalityVote</code> -- Validator finality attestation</li>
+                    <li><code>RequestSnapshot</code> / <code>SnapshotManifest</code> / <code>SnapshotChunk</code> -- State sync</li>
+                </ul>
+
+                <h3>Sync Protocol</h3>
+                <p>Blocks are synced in batches of 50 with a 15-second timeout and 3 retries. Block deduplication prevents processing the same block twice. Incompatible peers (different protocol version) are detected and disconnected.</p>
             </section>
 
             <!-- Storage -->
-            <section class="docs-section" id="storage">
+            <section id="storage" class="docs-section">
                 <h2>Storage</h2>
-                <p>CURS3D uses the <strong>sled</strong> embedded database for persistent storage. Blocks, account states, and chain configuration are stored on disk. Each node can use a separate <code>--data-dir</code> for isolation. The chain survives restarts and can be queried offline via <code>curs3d status --data-dir path</code>.</p>
+                <p>CURS3D uses <strong>sled</strong> as its embedded key-value database with schema-versioned storage and automatic migration support.</p>
+                <p>The following data is persisted:</p>
+                <ul>
+                    <li>Blocks (by height and hash)</li>
+                    <li>Account states</li>
+                    <li>Contract storage (per-contract key-value namespaces)</li>
+                    <li>Pending transactions</li>
+                    <li>Equivocation evidence</li>
+                    <li>Chain metadata (height, genesis hash, schema version, genesis config)</li>
+                </ul>
             </section>
 
             <!-- REST API -->
-            <section class="docs-section" id="rest-api">
+            <section id="rest-api" class="docs-section">
                 <h2>REST API</h2>
-                <p>The HTTP REST API runs on port <strong>8080</strong> (derived from the RPC address by replacing port 9545 with 8080). All responses use JSON format with CORS headers allowing any origin.</p>
-                <p>Response format:</p>
-                <div class="code-block-full">
-                    <div class="code-header"><span class="code-filename">JSON response</span></div>
-                    <pre class="code-body"><code>// Success
-{"ok": true, "data": { ... }, "error": null}
-
-// Error
-{"ok": false, "data": null, "error": "error message"}</code></pre>
+                <p>The HTTP REST API runs on <strong>port 8080</strong> with full CORS support. All responses follow the format:</p>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">response.json</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code>{ <span class="str">"ok"</span>: <span class="kw">true</span>, <span class="str">"data"</span>: { ... } }
+{ <span class="str">"ok"</span>: <span class="kw">false</span>, <span class="str">"error"</span>: <span class="str">"message"</span> }</code></pre>
                 </div>
 
                 <h3>GET /api/status</h3>
-                <p>Returns chain name, height, finalized height, latest hash, genesis hash, pending transactions, and active validator count.</p>
-                <div class="code-block-full">
+                <p>Returns chain status including chain_id, chain_name, epoch, epoch_start_height, height, finalized_height, latest_hash, genesis_hash, pending_transactions, active_validators, and protocol_version.</p>
+                <div class="code-block">
                     <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
                     <pre class="code-body"><code>curl http://localhost:8080/api/status</code></pre>
                 </div>
 
                 <h3>GET /api/blocks?from=0&amp;limit=20</h3>
-                <p>Returns a list of recent blocks (summaries). Maximum limit is 100. Default returns the latest 20 blocks in reverse order.</p>
-                <div class="code-block-full">
+                <p>Returns recent blocks with pagination. Maximum limit is 100.</p>
+                <div class="code-block">
                     <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                    <pre class="code-body"><code>curl "http://localhost:8080/api/blocks?from=0&limit=10"</code></pre>
+                    <pre class="code-body"><code>curl "http://localhost:8080/api/blocks?from=0&limit=20"</code></pre>
                 </div>
 
                 <h3>GET /api/block/:height</h3>
-                <p>Returns full block detail including transactions, state root, merkle root, and validator public key.</p>
-                <div class="code-block-full">
+                <p>Returns full block detail including all transactions, state root, and merkle root.</p>
+                <div class="code-block">
                     <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
                     <pre class="code-body"><code>curl http://localhost:8080/api/block/42</code></pre>
                 </div>
 
                 <h3>GET /api/account/:address</h3>
-                <p>Returns balance, nonce, and staked balance for an address. Accepts hex with or without CUR prefix.</p>
-                <div class="code-block-full">
+                <p>Returns balance, nonce, and staked_balance for any address. Accepts addresses with or without the CUR prefix.</p>
+                <div class="code-block">
                     <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                    <pre class="code-body"><code>curl http://localhost:8080/api/account/CUR7f3a8b1c2d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8</code></pre>
+                    <pre class="code-body"><code>curl http://localhost:8080/api/account/CUR7f3a1b2c...9c2d</code></pre>
                 </div>
 
                 <h3>GET /api/tx/:hash</h3>
-                <p>Searches all blocks for a transaction matching the given hash. Returns kind, from, to, amount, fee, nonce, and timestamp.</p>
-                <div class="code-block-full">
-                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                    <pre class="code-body"><code>curl http://localhost:8080/api/tx/a1b2c3d4e5f6...</code></pre>
-                </div>
+                <p>Look up a transaction by its hex-encoded hash. Returns kind, from, to, amount, fee, and receipt.</p>
 
                 <h3>GET /api/pending</h3>
                 <p>Returns all pending transactions in the mempool.</p>
-                <div class="code-block-full">
-                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                    <pre class="code-body"><code>curl http://localhost:8080/api/pending</code></pre>
-                </div>
 
                 <h3>GET /api/validators</h3>
-                <p>Returns the active validator set with addresses, public keys, and stake amounts. Slashed validators are excluded.</p>
-                <div class="code-block-full">
-                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                    <pre class="code-body"><code>curl http://localhost:8080/api/validators</code></pre>
-                </div>
+                <p>Returns the active validator set with address, public_key, and stake for each validator.</p>
 
                 <h3>GET /api/faucet/:address</h3>
-                <p>Testnet faucet. Instantly credits 100 CUR (100,000,000 microtokens) to the given address. No signature required.</p>
-                <div class="code-block-full">
-                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                    <pre class="code-body"><code>curl http://localhost:8080/api/faucet/CUR7f3a8b1c2d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8</code></pre>
-                </div>
+                <p>Testnet faucet endpoint. Behavior depends on chain configuration (may be disabled in favor of genesis allocations).</p>
 
                 <h3>POST /api/tx/submit</h3>
-                <p>Submits a signed transaction as a JSON body. The transaction must include a valid Dilithium signature.</p>
-                <div class="code-block-full">
+                <p>Submit a signed transaction as a JSON body. Supports optional <code>Authorization</code> header for auth-token-gated access. Maximum body size: 1 MB.</p>
+                <div class="code-block">
                     <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
                     <pre class="code-body"><code>curl -X POST http://localhost:8080/api/tx/submit \
   -H "Content-Type: application/json" \
-  -d '{"kind":"Transfer","from":[...],"sender_public_key":[...],"to":[...],"amount":1000000,"fee":1000,"nonce":0,"timestamp":1234567890,"signature":{"bytes":[...]}}'</code></pre>
-                </div>
-            </section>
-
-            <!-- TCP RPC -->
-            <section class="docs-section" id="rpc-api">
-                <h2>TCP RPC</h2>
-                <p>The TCP RPC server runs on port <strong>9545</strong> and uses newline-delimited JSON. It supports three commands:</p>
-                <ul>
-                    <li><code>"GetStatus"</code> -- Returns chain status with finalized_height</li>
-                    <li><code>{"GetAccount": {"address": [bytes]}}</code> -- Returns account state</li>
-                    <li><code>{"SubmitTransaction": {"transaction": {...}}}</code> -- Submits a signed transaction</li>
-                </ul>
-                <div class="code-block-full">
-                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                    <pre class="code-body"><code>echo '"GetStatus"' | nc 127.0.0.1 9545</code></pre>
+  -d '{"chain_id":"curs3d-devnet","kind":"Transfer",...}'</code></pre>
                 </div>
             </section>
 
             <!-- Genesis Config -->
-            <section class="docs-section" id="genesis-config">
-                <h2>Genesis Config</h2>
-                <p>A genesis configuration file allows you to customize the chain name, block reward, minimum stake, and initial account allocations.</p>
-                <div class="code-block-full">
+            <section id="genesis-config" class="docs-section">
+                <h2>Genesis Configuration</h2>
+                <p>The genesis block is configured via a JSON file passed to the node with <code>--genesis-config</code>. All fields have sensible defaults.</p>
+                <table class="param-table">
+                    <thead><tr><th>Field</th><th>Default</th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td>chain_id</td><td>"curs3d-devnet"</td><td>Unique chain identifier</td></tr>
+                        <tr><td>chain_name</td><td>"curs3d-devnet"</td><td>Human-readable chain name</td></tr>
+                        <tr><td>block_reward</td><td>50,000,000</td><td>Block reward in microtokens (50 CUR)</td></tr>
+                        <tr><td>minimum_stake</td><td>1,000,000,000</td><td>Min stake in microtokens (1000 CUR)</td></tr>
+                        <tr><td>unstake_delay_blocks</td><td>10</td><td>Blocks before unstake completes</td></tr>
+                        <tr><td>epoch_length</td><td>32</td><td>Blocks per epoch</td></tr>
+                        <tr><td>jail_duration_blocks</td><td>64</td><td>Blocks a slashed validator is jailed</td></tr>
+                        <tr><td>block_gas_limit</td><td>10,000,000</td><td>Max gas per block</td></tr>
+                        <tr><td>initial_base_fee_per_gas</td><td>1</td><td>Starting base fee</td></tr>
+                        <tr><td>base_fee_change_denominator</td><td>8</td><td>Base fee adjustment rate</td></tr>
+                        <tr><td>allocations</td><td>[]</td><td>Initial balance and stake allocations</td></tr>
+                        <tr><td>upgrades</td><td>[]</td><td>Protocol upgrade schedule</td></tr>
+                    </tbody>
+                </table>
+                <div class="code-block">
                     <div class="code-header"><span class="code-filename">genesis.json</span><button class="code-copy">Copy</button></div>
                     <pre class="code-body"><code>{
-  "chain_name": "my-testnet",
+  "chain_id": "curs3d-devnet",
+  "chain_name": "My Local Chain",
   "block_reward": 50000000,
   "minimum_stake": 1000000000,
+  "epoch_length": 32,
+  "block_gas_limit": 10000000,
   "allocations": [
     {
-      "public_key": "HEX_ENCODED_DILITHIUM_PUBLIC_KEY",
-      "balance": 10000000000,
-      "staked_balance": 2000000000
+      "public_key": "&lt;hex_encoded_dilithium5_pk&gt;",
+      "balance": 100000000000,
+      "staked_balance": 1000000000
+    }
+  ],
+  "upgrades": [
+    {
+      "height": 1000,
+      "version": 2,
+      "description": "Enable feature X"
     }
   ]
 }</code></pre>
                 </div>
-                <p>All amounts are in microtokens (1 CUR = 1,000,000 microtokens). The genesis config is validated at node startup. If a chain already exists in the data directory, the genesis config must match or the node will refuse to start.</p>
             </section>
 
-            <!-- Block Explorer -->
-            <section class="docs-section" id="block-explorer">
-                <h2>Block Explorer</h2>
-                <p>CURS3D ships with a built-in <a href="explorer.html">Block Explorer</a> web UI. It connects to the REST API and provides:</p>
+            <!-- State Sync -->
+            <section id="state-sync" class="docs-section">
+                <h2>State Sync</h2>
+                <p>New nodes can fast-sync from a checkpoint instead of replaying the entire chain history.</p>
                 <ul>
-                    <li>Real-time chain status dashboard (height, finalized height, validators, pending txs)</li>
-                    <li>Recent blocks table with expandable transaction details</li>
-                    <li>Account lookup (balance, staked balance, nonce)</li>
-                    <li>Transaction search by hash</li>
-                    <li>Testnet faucet (100 CUR per request)</li>
-                    <li>Configurable API endpoint</li>
+                    <li><strong>SnapshotManifest</strong> -- Describes a state snapshot: height, state root, chunk count, and chunk hashes</li>
+                    <li><strong>StateChunks</strong> -- Individual pieces of the state, each with a Merkle proof for verification</li>
+                    <li>The syncing node requests the manifest, then downloads and verifies each chunk</li>
+                    <li>Once all chunks are verified against the state root, the node resumes normal sync from that height</li>
                 </ul>
-                <p>To use the explorer, start a node and open <code>explorer.html</code> in your browser. Set the API endpoint to <code>http://localhost:8080</code>.</p>
+            </section>
+
+            <!-- Governance -->
+            <section id="governance" class="docs-section">
+                <h2>Protocol Governance</h2>
+                <p>CURS3D supports protocol versioning with upgrade-at-height activation.</p>
+                <ul>
+                    <li>Each <code>ProtocolUpgrade</code> specifies a <code>height</code>, <code>version</code>, and <code>description</code></li>
+                    <li>Upgrades are defined in the genesis config and activate automatically at the specified height</li>
+                    <li>Nodes running an older protocol version are detected via <code>HeightAnnounce</code> messages and warned</li>
+                    <li>The current protocol version is reported in the <code>/api/status</code> response</li>
+                </ul>
+            </section>
+
+            <!-- Docker -->
+            <section id="docker" class="docs-section">
+                <h2>Docker</h2>
+                <p>CURS3D ships with a multi-stage Dockerfile and docker-compose configuration for running multi-node networks.</p>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Build the Docker image</span>
+docker build -t curs3d .
+
+<span class="cm"># Run a 2-node network with docker-compose</span>
+docker-compose up
+
+<span class="cm"># Or run a single node</span>
+docker run -p 4337:4337 -p 8080:8080 -p 9545:9545 curs3d \
+  curs3d node --validator-wallet /data/wallet.json</code></pre>
+                </div>
+                <p>The docker-compose setup creates two nodes that automatically discover each other via mDNS and begin syncing.</p>
+
+                <h3>CI Pipeline</h3>
+                <p>GitHub Actions runs on every push and pull request:</p>
+                <ul>
+                    <li><code>cargo check</code> -- Compilation check</li>
+                    <li><code>cargo test</code> -- All 67 tests</li>
+                    <li><code>cargo clippy</code> -- Zero warnings required</li>
+                    <li><code>cargo fmt --check</code> -- Format verification</li>
+                </ul>
             </section>
 
         </main>
@@ -643,11 +641,12 @@ selector = u64_from_le_bytes(seed[0..8]) % total_stake
             <div class="footer-top">
                 <div class="footer-brand">
                     <span class="logo"><span class="logo-diamond"></span> CURS3D</span>
-                    <p>Quantum-resistant blockchain infrastructure for the next century.</p>
+                    <p>Quantum-resistant blockchain infrastructure with smart contract execution.</p>
                 </div>
                 <div class="footer-links-group">
                     <span class="footer-heading">Protocol</span>
                     <a href="index.html#features">Features</a>
+                    <a href="index.html#smart-contracts">Smart Contracts</a>
                     <a href="index.html#technology">Technology</a>
                     <a href="whitepaper.html">Whitepaper</a>
                 </div>
@@ -656,17 +655,16 @@ selector = u64_from_le_bytes(seed[0..8]) % total_stake
                     <a href="docs.html">Documentation</a>
                     <a href="examples.html">Examples</a>
                     <a href="explorer.html">Block Explorer</a>
-                    <a href="docs.html#rest-api">REST API</a>
                 </div>
                 <div class="footer-links-group">
                     <span class="footer-heading">Community</span>
                     <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
-                    <a href="#" target="_blank" rel="noopener">Discord</a>
-                    <a href="#" target="_blank" rel="noopener">Twitter / X</a>
+                    <a href="#">Discord</a>
+                    <a href="#">Twitter / X</a>
                 </div>
             </div>
             <div class="footer-bottom">
-                <p>&copy; 2026 CURS3D Protocol. MIT License. All rights reserved.</p>
+                <p>&copy; 2026 CURS3D Protocol. MIT License.</p>
             </div>
         </div>
     </footer>

@@ -10,7 +10,7 @@ use hyper::{Method, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use serde::Serialize;
 use tokio::net::TcpListener;
-use tokio::sync::{broadcast, Mutex, mpsc};
+use tokio::sync::{Semaphore, broadcast, Mutex, mpsc};
 
 use crate::core::block::Block;
 use crate::core::chain::Blockchain;
@@ -19,6 +19,7 @@ use crate::crypto::hash;
 use crate::network::NetworkMessage;
 
 const MAX_API_BODY_BYTES: usize = 1024 * 1024;
+const MAX_HTTP_CONNECTIONS: usize = 128;
 
 // ─── API Response Types ──────────────────────────────────────────────
 
@@ -36,14 +37,11 @@ fn json_ok<T: Serialize>(data: T) -> Response<Full<Bytes>> {
         error: None,
     };
     let body = serde_json::to_string(&resp).unwrap_or_default();
-    Response::builder()
+    let mut builder = Response::builder()
         .status(StatusCode::OK)
-        .header("Content-Type", "application/json")
-        .header("Access-Control-Allow-Origin", "*")
-        .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        .header("Access-Control-Allow-Headers", "Content-Type")
-        .body(Full::new(Bytes::from(body)))
-        .unwrap()
+        .header("Content-Type", "application/json");
+    builder = with_cors_headers(builder);
+    builder.body(Full::new(Bytes::from(body))).unwrap()
 }
 
 fn json_err(status: StatusCode, msg: &str) -> Response<Full<Bytes>> {
@@ -53,24 +51,39 @@ fn json_err(status: StatusCode, msg: &str) -> Response<Full<Bytes>> {
         error: Some(msg.to_string()),
     };
     let body = serde_json::to_string(&resp).unwrap_or_default();
-    Response::builder()
+    let mut builder = Response::builder()
         .status(status)
-        .header("Content-Type", "application/json")
-        .header("Access-Control-Allow-Origin", "*")
-        .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        .header("Access-Control-Allow-Headers", "Content-Type")
-        .body(Full::new(Bytes::from(body)))
-        .unwrap()
+        .header("Content-Type", "application/json");
+    builder = with_cors_headers(builder);
+    builder.body(Full::new(Bytes::from(body))).unwrap()
 }
 
 fn cors_preflight() -> Response<Full<Bytes>> {
-    Response::builder()
-        .status(StatusCode::NO_CONTENT)
-        .header("Access-Control-Allow-Origin", "*")
+    if cors_allow_origin().is_none() {
+        return Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .body(Full::new(Bytes::new()))
+            .unwrap();
+    }
+    let mut builder = Response::builder().status(StatusCode::NO_CONTENT);
+    builder = with_cors_headers(builder);
+    builder.body(Full::new(Bytes::new())).unwrap()
+}
+
+fn cors_allow_origin() -> Option<String> {
+    std::env::var("CURS3D_API_ALLOW_ORIGIN")
+        .ok()
+        .filter(|value| !value.is_empty())
+}
+
+fn with_cors_headers(builder: hyper::http::response::Builder) -> hyper::http::response::Builder {
+    let Some(origin) = cors_allow_origin() else {
+        return builder;
+    };
+    builder
+        .header("Access-Control-Allow-Origin", origin)
         .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        .header("Access-Control-Allow-Headers", "Content-Type")
-        .body(Full::new(Bytes::new()))
-        .unwrap()
+        .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 }
 
 // ─── Serializable API Structs ────────────────────────────────────────
@@ -433,6 +446,7 @@ pub async fn serve_http(
     outbound_tx: mpsc::Sender<NetworkMessage>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let listener = TcpListener::bind(addr).await?;
+    let connection_limit = Arc::new(Semaphore::new(MAX_HTTP_CONNECTIONS));
     tracing::info!("HTTP API listening on http://{}", addr);
 
     loop {
@@ -441,8 +455,12 @@ pub async fn serve_http(
         let chain = Arc::clone(&chain);
         let event_tx = event_tx.clone();
         let outbound_tx = outbound_tx.clone();
+        let connection_limit = Arc::clone(&connection_limit);
 
         tokio::spawn(async move {
+            let Ok(_permit) = connection_limit.acquire_owned().await else {
+                return;
+            };
             let service = service_fn(move |req| {
                 let chain = Arc::clone(&chain);
                 let event_tx = event_tx.clone();
