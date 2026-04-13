@@ -53,6 +53,18 @@ body {
     -moz-osx-font-smoothing: grayscale;
 }
 
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+        radial-gradient(circle at 10% 10%, rgba(139, 92, 246, 0.1), transparent 35%),
+        radial-gradient(circle at 90% 20%, rgba(6, 182, 212, 0.08), transparent 30%),
+        radial-gradient(circle at 50% 100%, rgba(236, 72, 153, 0.06), transparent 35%);
+}
+
 /* === Particle Canvas === */
 #particles {
     position: fixed;
@@ -157,6 +169,7 @@ nav {
 nav.scrolled {
     background: rgba(5, 5, 7, 0.92);
     border-bottom-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 12px 38px rgba(0, 0, 0, 0.35);
 }
 
 .nav-container {
@@ -404,6 +417,7 @@ nav.scrolled {
     line-height: 1.08;
     margin-bottom: 1.5rem;
     letter-spacing: -0.03em;
+    text-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
 }
 
 .hero-sub {
@@ -413,6 +427,7 @@ nav.scrolled {
     margin: 0 auto 2.5rem;
     line-height: 1.75;
     font-weight: 400;
+    text-wrap: balance;
 }
 
 /* === Buttons === */
@@ -440,14 +455,14 @@ nav.scrolled {
 }
 
 .btn-primary {
-    background: var(--gradient-subtle);
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 35%, #06b6d4 100%);
     color: white;
-    box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.3), 0 4px 20px rgba(139, 92, 246, 0.25);
+    box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.3), 0 8px 30px rgba(124, 58, 237, 0.35);
 }
 
 .btn-primary:hover {
     transform: translateY(-2px);
-    box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.5), 0 8px 40px rgba(139, 92, 246, 0.35);
+    box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.5), 0 14px 48px rgba(124, 58, 237, 0.45);
 }
 
 .btn-icon {
@@ -570,6 +585,7 @@ nav.scrolled {
     border-radius: 20px;
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
 }
 
 .stat-item {
@@ -602,7 +618,7 @@ nav.scrolled {
 
 /* === Section Shared === */
 .section-container {
-    max-width: 1200px;
+    max-width: 1280px;
     margin: 0 auto;
     padding: 0 2rem;
 }
@@ -632,6 +648,19 @@ nav.scrolled {
     letter-spacing: -0.03em;
     line-height: 1.15;
     margin-bottom: 1rem;
+    position: relative;
+    display: inline-block;
+}
+
+.section-header h2::after {
+    content: '';
+    display: block;
+    width: 72px;
+    height: 3px;
+    border-radius: 999px;
+    margin: 0.9rem auto 0;
+    background: var(--gradient-main);
+    opacity: 0.9;
 }
 
 .section-sub {
@@ -647,6 +676,7 @@ nav.scrolled {
     position: relative;
     z-index: 1;
     padding: 8rem 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .features-grid {
@@ -667,6 +697,7 @@ nav.scrolled {
     padding: 2rem;
     transition: all 0.4s var(--ease-smooth);
     overflow: hidden;
+    backdrop-filter: blur(6px);
 }
 
 .feature-card::before {
@@ -716,12 +747,13 @@ nav.scrolled {
     font-weight: 700;
     margin-bottom: 0.6rem;
     letter-spacing: -0.01em;
+    color: #fafaff;
 }
 
 .feature-card p {
     color: var(--text2);
     font-size: 0.85rem;
-    line-height: 1.65;
+    line-height: 1.7;
 }
 
 /* === Technology === */
@@ -729,6 +761,7 @@ nav.scrolled {
     position: relative;
     z-index: 1;
     padding: 8rem 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .tech-layout {
@@ -853,6 +886,7 @@ nav.scrolled {
     position: relative;
     z-index: 1;
     padding: 8rem 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .api-grid {
@@ -928,6 +962,7 @@ nav.scrolled {
     position: relative;
     z-index: 1;
     padding: 8rem 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .infra-grid {
@@ -942,6 +977,7 @@ nav.scrolled {
     border-radius: 16px;
     padding: 2.25rem;
     transition: all 0.3s var(--ease-smooth);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
 .infra-card:hover {
@@ -989,6 +1025,7 @@ nav.scrolled {
     position: relative;
     z-index: 1;
     padding: 8rem 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .token-grid {
@@ -1011,6 +1048,64 @@ nav.scrolled {
     background: var(--card-hover);
     transform: translateY(-4px);
     box-shadow: 0 12px 40px rgba(139, 92, 246, 0.06);
+}
+
+/* === Investment Section === */
+.investment {
+    position: relative;
+    z-index: 1;
+    padding: 8rem 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.investment-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.investment-card {
+    background: linear-gradient(180deg, rgba(139, 92, 246, 0.08), rgba(255, 255, 255, 0.02));
+    border: 1px solid rgba(139, 92, 246, 0.18);
+    border-radius: 16px;
+    padding: 1.75rem;
+    transition: all 0.3s var(--ease-smooth);
+}
+
+.investment-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(139, 92, 246, 0.35);
+    box-shadow: 0 18px 50px rgba(124, 58, 237, 0.2);
+}
+
+.investment-card h3 {
+    font-size: 1.05rem;
+    margin-bottom: 0.5rem;
+}
+
+.investment-card p {
+    font-size: 0.9rem;
+    color: var(--text2);
+}
+
+.thesis-pills {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.thesis-pills span {
+    font-size: 0.75rem;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--purple3);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    background: rgba(139, 92, 246, 0.08);
+    border-radius: 999px;
+    padding: 0.4rem 0.8rem;
+    font-weight: 600;
 }
 
 .token-number {
@@ -1039,6 +1134,7 @@ nav.scrolled {
     position: relative;
     z-index: 1;
     padding: 8rem 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .roadmap-track {
@@ -1139,10 +1235,11 @@ nav.scrolled {
     text-align: center;
     padding: 5rem 3rem;
     border-radius: 24px;
-    background: rgba(139, 92, 246, 0.03);
-    border: 1px solid rgba(139, 92, 246, 0.15);
+    background: radial-gradient(circle at 20% 10%, rgba(124, 58, 237, 0.22), rgba(139, 92, 246, 0.06) 35%, rgba(139, 92, 246, 0.03) 100%);
+    border: 1px solid rgba(139, 92, 246, 0.2);
     position: relative;
     overflow: hidden;
+    box-shadow: 0 28px 80px rgba(17, 8, 38, 0.6);
 }
 
 .cta-box::before {
@@ -1306,6 +1403,18 @@ footer {
     letter-spacing: -0.03em;
     line-height: 1.1;
     margin-bottom: 1rem;
+    position: relative;
+    display: inline-block;
+}
+
+.page-hero h1::after {
+    content: '';
+    display: block;
+    width: 82px;
+    height: 3px;
+    border-radius: 999px;
+    margin: 0.9rem auto 0;
+    background: var(--gradient-main);
 }
 
 .page-hero .page-sub {
@@ -1404,6 +1513,19 @@ footer {
     margin-bottom: 1rem;
     padding-bottom: 0.75rem;
     border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.docs-section h2::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    transform: rotate(45deg);
+    flex-shrink: 0;
+    background: var(--gradient-subtle);
 }
 
 .docs-section h3 {
@@ -1685,6 +1807,19 @@ footer {
     margin-bottom: 1.25rem;
     padding-bottom: 0.5rem;
     border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.wp-section h2::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    transform: rotate(45deg);
+    flex-shrink: 0;
+    background: var(--gradient-subtle);
 }
 
 .wp-section h3 {
@@ -1822,6 +1957,10 @@ footer {
         grid-template-columns: repeat(2, 1fr);
     }
 
+    .investment-grid {
+        grid-template-columns: 1fr;
+    }
+
     .infra-grid {
         grid-template-columns: 1fr;
     }
@@ -1939,6 +2078,7 @@ footer {
     .features,
     .technology,
     .tokenomics,
+    .investment,
     .roadmap,
     .api-showcase,
     .infrastructure {
