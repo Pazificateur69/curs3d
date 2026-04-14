@@ -1,5 +1,8 @@
+use std::collections::HashMap;
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use bytes::Bytes;
@@ -24,7 +27,24 @@ use crate::network::NetworkMessage;
 
 const MAX_API_BODY_BYTES: usize = 1024 * 1024;
 const MAX_HTTP_CONNECTIONS: usize = 128;
+const RATE_LIMIT_GET: usize = 60;
+const RATE_LIMIT_POST: usize = 10;
+const RATE_LIMIT_WINDOW_SECS: u64 = 60;
+const RATE_LIMIT_CLEANUP_SECS: u64 = 120;
+const RATE_LIMIT_CLEANUP_INTERVAL: u64 = 100;
+const FAUCET_AMOUNT: u64 = 100_000_000;
+const FAUCET_COOLDOWN_SECS: u64 = 3600;
 static API_START_TIME: OnceLock<Instant> = OnceLock::new();
+
+type RateLimiterMap = Arc<Mutex<HashMap<IpAddr, Vec<Instant>>>>;
+type FaucetCooldownMap = Arc<Mutex<HashMap<Vec<u8>, Instant>>>;
+
+struct RequestContext {
+    peer_ip: IpAddr,
+    rate_limiter: RateLimiterMap,
+    request_counter: Arc<AtomicU64>,
+    faucet_cooldowns: FaucetCooldownMap,
+}
 
 // ─── API Response Types ──────────────────────────────────────────────
 
@@ -393,15 +413,71 @@ fn enforce_api_auth(req: &Request<Incoming>) -> Option<Response<Full<Bytes>>> {
 
 // ─── Request Router ──────────────────────────────────────────────────
 
+async fn check_rate_limit(
+    peer_ip: IpAddr,
+    method: &Method,
+    rate_limiter: &RateLimiterMap,
+    request_counter: &AtomicU64,
+) -> Option<Response<Full<Bytes>>> {
+    let now = Instant::now();
+    let max_requests = if *method == Method::POST {
+        RATE_LIMIT_POST
+    } else {
+        RATE_LIMIT_GET
+    };
+
+    let mut limiter = rate_limiter.lock().await;
+
+    // Periodic cleanup to prevent memory leaks
+    let count = request_counter.fetch_add(1, Ordering::Relaxed) + 1;
+    if count.is_multiple_of(RATE_LIMIT_CLEANUP_INTERVAL) {
+        limiter.retain(|_, timestamps| {
+            timestamps.retain(|ts| now.duration_since(*ts).as_secs() < RATE_LIMIT_CLEANUP_SECS);
+            !timestamps.is_empty()
+        });
+    }
+
+    let timestamps = limiter.entry(peer_ip).or_default();
+    timestamps.retain(|ts| now.duration_since(*ts).as_secs() < RATE_LIMIT_WINDOW_SECS);
+
+    if timestamps.len() >= max_requests {
+        return Some(json_err(
+            StatusCode::TOO_MANY_REQUESTS,
+            &format!(
+                "rate limit exceeded: max {} requests per minute",
+                max_requests
+            ),
+        ));
+    }
+
+    timestamps.push(now);
+    None
+}
+
 async fn handle_request(
     req: Request<Incoming>,
     chain: Arc<Mutex<Blockchain>>,
     event_tx: broadcast::Sender<String>,
     outbound_tx: mpsc::Sender<NetworkMessage>,
+    ctx: RequestContext,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
     if req.method() == Method::OPTIONS {
         return Ok(cors_preflight());
     }
+
+    // Rate limit check before any processing
+    if let Some(response) = check_rate_limit(
+        ctx.peer_ip,
+        req.method(),
+        &ctx.rate_limiter,
+        &ctx.request_counter,
+    )
+    .await
+    {
+        return Ok(response);
+    }
+
+    let faucet_cooldowns = ctx.faucet_cooldowns;
 
     let path = req.uri().path().to_string();
     let method = req.method().clone();
@@ -693,11 +769,47 @@ async fn handle_request(
 
         // GET /api/faucet/:address
         (Method::GET, ["api", "faucet", addr_hex]) => {
-            let _ = addr_hex;
-            Ok(json_err(
-                StatusCode::FORBIDDEN,
-                "faucet disabled: use genesis allocations or a signed transaction",
-            ))
+            let addr_clean = addr_hex.strip_prefix("CUR").unwrap_or(addr_hex);
+            let address = match hex::decode(addr_clean) {
+                Ok(a) if a.len() == hash::ADDRESS_LEN => a,
+                _ => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid address")),
+            };
+
+            // Check faucet cooldown
+            {
+                let cooldowns = faucet_cooldowns.lock().await;
+                if let Some(last_request) = cooldowns.get(&address) {
+                    let elapsed = last_request.elapsed().as_secs();
+                    if elapsed < FAUCET_COOLDOWN_SECS {
+                        let remaining = FAUCET_COOLDOWN_SECS - elapsed;
+                        return Ok(json_err(
+                            StatusCode::TOO_MANY_REQUESTS,
+                            &format!("faucet cooldown: try again in {} seconds", remaining),
+                        ));
+                    }
+                }
+            }
+
+            // Credit the account
+            let new_balance = {
+                let mut chain = chain.lock().await;
+                let account = chain.accounts.entry(address.clone()).or_default();
+                account.balance = account.balance.saturating_add(FAUCET_AMOUNT);
+                account.balance
+            };
+
+            // Record cooldown
+            {
+                let mut cooldowns = faucet_cooldowns.lock().await;
+                cooldowns.insert(address.clone(), Instant::now());
+            }
+
+            Ok(json_ok(serde_json::json!({
+                "address": hex::encode(&address),
+                "amount": FAUCET_AMOUNT,
+                "new_balance": new_balance,
+                "next_available_secs": FAUCET_COOLDOWN_SECS
+            })))
         }
 
         // POST /api/tx/submit
@@ -815,15 +927,22 @@ pub async fn serve_http(
     let _ = API_START_TIME.get_or_init(Instant::now);
     let listener = TcpListener::bind(addr).await?;
     let connection_limit = Arc::new(Semaphore::new(MAX_HTTP_CONNECTIONS));
+    let rate_limiter: RateLimiterMap = Arc::new(Mutex::new(HashMap::new()));
+    let request_counter = Arc::new(AtomicU64::new(0));
+    let faucet_cooldowns: FaucetCooldownMap = Arc::new(Mutex::new(HashMap::new()));
     tracing::info!("HTTP API listening on http://{}", addr);
 
     loop {
-        let (stream, _) = listener.accept().await?;
+        let (stream, peer_addr) = listener.accept().await?;
+        let peer_ip = peer_addr.ip();
         let io = TokioIo::new(stream);
         let chain = Arc::clone(&chain);
         let event_tx = event_tx.clone();
         let outbound_tx = outbound_tx.clone();
         let connection_limit = Arc::clone(&connection_limit);
+        let rate_limiter = Arc::clone(&rate_limiter);
+        let request_counter = Arc::clone(&request_counter);
+        let faucet_cooldowns = Arc::clone(&faucet_cooldowns);
 
         tokio::spawn(async move {
             let Ok(_permit) = connection_limit.acquire_owned().await else {
@@ -833,7 +952,13 @@ pub async fn serve_http(
                 let chain = Arc::clone(&chain);
                 let event_tx = event_tx.clone();
                 let outbound_tx = outbound_tx.clone();
-                async move { handle_request(req, chain, event_tx, outbound_tx).await }
+                let ctx = RequestContext {
+                    peer_ip,
+                    rate_limiter: Arc::clone(&rate_limiter),
+                    request_counter: Arc::clone(&request_counter),
+                    faucet_cooldowns: Arc::clone(&faucet_cooldowns),
+                };
+                async move { handle_request(req, chain, event_tx, outbound_tx, ctx).await }
             });
 
             if let Err(err) = http1::Builder::new().serve_connection(io, service).await {
