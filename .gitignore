@@ -8,6 +8,14 @@ wallet.json
 *.tmp
 .env
 .env.*
+node_modules/
+coverage/
+*.tsbuildinfo
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
 build.bat
 build_output.txt
 env_lib.txt
@@ -17,6 +25,9 @@ curs3d_data/
 node*_data/
 faucet_cooldowns.json
 bootnode.addrs
+deploy/env/node.env
+deploy/secrets/*
+!deploy/secrets/.gitignore
 
 # Internal project notes
 CLAUDE.md
