@@ -7,3 +7,9 @@ build_output.txt
 env_lib.txt
 .DS_Store
 Thumbs.db
+
+# Internal project notes
+CLAUDE.md
+avancement.md
+todo.md
+docs/L1_TODO.md
