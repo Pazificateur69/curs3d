@@ -7,6 +7,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Semaphore, Mutex, mpsc};
 
 use crate::core::chain::{AccountState, Blockchain};
+use crate::core::state_proof::{AccountProof, StorageProof};
 use crate::core::transaction::Transaction;
 use crate::network::NetworkMessage;
 
@@ -16,6 +17,8 @@ const MAX_RPC_CONNECTIONS: usize = 128;
 pub enum RpcRequest {
     SubmitTransaction { transaction: Transaction },
     GetAccount { address: Vec<u8> },
+    GetAccountProof { address: Vec<u8> },
+    GetStorageProof { contract_address: Vec<u8>, key: Vec<u8> },
     GetStatus,
 }
 
@@ -50,6 +53,8 @@ fn default_protocol_version() -> u32 {
 pub enum RpcResponse {
     Submitted { tx_hash: String },
     Account { state: AccountState },
+    AccountProof { proof: AccountProof },
+    StorageProof { proof: StorageProof },
     Status { status: NodeStatus },
     Error { message: String },
 }
@@ -178,6 +183,27 @@ async fn handle_request(
             let chain = chain.lock().await;
             RpcResponse::Account {
                 state: chain.get_account(&address),
+            }
+        }
+        RpcRequest::GetAccountProof { address } => {
+            let chain = chain.lock().await;
+            match chain.get_account_proof(&address) {
+                Some(proof) => RpcResponse::AccountProof { proof },
+                None => RpcResponse::Error {
+                    message: "account proof not found".to_string(),
+                },
+            }
+        }
+        RpcRequest::GetStorageProof {
+            contract_address,
+            key,
+        } => {
+            let chain = chain.lock().await;
+            match chain.get_storage_proof(&contract_address, &key) {
+                Some(proof) => RpcResponse::StorageProof { proof },
+                None => RpcResponse::Error {
+                    message: "storage proof not found".to_string(),
+                },
             }
         }
         RpcRequest::GetStatus => {

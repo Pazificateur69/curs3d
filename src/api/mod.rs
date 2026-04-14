@@ -14,6 +14,7 @@ use tokio::sync::{Semaphore, broadcast, Mutex, mpsc};
 
 use crate::core::block::Block;
 use crate::core::chain::Blockchain;
+use crate::core::state_proof::{AccountProof, StorageProof};
 use crate::core::transaction::{Transaction, TransactionKind};
 use crate::crypto::hash;
 use crate::network::NetworkMessage;
@@ -134,6 +135,9 @@ struct ApiTransaction {
     to: String,
     amount: u64,
     fee: u64,
+    max_fee_per_gas: u64,
+    max_priority_fee_per_gas: u64,
+    gas_limit: u64,
     nonce: u64,
     timestamp: i64,
 }
@@ -144,6 +148,37 @@ struct ApiAccount {
     balance: u64,
     nonce: u64,
     staked_balance: u64,
+}
+
+#[derive(Serialize)]
+struct ApiAccountProof {
+    address: String,
+    leaf_index: usize,
+    leaf_hash: String,
+    proof: Vec<String>,
+    state_root: String,
+    balance: u64,
+    nonce: u64,
+    staked_balance: u64,
+    validator_active_from_height: u64,
+    jailed_until_height: u64,
+}
+
+#[derive(Serialize)]
+struct ApiStorageProof {
+    contract_address: String,
+    contract_code_hash: String,
+    contract_owner: String,
+    key: String,
+    value: String,
+    storage_leaf_index: usize,
+    storage_leaf_hash: String,
+    storage_proof: Vec<String>,
+    storage_root: String,
+    contract_leaf_index: usize,
+    contract_leaf_hash: String,
+    contract_proof: Vec<String>,
+    state_root: String,
 }
 
 #[derive(Serialize)]
@@ -195,8 +230,44 @@ fn tx_to_api(tx: &Transaction) -> ApiTransaction {
         to: hex::encode(&tx.to),
         amount: tx.amount,
         fee: tx.fee,
+        max_fee_per_gas: tx.max_fee_per_gas(),
+        max_priority_fee_per_gas: tx.max_priority_fee_per_gas(),
+        gas_limit: tx.gas_limit,
         nonce: tx.nonce,
         timestamp: tx.timestamp,
+    }
+}
+
+fn account_proof_to_api(proof: AccountProof) -> ApiAccountProof {
+    ApiAccountProof {
+        address: hex::encode(proof.address),
+        leaf_index: proof.leaf_index,
+        leaf_hash: hex::encode(proof.leaf_hash),
+        proof: proof.proof.into_iter().map(hex::encode).collect(),
+        state_root: hex::encode(proof.state_root),
+        balance: proof.state.balance,
+        nonce: proof.state.nonce,
+        staked_balance: proof.state.staked_balance,
+        validator_active_from_height: proof.state.validator_active_from_height,
+        jailed_until_height: proof.state.jailed_until_height,
+    }
+}
+
+fn storage_proof_to_api(proof: StorageProof) -> ApiStorageProof {
+    ApiStorageProof {
+        contract_address: hex::encode(proof.contract_address),
+        contract_code_hash: hex::encode(proof.contract_code_hash),
+        contract_owner: hex::encode(proof.contract_owner),
+        key: hex::encode(proof.key),
+        value: hex::encode(proof.value),
+        storage_leaf_index: proof.storage_leaf_index,
+        storage_leaf_hash: hex::encode(proof.storage_leaf_hash),
+        storage_proof: proof.storage_proof.into_iter().map(hex::encode).collect(),
+        storage_root: hex::encode(proof.storage_root),
+        contract_leaf_index: proof.contract_leaf_index,
+        contract_leaf_hash: hex::encode(proof.contract_leaf_hash),
+        contract_proof: proof.contract_proof.into_iter().map(hex::encode).collect(),
+        state_root: hex::encode(proof.state_root),
     }
 }
 
@@ -324,6 +395,37 @@ async fn handle_request(
                 nonce: state.nonce,
                 staked_balance: state.staked_balance,
             }))
+        }
+
+        // GET /api/account/:address/proof
+        (Method::GET, ["api", "account", addr_hex, "proof"]) => {
+            let addr_clean = addr_hex.strip_prefix("CUR").unwrap_or(addr_hex);
+            let address = match hex::decode(addr_clean) {
+                Ok(a) if a.len() == hash::ADDRESS_LEN => a,
+                _ => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid address")),
+            };
+            let chain = chain.lock().await;
+            match chain.get_account_proof(&address) {
+                Some(proof) => Ok(json_ok(account_proof_to_api(proof))),
+                None => Ok(json_err(StatusCode::NOT_FOUND, "account proof not found")),
+            }
+        }
+
+        // GET /api/contract/:address/storage/:key/proof
+        (Method::GET, ["api", "contract", contract_hex, "storage", key_hex, "proof"]) => {
+            let contract_address = match hex::decode(contract_hex) {
+                Ok(a) if a.len() == hash::ADDRESS_LEN => a,
+                _ => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid contract address")),
+            };
+            let key = match hex::decode(key_hex) {
+                Ok(value) => value,
+                Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid storage key")),
+            };
+            let chain = chain.lock().await;
+            match chain.get_storage_proof(&contract_address, &key) {
+                Some(proof) => Ok(json_ok(storage_proof_to_api(proof))),
+                None => Ok(json_err(StatusCode::NOT_FOUND, "storage proof not found")),
+            }
         }
 
         // GET /api/tx/:hash

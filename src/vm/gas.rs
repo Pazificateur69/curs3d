@@ -13,3 +13,4 @@ pub const GAS_WASM_MEMORY_OP: u64 = 8;
 pub const GAS_WASM_CONTROL_OP: u64 = 4;
 pub const GAS_WASM_CALL_OP: u64 = 12;
 pub const GAS_WASM_NUMERIC_OP: u64 = 3;
+pub const GAS_WASM_LOOP_TICK: u64 = 50;

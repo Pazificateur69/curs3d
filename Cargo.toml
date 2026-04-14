@@ -38,6 +38,7 @@ tokio-tungstenite = "0.24"
 
 # WASM VM
 wasmer = "5"
+wasmer-types = "5"
 
 # Misc
 hex = "0.4"

@@ -9,6 +9,7 @@ use crate::consensus::{
 use crate::core::block::{Block, EMPTY_STATE_ROOT_SEED};
 use crate::core::blocktree::{BlockTree, BlockTreeError};
 use crate::core::receipt::Receipt;
+use crate::core::state_proof::{AccountProof, StorageProof};
 use crate::core::transaction::{Transaction, TransactionKind};
 use crate::crypto::dilithium::KeyPair;
 use crate::crypto::hash;
@@ -31,7 +32,10 @@ const MAX_PENDING_TX_AGE_SECS: i64 = 15 * 60;
 const MAX_PENDING_TRANSACTIONS: usize = 10_000;
 const MAX_PENDING_TRANSACTIONS_PER_ACCOUNT: usize = 64;
 const MAX_PENDING_GAS_BUDGET_MULTIPLIER: u64 = 8;
+const MAX_PENDING_GAS_PER_ACCOUNT_MULTIPLIER: u64 = 2;
+const MAX_PENDING_NONCE_GAP: u64 = 32;
 const MIN_REPLACEMENT_FEE_BUMP_PCT: u64 = 10;
+const MIN_REPLACEMENT_PRIORITY_BUMP_PCT: u64 = 25;
 const CHAIN_CONFIG_KEY: &[u8] = b"chain_config";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -862,9 +866,28 @@ impl Blockchain {
                 "transaction timestamp too far in the future",
             ));
         }
+        if tx.estimated_gas_for_admission() > self.block_gas_limit {
+            return Err(ChainError::InvalidTransactionFormat(
+                "transaction gas limit exceeds block gas limit",
+            ));
+        }
         let pending_base_fee = self.next_base_fee_per_gas(self.latest_block());
-        if tx.fee < self.minimum_admission_fee(&tx, pending_base_fee) {
+        if tx.max_fee_per_gas() < pending_base_fee {
             return Err(ChainError::FeeTooLow);
+        }
+        if tx.priority_fee_per_gas(pending_base_fee).unwrap_or_default()
+            < self.minimum_priority_fee_per_gas(&tx, pending_base_fee)
+        {
+            return Err(ChainError::FeeTooLow);
+        }
+        if tx.total_fee_cap() < self.minimum_admission_fee(&tx, pending_base_fee) {
+            return Err(ChainError::FeeTooLow);
+        }
+        let expected_nonce_floor = self.accounts.get(&tx.from).map(|a| a.nonce).unwrap_or(0);
+        if tx.nonce > expected_nonce_floor.saturating_add(MAX_PENDING_NONCE_GAP) {
+            return Err(ChainError::InvalidTransactionFormat(
+                "transaction nonce gap too large for mempool admission",
+            ));
         }
 
         let replacement_index = self
@@ -884,6 +907,21 @@ impl Blockchain {
         if sender_pending >= MAX_PENDING_TRANSACTIONS_PER_ACCOUNT && replacement_index.is_none() {
             return Err(ChainError::MempoolFull);
         }
+        let sender_pending_gas: u64 = self
+            .pending_transactions
+            .iter()
+            .filter(|pending| pending.from == tx.from)
+            .map(Transaction::estimated_gas_for_admission)
+            .sum();
+        let sender_pending_gas_budget = self
+            .block_gas_limit
+            .saturating_mul(MAX_PENDING_GAS_PER_ACCOUNT_MULTIPLIER);
+        if replacement_index.is_none()
+            && sender_pending_gas.saturating_add(tx.estimated_gas_for_admission())
+                > sender_pending_gas_budget
+        {
+            return Err(ChainError::MempoolFull);
+        }
 
         let tx_hash = tx.hash();
         if self
@@ -896,11 +934,38 @@ impl Blockchain {
 
         if let Some(index) = replacement_index {
             let existing = &self.pending_transactions[index];
-            let min_fee = existing
-                .fee
-                .saturating_add(existing.fee.saturating_mul(MIN_REPLACEMENT_FEE_BUMP_PCT) / 100)
-                .max(existing.fee.saturating_add(1));
-            if tx.fee < min_fee {
+            let min_total_fee_cap = existing
+                .total_fee_cap()
+                .saturating_add(
+                    existing
+                        .total_fee_cap()
+                        .saturating_mul(MIN_REPLACEMENT_FEE_BUMP_PCT)
+                        / 100,
+                )
+                .max(existing.total_fee_cap().saturating_add(1));
+            let existing_priority = existing
+                .priority_fee_per_gas(pending_base_fee)
+                .unwrap_or_default();
+            let min_priority_fee = existing_priority
+                .saturating_add(
+                    existing_priority
+                        .saturating_mul(MIN_REPLACEMENT_PRIORITY_BUMP_PCT)
+                        / 100,
+                )
+                .max(existing_priority.saturating_add(1));
+            let min_max_fee_per_gas = existing
+                .max_fee_per_gas()
+                .saturating_add(
+                    existing
+                        .max_fee_per_gas()
+                        .saturating_mul(MIN_REPLACEMENT_FEE_BUMP_PCT)
+                        / 100,
+                )
+                .max(existing.max_fee_per_gas().saturating_add(1));
+            if tx.total_fee_cap() < min_total_fee_cap
+                || tx.max_fee_per_gas() < min_max_fee_per_gas
+                || tx.priority_fee_per_gas(pending_base_fee).unwrap_or_default() < min_priority_fee
+            {
                 return Err(ChainError::ReplacementFeeTooLow);
             }
         }
@@ -1292,27 +1357,61 @@ impl Blockchain {
             return hash::sha3_hash(EMPTY_STATE_ROOT_SEED);
         }
 
+        let leaves = Self::state_leaf_hashes(accounts, contracts);
+        hash::merkle_root(&leaves)
+    }
+
+    fn account_leaf_hash(address: &[u8], state: &AccountState) -> Vec<u8> {
+        let encoded =
+            bincode::serialize(&(address, state)).expect("failed to serialize account leaf");
+        hash::sha3_hash(&encoded)
+    }
+
+    fn contract_storage_root(contract: &ContractState) -> Vec<u8> {
+        let mut storage_entries: Vec<(&Vec<u8>, &Vec<u8>)> = contract.storage.iter().collect();
+        storage_entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        let leaves: Vec<Vec<u8>> = storage_entries
+            .into_iter()
+            .map(|(key, value)| {
+                let encoded =
+                    bincode::serialize(&(key, value)).expect("failed to serialize storage leaf");
+                hash::sha3_hash(&encoded)
+            })
+            .collect();
+        hash::merkle_root(&leaves)
+    }
+
+    fn contract_leaf_hash(address: &[u8], state: &ContractState) -> Vec<u8> {
+        let storage_root = Self::contract_storage_root(state);
+        let code_hash = if state.code_hash.is_empty() {
+            hash::sha3_hash(&state.code)
+        } else {
+            state.code_hash.clone()
+        };
+        let encoded = bincode::serialize(&(address, code_hash, &state.owner, storage_root))
+            .expect("failed to serialize contract leaf");
+        hash::sha3_hash(&encoded)
+    }
+
+    fn state_leaf_hashes(
+        accounts: &HashMap<Vec<u8>, AccountState>,
+        contracts: &HashMap<Vec<u8>, ContractState>,
+    ) -> Vec<Vec<u8>> {
         let mut leaves: Vec<Vec<u8>> = Vec::new();
 
-        // Account leaves
         let mut account_entries: Vec<(&Vec<u8>, &AccountState)> = accounts.iter().collect();
         account_entries.sort_by(|(a, _), (b, _)| a.cmp(b));
         for (address, state) in account_entries {
-            let encoded =
-                bincode::serialize(&(address, state)).expect("failed to serialize state leaf");
-            leaves.push(hash::sha3_hash(&encoded));
+            leaves.push(Self::account_leaf_hash(address, state));
         }
 
-        // Contract leaves
         let mut contract_entries: Vec<(&Vec<u8>, &ContractState)> = contracts.iter().collect();
         contract_entries.sort_by(|(a, _), (b, _)| a.cmp(b));
         for (address, state) in contract_entries {
-            let encoded = bincode::serialize(&(address, state))
-                .expect("failed to serialize contract leaf");
-            leaves.push(hash::sha3_hash(&encoded));
+            leaves.push(Self::contract_leaf_hash(address, state));
         }
 
-        hash::merkle_root(&leaves)
+        leaves
     }
 
     fn accounts_from_genesis(
@@ -1350,6 +1449,127 @@ impl Blockchain {
         }
 
         Ok(accounts)
+    }
+
+    pub fn get_account_proof(&self, address: &[u8]) -> Option<AccountProof> {
+        let state = self.accounts.get(address)?.clone();
+        let mut account_entries: Vec<(&Vec<u8>, &AccountState)> = self.accounts.iter().collect();
+        account_entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        let account_index = account_entries
+            .iter()
+            .position(|(entry_address, _)| entry_address.as_slice() == address)?;
+        let leaf_hash = Self::account_leaf_hash(address, &state);
+        let leaves = Self::state_leaf_hashes(&self.accounts, &self.contracts);
+
+        Some(AccountProof {
+            address: address.to_vec(),
+            state,
+            leaf_index: account_index,
+            leaf_hash,
+            proof: hash::merkle_proof(&leaves, account_index),
+            state_root: Self::compute_state_root_full(&self.accounts, &self.contracts),
+        })
+    }
+
+    pub fn verify_account_proof(proof: &AccountProof) -> bool {
+        let expected_leaf = Self::account_leaf_hash(&proof.address, &proof.state);
+        expected_leaf == proof.leaf_hash
+            && hash::verify_merkle_proof(
+                &proof.leaf_hash,
+                &proof.proof,
+                proof.leaf_index,
+                &proof.state_root,
+            )
+    }
+
+    pub fn get_storage_proof(&self, contract_address: &[u8], key: &[u8]) -> Option<StorageProof> {
+        let contract = self.contracts.get(contract_address)?;
+        let value = contract.storage.get(key)?.clone();
+
+        let mut account_entries: Vec<(&Vec<u8>, &AccountState)> = self.accounts.iter().collect();
+        account_entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        let account_count = account_entries.len();
+
+        let mut contract_entries: Vec<(&Vec<u8>, &ContractState)> = self.contracts.iter().collect();
+        contract_entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        let contract_position = contract_entries
+            .iter()
+            .position(|(entry_address, _)| entry_address.as_slice() == contract_address)?;
+
+        let mut storage_entries: Vec<(&Vec<u8>, &Vec<u8>)> = contract.storage.iter().collect();
+        storage_entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        let storage_position = storage_entries
+            .iter()
+            .position(|(entry_key, _)| entry_key.as_slice() == key)?;
+        let storage_leaves: Vec<Vec<u8>> = storage_entries
+            .iter()
+            .map(|(entry_key, entry_value)| {
+                let encoded = bincode::serialize(&(entry_key, entry_value))
+                    .expect("failed to serialize storage proof leaf");
+                hash::sha3_hash(&encoded)
+            })
+            .collect();
+        let storage_leaf_hash = storage_leaves[storage_position].clone();
+        let storage_root = hash::merkle_root(&storage_leaves);
+        let contract_leaf_hash = Self::contract_leaf_hash(contract_address, contract);
+        let state_leaves = Self::state_leaf_hashes(&self.accounts, &self.contracts);
+        let code_hash = if contract.code_hash.is_empty() {
+            hash::sha3_hash(&contract.code)
+        } else {
+            contract.code_hash.clone()
+        };
+
+        Some(StorageProof {
+            contract_address: contract_address.to_vec(),
+            contract_code_hash: code_hash,
+            contract_owner: contract.owner.clone(),
+            key: key.to_vec(),
+            value,
+            storage_leaf_index: storage_position,
+            storage_leaf_hash,
+            storage_proof: hash::merkle_proof(&storage_leaves, storage_position),
+            storage_root,
+            contract_leaf_index: account_count + contract_position,
+            contract_leaf_hash,
+            contract_proof: hash::merkle_proof(&state_leaves, account_count + contract_position),
+            state_root: Self::compute_state_root_full(&self.accounts, &self.contracts),
+        })
+    }
+
+    pub fn verify_storage_proof(proof: &StorageProof) -> bool {
+        let storage_leaf = {
+            let encoded = bincode::serialize(&(&proof.key, &proof.value))
+                .expect("failed to serialize storage verification leaf");
+            hash::sha3_hash(&encoded)
+        };
+        if storage_leaf != proof.storage_leaf_hash {
+            return false;
+        }
+        if !hash::verify_merkle_proof(
+            &proof.storage_leaf_hash,
+            &proof.storage_proof,
+            proof.storage_leaf_index,
+            &proof.storage_root,
+        ) {
+            return false;
+        }
+        let contract_leaf = {
+            let encoded = bincode::serialize(&(
+                &proof.contract_address,
+                &proof.contract_code_hash,
+                &proof.contract_owner,
+                &proof.storage_root,
+            ))
+            .expect("failed to serialize contract verification leaf");
+            hash::sha3_hash(&encoded)
+        };
+        contract_leaf == proof.contract_leaf_hash
+            && hash::verify_merkle_proof(
+                &proof.contract_leaf_hash,
+                &proof.contract_proof,
+                proof.contract_leaf_index,
+                &proof.state_root,
+            )
     }
 
     fn decode_public_key_hex(value: &str) -> Result<Vec<u8>, ChainError> {
@@ -1651,7 +1871,7 @@ impl Blockchain {
         base_fee_per_gas: u64,
     ) -> Result<(), ChainError> {
         let required = gas_used.saturating_mul(base_fee_per_gas);
-        if tx.fee < required {
+        if tx.max_fee_per_gas() < base_fee_per_gas || tx.total_fee_cap() < required {
             return Err(ChainError::FeeTooLow);
         }
         Ok(())
@@ -1662,8 +1882,9 @@ impl Blockchain {
         gas_used: u64,
         base_fee_per_gas: u64,
     ) -> u64 {
-        tx.fee
-            .saturating_sub(gas_used.saturating_mul(base_fee_per_gas))
+        tx.priority_fee_per_gas(base_fee_per_gas)
+            .unwrap_or_default()
+            .saturating_mul(gas_used)
     }
 
     fn apply_user_transaction(
@@ -1698,7 +1919,7 @@ impl Blockchain {
                 sender.public_key = Some(tx.sender_public_key.clone());
             }
 
-            let needed = tx.amount.saturating_add(tx.fee);
+            let needed = tx.amount.saturating_add(tx.total_fee_cap());
             if sender.balance < needed {
                 return Err(ChainError::InsufficientBalance {
                     address: hex::encode(&tx.from),
@@ -1743,41 +1964,30 @@ impl Blockchain {
         }
 
         let tx_hash = tx.hash();
-
-        match tx.kind {
+        let mut maybe_receipt: Option<Receipt> = None;
+        let gas_used = match tx.kind {
             TransactionKind::Transfer => {
                 let recipient = accounts.entry(tx.to.clone()).or_default();
                 recipient.balance = recipient.balance.saturating_add(tx.amount);
-                let gas_used = crate::vm::gas::GAS_BASE_TX;
-                Self::ensure_transaction_fee_covers_base(tx, gas_used, base_fee_per_gas)?;
-                Ok(gas_used)
+                crate::vm::gas::GAS_BASE_TX
             }
-            TransactionKind::Stake => {
-                let gas_used = crate::vm::gas::GAS_BASE_TX;
-                Self::ensure_transaction_fee_covers_base(tx, gas_used, base_fee_per_gas)?;
-                Ok(gas_used)
-            }
-            TransactionKind::Unstake => {
-                let gas_used = crate::vm::gas::GAS_BASE_TX;
-                Self::ensure_transaction_fee_covers_base(tx, gas_used, base_fee_per_gas)?;
-                Ok(gas_used)
-            }
+            TransactionKind::Stake => crate::vm::gas::GAS_BASE_TX,
+            TransactionKind::Unstake => crate::vm::gas::GAS_BASE_TX,
             TransactionKind::Coinbase => {
                 Err(ChainError::InvalidTransactionFormat(
                     "coinbase not allowed in user transaction flow",
-                ))
+                ))?
             }
             TransactionKind::DeployContract => {
                 let (contract, mut receipt) =
                     Vm::deploy(&tx.to, &tx.from, tx.nonce.wrapping_sub(1), tx.gas_limit)?;
-                let gas_used = receipt.gas_used;
+                let deploy_gas_used = receipt.gas_used;
                 receipt.tx_hash = tx_hash.clone();
                 if let Some(ref addr) = receipt.contract_address {
                     contracts.insert(addr.clone(), contract);
                 }
-                Self::ensure_transaction_fee_covers_base(tx, gas_used, base_fee_per_gas)?;
-                receipts.insert(tx_hash, receipt);
-                Ok(gas_used)
+                maybe_receipt = Some(receipt);
+                deploy_gas_used
             }
             TransactionKind::CallContract => {
                 let contract = contracts.get_mut(&tx.to).ok_or_else(|| {
@@ -1785,18 +1995,40 @@ impl Blockchain {
                 })?;
                 let mut receipt =
                     Vm::call(contract, &tx.data, &tx.from, tx.amount, tx.gas_limit)?;
-                let gas_used = receipt.gas_used;
+                let call_gas_used = receipt.gas_used;
                 receipt.tx_hash = tx_hash.clone();
                 // Credit the contract's implicit balance via the recipient account
                 if tx.amount > 0 {
                     let recipient = accounts.entry(tx.to.clone()).or_default();
                     recipient.balance = recipient.balance.saturating_add(tx.amount);
                 }
-                Self::ensure_transaction_fee_covers_base(tx, gas_used, base_fee_per_gas)?;
-                receipts.insert(tx_hash, receipt);
-                Ok(gas_used)
+                maybe_receipt = Some(receipt);
+                call_gas_used
             }
+        };
+
+        Self::ensure_transaction_fee_covers_base(tx, gas_used, base_fee_per_gas)?;
+        let effective_gas_price = tx
+            .effective_gas_price(base_fee_per_gas)
+            .ok_or(ChainError::FeeTooLow)?;
+        let actual_fee_paid = gas_used.saturating_mul(effective_gas_price);
+        let gas_refunded = tx.total_fee_cap().saturating_sub(actual_fee_paid);
+        let priority_fee_paid = Self::priority_fee_for_transaction(tx, gas_used, base_fee_per_gas);
+        let base_fee_burned = gas_used
+            .saturating_mul(base_fee_per_gas);
+
+        let sender = accounts.entry(tx.from.clone()).or_default();
+        sender.balance = sender.balance.saturating_add(gas_refunded);
+
+        if let Some(mut receipt) = maybe_receipt {
+            receipt.effective_gas_price = effective_gas_price;
+            receipt.priority_fee_paid = priority_fee_paid;
+            receipt.base_fee_burned = base_fee_burned;
+            receipt.gas_refunded = gas_refunded;
+            receipts.insert(tx_hash, receipt);
         }
+
+        Ok(gas_used)
     }
 
     fn apply_coinbase_transaction(
@@ -1814,6 +2046,12 @@ impl Blockchain {
     }
 
     fn validate_transaction_shape(tx: &Transaction) -> Result<(), ChainError> {
+        if !tx.is_coinbase() && tx.max_priority_fee_per_gas() > tx.max_fee_per_gas() {
+            return Err(ChainError::InvalidTransactionFormat(
+                "max_priority_fee_per_gas cannot exceed max_fee_per_gas",
+            ));
+        }
+
         match tx.kind {
             TransactionKind::Coinbase => {
                 if tx.chain_id.is_empty() {
@@ -1828,7 +2066,12 @@ impl Blockchain {
                 if tx.to.len() != hash::ADDRESS_LEN {
                     return Err(ChainError::InvalidCoinbase);
                 }
-                if tx.fee != 0 || tx.nonce != 0 || tx.signature.is_some() {
+                if tx.fee != 0
+                    || tx.max_fee_per_gas() != 0
+                    || tx.max_priority_fee_per_gas() != 0
+                    || tx.nonce != 0
+                    || tx.signature.is_some()
+                {
                     return Err(ChainError::InvalidCoinbase);
                 }
                 Ok(())
@@ -1946,19 +2189,29 @@ impl Blockchain {
         let base_fee_per_gas = self.next_base_fee_per_gas(self.latest_block());
         self.pending_transactions.sort_by(|a, b| {
             if a.from == b.from {
-                a.nonce.cmp(&b.nonce).then_with(|| b.fee.cmp(&a.fee))
+                a.nonce
+                    .cmp(&b.nonce)
+                    .then_with(|| b.max_fee_per_gas().cmp(&a.max_fee_per_gas()))
             } else {
                 Self::compare_fee_priority(a, b, base_fee_per_gas)
                     .then_with(|| a.timestamp.cmp(&b.timestamp))
-                    .then_with(|| b.fee.cmp(&a.fee))
+                    .then_with(|| b.max_fee_per_gas().cmp(&a.max_fee_per_gas()))
             }
         });
     }
 
     fn prune_pending_transactions(&mut self) {
         let cutoff = chrono::Utc::now().timestamp() - MAX_PENDING_TX_AGE_SECS;
+        let base_fee_per_gas = self.next_base_fee_per_gas(self.latest_block());
+        let usage = self.pending_gas_usage();
+        let budget = self.pending_gas_budget().max(1);
         self.pending_transactions
-            .retain(|pending| pending.timestamp >= cutoff);
+            .retain(|pending| {
+                pending.timestamp >= cutoff
+                    && pending.max_fee_per_gas() >= base_fee_per_gas
+                    && pending.priority_fee_per_gas(base_fee_per_gas).unwrap_or_default()
+                        >= Self::minimum_priority_fee_per_gas_for_usage(pending, usage, budget)
+            });
         self.sort_pending_transactions();
     }
 
@@ -1969,17 +2222,11 @@ impl Blockchain {
     ) -> std::cmp::Ordering {
         let a_gas = a.estimated_gas_for_admission().max(1) as u128;
         let b_gas = b.estimated_gas_for_admission().max(1) as u128;
-        let a_fee = a
-            .fee
-            .saturating_sub(a.estimated_gas_for_admission().saturating_mul(base_fee_per_gas))
-            as u128;
-        let b_fee = b
-            .fee
-            .saturating_sub(b.estimated_gas_for_admission().saturating_mul(base_fee_per_gas))
-            as u128;
+        let a_fee = a.priority_fee_per_gas(base_fee_per_gas).unwrap_or_default() as u128;
+        let b_fee = b.priority_fee_per_gas(base_fee_per_gas).unwrap_or_default() as u128;
         (b_fee.saturating_mul(a_gas))
             .cmp(&a_fee.saturating_mul(b_gas))
-            .then_with(|| b.fee.cmp(&a.fee))
+            .then_with(|| b.max_fee_per_gas().cmp(&a.max_fee_per_gas()))
     }
 
     fn pending_gas_budget(&self) -> u64 {
@@ -1995,9 +2242,10 @@ impl Blockchain {
     }
 
     fn minimum_admission_fee(&self, tx: &Transaction, base_fee_per_gas: u64) -> u64 {
-        let required_base = tx
-            .estimated_gas_for_admission()
-            .saturating_mul(base_fee_per_gas);
+        let required_base = tx.effective_gas_limit().saturating_mul(base_fee_per_gas);
+        let required_priority = tx
+            .effective_gas_limit()
+            .saturating_mul(self.minimum_priority_fee_per_gas(tx, base_fee_per_gas));
         let usage = self.pending_gas_usage();
         let budget = self.pending_gas_budget().max(1);
         let occupancy_pct = usage.saturating_mul(100) / budget;
@@ -2013,13 +2261,45 @@ impl Blockchain {
             0
         };
         if surcharge == 0 {
-            return required_base;
+            return required_base.saturating_add(required_priority);
         }
         let units = tx
             .estimated_gas_for_admission()
             .saturating_add(99_999)
             / 100_000;
-        required_base.saturating_add(units.max(1).saturating_mul(surcharge))
+        required_base
+            .saturating_add(required_priority)
+            .saturating_add(units.max(1).saturating_mul(surcharge))
+    }
+
+    fn minimum_priority_fee_per_gas(&self, tx: &Transaction, _base_fee_per_gas: u64) -> u64 {
+        let usage = self.pending_gas_usage();
+        let budget = self.pending_gas_budget().max(1);
+        Self::minimum_priority_fee_per_gas_for_usage(tx, usage, budget)
+    }
+
+    fn minimum_priority_fee_per_gas_for_usage(
+        tx: &Transaction,
+        usage: u64,
+        budget: u64,
+    ) -> u64 {
+        let occupancy_pct = usage.saturating_mul(100) / budget;
+        let congestion_floor: u64 = if occupancy_pct >= 95 {
+            12
+        } else if occupancy_pct >= 85 {
+            8
+        } else if occupancy_pct >= 70 {
+            4
+        } else if occupancy_pct >= 50 {
+            2
+        } else {
+            0
+        };
+        let gas_units = tx
+            .estimated_gas_for_admission()
+            .saturating_add(249_999)
+            / 250_000;
+        congestion_floor.saturating_mul(gas_units.max(1))
     }
 
     fn worst_pending_transaction_index(&self) -> Option<usize> {
@@ -2029,7 +2309,9 @@ impl Blockchain {
             .enumerate()
             .min_by(|(_, a), (_, b)| {
                 if a.from == b.from {
-                    b.nonce.cmp(&a.nonce).then_with(|| a.fee.cmp(&b.fee))
+                    b.nonce
+                        .cmp(&a.nonce)
+                        .then_with(|| a.max_fee_per_gas().cmp(&b.max_fee_per_gas()))
                 } else {
                     Self::compare_fee_priority(a, b, base_fee_per_gas).reverse()
                 }
@@ -2189,9 +2471,10 @@ mod tests {
             validator.public_key.clone(),
             wasm_code,
             80_000,
-            100_000,
             0,
-        );
+            0,
+        )
+        .with_fee_caps(1_000, 100);
         deploy_tx.sign(&validator);
         chain.add_transaction(deploy_tx).unwrap();
 
@@ -2308,9 +2591,7 @@ mod tests {
 
     #[test]
     fn test_mempool_evicts_low_fee_under_gas_pressure() {
-        let kp1 = KeyPair::generate();
-        let kp2 = KeyPair::generate();
-        let kp3 = KeyPair::generate();
+        let keypairs: Vec<KeyPair> = (0..9).map(|_| KeyPair::generate()).collect();
         let mut chain = Blockchain::from_genesis(GenesisConfig {
             chain_id: "mempool-pressure-test".to_string(),
             chain_name: "mempool-pressure-test".to_string(),
@@ -2320,68 +2601,127 @@ mod tests {
             epoch_length: DEFAULT_EPOCH_LENGTH,
             jail_duration_blocks: DEFAULT_JAIL_DURATION_BLOCKS,
             block_gas_limit: 100_000,
-            allocations: vec![
-                GenesisAllocation {
-                    public_key: hex::encode(&kp1.public_key),
+            allocations: keypairs
+                .iter()
+                .map(|kp| GenesisAllocation {
+                    public_key: hex::encode(&kp.public_key),
                     balance: 10_000_000,
                     staked_balance: 0,
-                },
-                GenesisAllocation {
-                    public_key: hex::encode(&kp2.public_key),
-                    balance: 10_000_000,
-                    staked_balance: 0,
-                },
-                GenesisAllocation {
-                    public_key: hex::encode(&kp3.public_key),
-                    balance: 10_000_000,
-                    staked_balance: 0,
-                },
-            ],
+                })
+                .collect(),
             ..Default::default()
         })
         .unwrap();
 
         let wasm_code = br#"(module (memory (export "memory") 1) (func (export "curs3d_call")))"#
             .to_vec();
-        let mut tx1 = Transaction::deploy_contract(
-            chain.chain_id(),
-            kp1.public_key.clone(),
-            wasm_code.clone(),
-            400_000,
-            5,
-            0,
-        );
-        tx1.sign(&kp1);
-        chain.add_transaction(tx1.clone()).unwrap();
+        for kp in keypairs.iter().take(8) {
+            let mut tx = Transaction::deploy_contract(
+                chain.chain_id(),
+                kp.public_key.clone(),
+                wasm_code.clone(),
+                100_000,
+                0,
+                0,
+            )
+            .with_fee_caps(20, 1);
+            tx.sign(kp);
+            chain.add_transaction(tx).unwrap();
+        }
 
-        let mut tx2 = Transaction::deploy_contract(
-            chain.chain_id(),
-            kp2.public_key.clone(),
-            wasm_code.clone(),
-            400_000,
-            5,
-            0,
-        );
-        tx2.sign(&kp2);
-        chain.add_transaction(tx2.clone()).unwrap();
-
+        let premium = keypairs.last().unwrap();
         let mut tx3 = Transaction::deploy_contract(
             chain.chain_id(),
-            kp3.public_key.clone(),
+            premium.public_key.clone(),
             wasm_code,
-            400_000,
-            50,
+            100_000,
             0,
-        );
-        tx3.sign(&kp3);
+            0,
+        )
+        .with_fee_caps(20, 10);
+        tx3.sign(premium);
         chain.add_transaction(tx3.clone()).unwrap();
 
-        assert_eq!(chain.pending_transactions.len(), 2);
+        assert!(!chain.pending_transactions.is_empty());
+        assert!(chain.pending_transactions.len() < 9);
         assert!(chain
             .pending_transactions
             .iter()
             .any(|pending| pending.hash() == tx3.hash()));
         assert!(chain.pending_gas_usage() <= chain.pending_gas_budget());
+    }
+
+    #[test]
+    fn test_replacement_requires_priority_fee_bump() {
+        let validator = KeyPair::generate();
+        let recipient = KeyPair::generate();
+        let mut chain = Blockchain::from_genesis(GenesisConfig {
+            chain_id: "replacement-fee-test".to_string(),
+            chain_name: "replacement-fee-test".to_string(),
+            allocations: vec![GenesisAllocation {
+                public_key: hex::encode(&validator.public_key),
+                balance: 50_000_000,
+                staked_balance: 0,
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+
+        let recipient_address = hash::address_bytes_from_public_key(&recipient.public_key);
+        let mut tx1 = Transaction::new(
+            chain.chain_id(),
+            validator.public_key.clone(),
+            recipient_address.clone(),
+            1_000,
+            0,
+            0,
+        )
+        .with_fee_caps(10, 2);
+        tx1.sign(&validator);
+        chain.add_transaction(tx1).unwrap();
+
+        let mut replacement = Transaction::new(
+            chain.chain_id(),
+            validator.public_key.clone(),
+            recipient_address,
+            2_000,
+            0,
+            0,
+        )
+        .with_fee_caps(20, 2);
+        replacement.sign(&validator);
+        let err = chain.add_transaction(replacement).unwrap_err();
+        assert!(matches!(err, ChainError::ReplacementFeeTooLow));
+    }
+
+    #[test]
+    fn test_rejects_excessive_pending_nonce_gap() {
+        let validator = KeyPair::generate();
+        let recipient = KeyPair::generate();
+        let mut chain = Blockchain::from_genesis(GenesisConfig {
+            chain_id: "nonce-gap-test".to_string(),
+            chain_name: "nonce-gap-test".to_string(),
+            allocations: vec![GenesisAllocation {
+                public_key: hex::encode(&validator.public_key),
+                balance: 50_000_000,
+                staked_balance: 0,
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+
+        let mut tx = Transaction::new(
+            chain.chain_id(),
+            validator.public_key.clone(),
+            hash::address_bytes_from_public_key(&recipient.public_key),
+            1_000,
+            0,
+            MAX_PENDING_NONCE_GAP + 1,
+        )
+        .with_fee_caps(10, 2);
+        tx.sign(&validator);
+        let err = chain.add_transaction(tx).unwrap_err();
+        assert!(matches!(err, ChainError::InvalidTransactionFormat(_)));
     }
 
     #[test]
@@ -2514,9 +2854,10 @@ mod tests {
             validator.public_key.clone(),
             wasm_code,
             1_000_000,
-            100,
             0,
-        );
+            0,
+        )
+        .with_fee_caps(20, 2);
         deploy_tx.sign(&validator);
         chain.add_transaction(deploy_tx).unwrap();
 
@@ -2553,9 +2894,10 @@ mod tests {
             validator.public_key.clone(),
             wasm_code,
             1_000_000,
-            100,
             0,
-        );
+            0,
+        )
+        .with_fee_caps(20, 2);
         deploy_tx.sign(&validator);
         chain.add_transaction(deploy_tx).unwrap();
 
@@ -2580,9 +2922,10 @@ mod tests {
             b"do_something".to_vec(),
             0,
             1_000_000,
-            100,
+            0,
             1,
-        );
+        )
+        .with_fee_caps(20, 3);
         call_tx.sign(&validator);
         chain.add_transaction(call_tx).unwrap();
 
@@ -2599,6 +2942,100 @@ mod tests {
         assert!(call_receipt.success);
         assert!(call_receipt.gas_used > 0);
         assert_eq!(call_receipt.return_data, 7i32.to_le_bytes().to_vec());
+        assert!(call_receipt.effective_gas_price >= chain.current_base_fee_per_gas());
+        assert!(call_receipt.gas_refunded > 0);
+        assert_eq!(
+            call_receipt.priority_fee_paid
+                + call_receipt.base_fee_burned
+                + call_receipt.gas_refunded,
+            20 * 1_000_000
+        );
+    }
+
+    #[test]
+    fn test_account_and_storage_proofs_roundtrip() {
+        let mut chain = Blockchain::new();
+        let validator = KeyPair::generate();
+
+        let block = chain.create_block(&validator).unwrap();
+        chain.add_block(block).unwrap();
+
+        let wasm_code = br#"(module
+            (import "curs3d" "storage_write_bytes" (func $storage_write_bytes (param i32 i32 i32 i32) (result i32)))
+            (import "curs3d" "storage_read" (func $storage_read (param i32 i32 i32 i32) (result i32)))
+            (import "curs3d" "emit_log_bytes" (func $emit_log_bytes (param i32 i32 i32 i32) (result i32)))
+            (memory (export "memory") 1)
+            (data (i32.const 0) "key1")
+            (data (i32.const 16) "val1")
+            (data (i32.const 32) "topic")
+            (func (export "curs3d_call") (result i32)
+                i32.const 0
+                i32.const 4
+                i32.const 16
+                i32.const 4
+                call $storage_write_bytes
+                drop
+                i32.const 0
+                i32.const 4
+                i32.const 64
+                i32.const 16
+                call $storage_read
+                drop
+                i32.const 32
+                i32.const 5
+                i32.const 64
+                i32.const 4
+                call $emit_log_bytes
+                drop
+                i32.const 1)
+        )"#
+        .to_vec();
+
+        let mut deploy_tx = Transaction::deploy_contract(
+            chain.chain_id(),
+            validator.public_key.clone(),
+            wasm_code,
+            1_000_000,
+            0,
+            0,
+        )
+        .with_fee_caps(20, 2);
+        deploy_tx.sign(&validator);
+        chain.add_transaction(deploy_tx).unwrap();
+
+        let block = chain.create_block(&validator).unwrap();
+        chain.add_block(block).unwrap();
+
+        let contract_address = chain
+            .receipts
+            .values()
+            .find_map(|receipt| receipt.contract_address.clone())
+            .unwrap();
+
+        let mut call_tx = Transaction::call_contract(
+            chain.chain_id(),
+            validator.public_key.clone(),
+            contract_address.clone(),
+            Vec::new(),
+            0,
+            1_000_000,
+            0,
+            1,
+        )
+        .with_fee_caps(20, 2);
+        call_tx.sign(&validator);
+        chain.add_transaction(call_tx).unwrap();
+
+        let block = chain.create_block(&validator).unwrap();
+        chain.add_block(block).unwrap();
+
+        let validator_address = hash::address_bytes_from_public_key(&validator.public_key);
+        let account_proof = chain.get_account_proof(&validator_address).unwrap();
+        assert!(Blockchain::verify_account_proof(&account_proof));
+
+        let storage_proof = chain.get_storage_proof(&contract_address, b"key1").unwrap();
+        assert_eq!(storage_proof.value, b"val1".to_vec());
+        assert!(Blockchain::verify_storage_proof(&storage_proof));
     }
 
     #[test]

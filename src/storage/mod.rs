@@ -159,6 +159,8 @@ impl LegacyTransactionV1 {
             to: self.to,
             amount: self.amount,
             fee: self.fee,
+            max_fee_per_gas: self.fee,
+            max_priority_fee_per_gas: self.fee,
             nonce: self.nonce,
             timestamp: self.timestamp,
             signature: self.signature,

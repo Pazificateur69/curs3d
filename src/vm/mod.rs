@@ -2,16 +2,123 @@ pub mod gas;
 pub mod state;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::core::receipt::{LogEntry, Receipt};
 use crate::crypto::hash;
 use state::ContractState;
 use thiserror::Error;
 use wasmer::{
-    Function, FunctionEnv, FunctionEnvMut, Instance, Memory, MemoryAccessError, Module,
-    RuntimeError, Store, Type, Value, imports,
+    CompilerConfig, Cranelift, EngineBuilder, Function, FunctionEnv, FunctionEnvMut,
+    FunctionMiddleware, Instance, Memory, MemoryAccessError, MiddlewareReaderState, Module,
+    ModuleMiddleware, RuntimeError, Store, Type, Value, imports, wat2wasm,
     wasmparser::{Operator, Parser, Payload},
 };
+use wasmer_types::{LocalFunctionIndex, MiddlewareError};
+
+fn operator_gas_cost(operator: &Operator<'_>) -> u64 {
+    use Operator::*;
+
+    match operator {
+        Block { .. }
+        | Loop { .. }
+        | If { .. }
+        | Else
+        | End
+        | Br { .. }
+        | BrIf { .. }
+        | BrTable { .. }
+        | Return
+        | Select
+        | TypedSelect { .. } => gas::GAS_WASM_CONTROL_OP,
+        Call { .. }
+        | CallIndirect { .. }
+        | ReturnCall { .. }
+        | ReturnCallIndirect { .. } => gas::GAS_WASM_CALL_OP,
+        I32Load { .. }
+        | I64Load { .. }
+        | F32Load { .. }
+        | F64Load { .. }
+        | I32Load8S { .. }
+        | I32Load8U { .. }
+        | I32Load16S { .. }
+        | I32Load16U { .. }
+        | I64Load8S { .. }
+        | I64Load8U { .. }
+        | I64Load16S { .. }
+        | I64Load16U { .. }
+        | I64Load32S { .. }
+        | I64Load32U { .. }
+        | I32Store { .. }
+        | I64Store { .. }
+        | F32Store { .. }
+        | F64Store { .. }
+        | I32Store8 { .. }
+        | I32Store16 { .. }
+        | I64Store8 { .. }
+        | I64Store16 { .. }
+        | I64Store32 { .. }
+        | MemorySize { .. }
+        | MemoryGrow { .. }
+        | MemoryCopy { .. }
+        | MemoryFill { .. }
+        | MemoryInit { .. }
+        | DataDrop { .. } => gas::GAS_WASM_MEMORY_OP,
+        I32Const { .. }
+        | I64Const { .. }
+        | F32Const { .. }
+        | F64Const { .. }
+        | I32Eqz
+        | I32Eq
+        | I32Ne
+        | I32LtS
+        | I32LtU
+        | I32GtS
+        | I32GtU
+        | I32LeS
+        | I32LeU
+        | I32GeS
+        | I32GeU
+        | I64Eqz
+        | I64Eq
+        | I64Ne
+        | I64LtS
+        | I64LtU
+        | I64GtS
+        | I64GtU
+        | I64LeS
+        | I64LeU
+        | I64GeS
+        | I64GeU
+        | I32Add
+        | I32Sub
+        | I32Mul
+        | I32DivS
+        | I32DivU
+        | I32RemS
+        | I32RemU
+        | I32And
+        | I32Or
+        | I32Xor
+        | I32Shl
+        | I32ShrS
+        | I32ShrU
+        | I64Add
+        | I64Sub
+        | I64Mul
+        | I64DivS
+        | I64DivU
+        | I64RemS
+        | I64RemU
+        | I64And
+        | I64Or
+        | I64Xor
+        | I64Shl
+        | I64ShrS
+        | I64ShrU => gas::GAS_WASM_NUMERIC_OP,
+        _ => gas::GAS_WASM_DEFAULT_OP,
+    }
+}
 
 #[derive(Clone)]
 struct VmExecutionContext {
@@ -25,10 +132,64 @@ struct VmExecutionContext {
     memory: Option<Memory>,
 }
 
-#[derive(Default)]
-struct VmAnalysis {
-    contains_loops: bool,
-    has_explicit_fuel_hook: bool,
+#[derive(Debug)]
+struct FuelMeteringModule {
+    hook_function_index: Option<u32>,
+}
+
+#[derive(Debug)]
+struct FuelMeteringFunction {
+    hook_function_index: Option<u32>,
+}
+
+impl ModuleMiddleware for FuelMeteringModule {
+    fn generate_function_middleware(
+        &self,
+        _local_function_index: LocalFunctionIndex,
+    ) -> Box<dyn FunctionMiddleware> {
+        Box::new(FuelMeteringFunction {
+            hook_function_index: self.hook_function_index,
+        })
+    }
+}
+
+impl FunctionMiddleware for FuelMeteringFunction {
+    fn feed<'a>(
+        &mut self,
+        operator: Operator<'a>,
+        state: &mut MiddlewareReaderState<'a>,
+    ) -> Result<(), MiddlewareError> {
+        let metering_cost = operator_gas_cost(&operator);
+        match operator {
+            loop_op @ Operator::Loop { .. } => {
+                state.push_operator(loop_op);
+                let Some(function_index) = self.hook_function_index else {
+                    return Err(MiddlewareError::new(
+                        "fuel-metering",
+                        "contracts with loops must import `consume_gas` or `loop_tick`",
+                    ));
+                };
+                state.push_operator(Operator::I64Const {
+                    value: metering_cost
+                        .saturating_add(gas::GAS_WASM_LOOP_TICK) as i64,
+                });
+                state.push_operator(Operator::Call { function_index });
+                Ok(())
+            }
+            other => {
+                if let Some(function_index) = self.hook_function_index {
+                    if metering_cost > 0 {
+                        state.push_operator(Operator::I64Const {
+                            value: metering_cost as i64,
+                        });
+                        state.push_operator(Operator::Call { function_index });
+                    }
+                }
+                state.push_operator(other);
+                Ok(())
+            }
+        }
+    }
 }
 
 #[derive(Error, Debug)]
@@ -139,164 +300,59 @@ impl Vm {
                 let mut reader = body.get_operators_reader().map_err(|_| VmError::InvalidWasm)?;
                 while !reader.eof() {
                     let op = reader.read().map_err(|_| VmError::InvalidWasm)?;
-                    total = total.saturating_add(Self::operator_gas_cost(&op));
+                    total = total.saturating_add(operator_gas_cost(&op));
                 }
             }
         }
         Ok(total)
     }
 
-    fn analyze_module(code: &[u8]) -> Result<VmAnalysis, VmError> {
+    fn normalize_module_bytes(code: &[u8]) -> Result<Vec<u8>, VmError> {
         if code.starts_with(b"(module") {
-            let source = std::str::from_utf8(code).map_err(|_| VmError::InvalidWasm)?;
-            let contains_loops = source.contains("(loop") || source.contains(" loop");
-            let has_explicit_fuel_hook =
-                source.contains("\"consume_gas\"") || source.contains("\"loop_tick\"");
-            return Ok(VmAnalysis {
-                contains_loops,
-                has_explicit_fuel_hook,
-            });
+            return wat2wasm(code)
+                .map(|bytes| bytes.into_owned())
+                .map_err(|_| VmError::InvalidWasm);
         }
+        Ok(code.to_vec())
+    }
 
-        let mut analysis = VmAnalysis::default();
+    fn fuel_hook_function_index(code: &[u8]) -> Result<Option<u32>, VmError> {
+        let mut function_import_index = 0u32;
+        let mut fallback = None;
+
         for payload in Parser::new(0).parse_all(code) {
-            match payload.map_err(|_| VmError::InvalidWasm)? {
-                Payload::ImportSection(reader) => {
-                    for import in reader {
-                        let import = import.map_err(|_| VmError::InvalidWasm)?;
-                        if import.module == "curs3d"
-                            && (import.name == "consume_gas" || import.name == "loop_tick")
-                        {
-                            analysis.has_explicit_fuel_hook = true;
+            if let Payload::ImportSection(reader) = payload.map_err(|_| VmError::InvalidWasm)? {
+                for import in reader {
+                    let import = import.map_err(|_| VmError::InvalidWasm)?;
+                    if matches!(import.ty, wasmer::wasmparser::TypeRef::Func(_)) {
+                        if import.module == "curs3d" && import.name == "loop_tick" {
+                            return Ok(Some(function_import_index));
                         }
+                        if import.module == "curs3d" && import.name == "consume_gas" {
+                            fallback = Some(function_import_index);
+                        }
+                        function_import_index = function_import_index.saturating_add(1);
                     }
                 }
-                Payload::CodeSectionEntry(body) => {
-                    let mut reader =
-                        body.get_operators_reader().map_err(|_| VmError::InvalidWasm)?;
-                    while !reader.eof() {
-                        let op = reader.read().map_err(|_| VmError::InvalidWasm)?;
-                        if matches!(op, Operator::Loop { .. } | Operator::Br { .. } | Operator::BrIf { .. } | Operator::BrTable { .. }) {
-                            analysis.contains_loops = true;
-                        }
-                    }
-                }
-                _ => {}
             }
         }
-        Ok(analysis)
+
+        Ok(fallback)
     }
 
-    fn ensure_runtime_metering(code: &[u8]) -> Result<(), VmError> {
-        let analysis = Self::analyze_module(code)?;
-        if analysis.contains_loops && !analysis.has_explicit_fuel_hook {
-            return Err(VmError::UnmeteredLoop);
+    fn module_contains_loops(code: &[u8]) -> Result<bool, VmError> {
+        for payload in Parser::new(0).parse_all(code) {
+            let payload = payload.map_err(|_| VmError::InvalidWasm)?;
+            if let Payload::CodeSectionEntry(body) = payload {
+                let mut reader = body.get_operators_reader().map_err(|_| VmError::InvalidWasm)?;
+                while !reader.eof() {
+                    if matches!(reader.read().map_err(|_| VmError::InvalidWasm)?, Operator::Loop { .. }) {
+                        return Ok(true);
+                    }
+                }
+            }
         }
-        Ok(())
-    }
-
-    fn operator_gas_cost(operator: &Operator<'_>) -> u64 {
-        use Operator::*;
-
-        match operator {
-            Block { .. }
-            | Loop { .. }
-            | If { .. }
-            | Else
-            | End
-            | Br { .. }
-            | BrIf { .. }
-            | BrTable { .. }
-            | Return
-            | Select
-            | TypedSelect { .. } => gas::GAS_WASM_CONTROL_OP,
-            Call { .. }
-            | CallIndirect { .. }
-            | ReturnCall { .. }
-            | ReturnCallIndirect { .. } => gas::GAS_WASM_CALL_OP,
-            I32Load { .. }
-            | I64Load { .. }
-            | F32Load { .. }
-            | F64Load { .. }
-            | I32Load8S { .. }
-            | I32Load8U { .. }
-            | I32Load16S { .. }
-            | I32Load16U { .. }
-            | I64Load8S { .. }
-            | I64Load8U { .. }
-            | I64Load16S { .. }
-            | I64Load16U { .. }
-            | I64Load32S { .. }
-            | I64Load32U { .. }
-            | I32Store { .. }
-            | I64Store { .. }
-            | F32Store { .. }
-            | F64Store { .. }
-            | I32Store8 { .. }
-            | I32Store16 { .. }
-            | I64Store8 { .. }
-            | I64Store16 { .. }
-            | I64Store32 { .. }
-            | MemorySize { .. }
-            | MemoryGrow { .. }
-            | MemoryCopy { .. }
-            | MemoryFill { .. }
-            | MemoryInit { .. }
-            | DataDrop { .. } => gas::GAS_WASM_MEMORY_OP,
-            I32Const { .. }
-            | I64Const { .. }
-            | F32Const { .. }
-            | F64Const { .. }
-            | I32Eqz
-            | I32Eq
-            | I32Ne
-            | I32LtS
-            | I32LtU
-            | I32GtS
-            | I32GtU
-            | I32LeS
-            | I32LeU
-            | I32GeS
-            | I32GeU
-            | I64Eqz
-            | I64Eq
-            | I64Ne
-            | I64LtS
-            | I64LtU
-            | I64GtS
-            | I64GtU
-            | I64LeS
-            | I64LeU
-            | I64GeS
-            | I64GeU
-            | I32Add
-            | I32Sub
-            | I32Mul
-            | I32DivS
-            | I32DivU
-            | I32RemS
-            | I32RemU
-            | I32And
-            | I32Or
-            | I32Xor
-            | I32Shl
-            | I32ShrS
-            | I32ShrU
-            | I64Add
-            | I64Sub
-            | I64Mul
-            | I64DivS
-            | I64DivU
-            | I64RemS
-            | I64RemU
-            | I64And
-            | I64Or
-            | I64Xor
-            | I64Shl
-            | I64ShrS
-            | I64ShrU => gas::GAS_WASM_NUMERIC_OP,
-            _ => gas::GAS_WASM_DEFAULT_OP,
-        }
+        Ok(false)
     }
 
     fn build_imports(
@@ -394,9 +450,27 @@ impl Vm {
         }
     }
 
-    fn compile_module(code: &[u8]) -> Result<Module, VmError> {
-        let store = Store::default();
-        Module::new(&store, code).map_err(|_| VmError::InvalidWasm)
+    fn compile_module(code: &[u8]) -> Result<(Store, Module, Vec<u8>, bool), VmError> {
+        let wasm_bytes = Self::normalize_module_bytes(code)?;
+        let hook_function_index = Self::fuel_hook_function_index(&wasm_bytes)?;
+        if hook_function_index.is_none() && Self::module_contains_loops(&wasm_bytes)? {
+            return Err(VmError::UnmeteredLoop);
+        }
+        let mut compiler = Cranelift::default();
+        if hook_function_index.is_some() {
+            compiler.push_middleware(Arc::new(FuelMeteringModule { hook_function_index }));
+        }
+        let engine = EngineBuilder::new(compiler).engine();
+        let store = Store::new(engine);
+        let module = Module::new(&store, &wasm_bytes).map_err(|err| {
+            let message = err.to_string();
+            if message.contains("contracts with loops must import") {
+                VmError::UnmeteredLoop
+            } else {
+                VmError::InvalidWasm
+            }
+        })?;
+        Ok((store, module, wasm_bytes, hook_function_index.is_some()))
     }
 
     pub fn deploy(
@@ -409,12 +483,11 @@ impl Vm {
             return Err(VmError::EmptyBytecode);
         }
 
-        Self::ensure_runtime_metering(code)?;
-        let _module = Self::compile_module(code)?;
+        let (_store, _module, normalized_code, _) = Self::compile_module(code)?;
 
         let gas_needed = gas::GAS_BASE_TX
             .saturating_add(gas::GAS_DEPLOY)
-            .saturating_add((code.len() as u64).saturating_mul(gas::GAS_PER_BYTE));
+            .saturating_add((normalized_code.len() as u64).saturating_mul(gas::GAS_PER_BYTE));
 
         if gas_limit < gas_needed {
             return Err(VmError::OutOfGas {
@@ -426,11 +499,11 @@ impl Vm {
         let mut addr_input = deployer.to_vec();
         addr_input.extend_from_slice(&nonce.to_le_bytes());
         let contract_address = hash::sha3_hash(&addr_input)[..hash::ADDRESS_LEN].to_vec();
-        let code_hash = hash::sha3_hash(code);
+        let code_hash = hash::sha3_hash(&normalized_code);
 
         let contract = ContractState {
             code_hash: code_hash.clone(),
-            code: code.to_vec(),
+            code: normalized_code,
             storage: HashMap::new(),
             owner: deployer.to_vec(),
         };
@@ -439,6 +512,10 @@ impl Vm {
             tx_hash: Vec::new(),
             success: true,
             gas_used: gas_needed,
+            effective_gas_price: 0,
+            priority_fee_paid: 0,
+            base_fee_burned: 0,
+            gas_refunded: 0,
             logs: Vec::new(),
             return_data: Vec::new(),
             contract_address: Some(contract_address),
@@ -454,12 +531,16 @@ impl Vm {
         _value: u64,
         gas_limit: u64,
     ) -> Result<Receipt, VmError> {
-        Self::ensure_runtime_metering(&contract.code)?;
         let static_execution_gas = Self::estimate_wasm_gas(&contract.code)?;
-        let gas_needed = gas::GAS_BASE_TX
+        let (mut store, module, _, runtime_metered) = Self::compile_module(&contract.code)?;
+        let intrinsic_gas = gas::GAS_BASE_TX
             .saturating_add(gas::GAS_CALL)
-            .saturating_add((function_data.len() as u64).saturating_mul(gas::GAS_PER_BYTE))
-            .saturating_add(static_execution_gas);
+            .saturating_add((function_data.len() as u64).saturating_mul(gas::GAS_PER_BYTE));
+        let gas_needed = if runtime_metered {
+            intrinsic_gas
+        } else {
+            intrinsic_gas.saturating_add(static_execution_gas)
+        };
 
         if gas_limit < gas_needed {
             return Err(VmError::OutOfGas {
@@ -468,8 +549,6 @@ impl Vm {
             });
         }
 
-        let mut store = Store::default();
-        let module = Module::new(&store, &contract.code).map_err(|_| VmError::InvalidWasm)?;
         let input = function_data
             .get(..8)
             .and_then(Self::bytes_to_i64)
@@ -526,6 +605,10 @@ impl Vm {
             tx_hash: Vec::new(),
             success: true,
             gas_used: gas_limit.saturating_sub(ctx.gas_remaining),
+            effective_gas_price: 0,
+            priority_fee_paid: 0,
+            base_fee_burned: 0,
+            gas_refunded: 0,
             logs: if ctx.logs.is_empty() {
                 vec![LogEntry {
                     contract: ctx.contract_id.clone(),
@@ -686,5 +769,28 @@ mod tests {
         )"#;
         let err = Vm::deploy(loop_contract, &deployer, 0, 1_000_000).unwrap_err();
         assert!(matches!(err, VmError::UnmeteredLoop));
+    }
+
+    #[test]
+    fn test_instruction_metering_with_hook_out_of_gas() {
+        let deployer = vec![1u8; 20];
+        let loop_contract = br#"(module
+            (import "curs3d" "loop_tick" (func $loop_tick (param i64)))
+            (memory (export "memory") 1)
+            (func (export "curs3d_call")
+                (local i32)
+                i32.const 32
+                local.set 0
+                (loop
+                    local.get 0
+                    i32.const 1
+                    i32.sub
+                    local.tee 0
+                    br_if 0))
+        )"#;
+        let (mut contract, _) = Vm::deploy(loop_contract, &deployer, 0, 1_000_000).unwrap();
+        let caller = vec![2u8; 20];
+        let err = Vm::call(&mut contract, b"", &caller, 0, 200).unwrap_err();
+        assert!(matches!(err, VmError::Execution(_) | VmError::OutOfGas { .. }));
     }
 }

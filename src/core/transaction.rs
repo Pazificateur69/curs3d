@@ -21,7 +21,12 @@ pub struct Transaction {
     pub sender_public_key: Vec<u8>,
     pub to: Vec<u8>,
     pub amount: u64,
+    #[serde(default)]
     pub fee: u64,
+    #[serde(default)]
+    pub max_fee_per_gas: u64,
+    #[serde(default)]
+    pub max_priority_fee_per_gas: u64,
     pub nonce: u64,
     pub timestamp: i64,
     pub signature: Option<Signature>,
@@ -40,6 +45,8 @@ struct SignableTransaction<'a> {
     to: &'a [u8],
     amount: u64,
     fee: u64,
+    max_fee_per_gas: u64,
+    max_priority_fee_per_gas: u64,
     nonce: u64,
     timestamp: i64,
     gas_limit: u64,
@@ -47,6 +54,19 @@ struct SignableTransaction<'a> {
 }
 
 impl Transaction {
+    fn canonical_max_fee_per_gas(&self) -> u64 {
+        self.max_fee_per_gas.max(self.fee)
+    }
+
+    fn canonical_max_priority_fee_per_gas(&self) -> u64 {
+        let max_fee = self.canonical_max_fee_per_gas();
+        if self.max_priority_fee_per_gas == 0 {
+            self.fee.min(max_fee)
+        } else {
+            self.max_priority_fee_per_gas.min(max_fee)
+        }
+    }
+
     pub fn intrinsic_gas(&self) -> u64 {
         let payload_bytes = match self.kind {
             TransactionKind::Transfer => self.data.len(),
@@ -78,6 +98,46 @@ impl Transaction {
         }
     }
 
+    pub fn effective_gas_limit(&self) -> u64 {
+        self.estimated_gas_for_admission()
+    }
+
+    pub fn max_fee_per_gas(&self) -> u64 {
+        self.canonical_max_fee_per_gas()
+    }
+
+    pub fn max_priority_fee_per_gas(&self) -> u64 {
+        self.canonical_max_priority_fee_per_gas()
+    }
+
+    pub fn total_fee_cap(&self) -> u64 {
+        self.effective_gas_limit()
+            .saturating_mul(self.max_fee_per_gas())
+    }
+
+    pub fn effective_gas_price(&self, base_fee_per_gas: u64) -> Option<u64> {
+        let max_fee = self.max_fee_per_gas();
+        if max_fee < base_fee_per_gas {
+            return None;
+        }
+        let priority = self
+            .max_priority_fee_per_gas()
+            .min(max_fee.saturating_sub(base_fee_per_gas));
+        Some(base_fee_per_gas.saturating_add(priority))
+    }
+
+    pub fn priority_fee_per_gas(&self, base_fee_per_gas: u64) -> Option<u64> {
+        self.effective_gas_price(base_fee_per_gas)
+            .map(|effective| effective.saturating_sub(base_fee_per_gas))
+    }
+
+    pub fn with_fee_caps(mut self, max_fee_per_gas: u64, max_priority_fee_per_gas: u64) -> Self {
+        self.fee = max_fee_per_gas;
+        self.max_fee_per_gas = max_fee_per_gas;
+        self.max_priority_fee_per_gas = max_priority_fee_per_gas.min(max_fee_per_gas);
+        self
+    }
+
     pub fn new(
         chain_id: &str,
         sender_public_key: Vec<u8>,
@@ -94,6 +154,8 @@ impl Transaction {
             to,
             amount,
             fee,
+            max_fee_per_gas: fee,
+            max_priority_fee_per_gas: fee,
             nonce,
             timestamp: chrono::Utc::now().timestamp(),
             signature: None,
@@ -117,6 +179,8 @@ impl Transaction {
             to: Vec::new(),
             amount,
             fee,
+            max_fee_per_gas: fee,
+            max_priority_fee_per_gas: fee,
             nonce,
             timestamp: chrono::Utc::now().timestamp(),
             signature: None,
@@ -143,6 +207,8 @@ impl Transaction {
             to,
             amount,
             fee: 0,
+            max_fee_per_gas: 0,
+            max_priority_fee_per_gas: 0,
             nonce: 0,
             timestamp,
             signature: None,
@@ -169,6 +235,8 @@ impl Transaction {
             to: &self.to,
             amount: self.amount,
             fee: self.fee,
+            max_fee_per_gas: self.max_fee_per_gas(),
+            max_priority_fee_per_gas: self.max_priority_fee_per_gas(),
             nonce: self.nonce,
             timestamp: self.timestamp,
             gas_limit: self.gas_limit,
@@ -232,6 +300,8 @@ impl Transaction {
             to: code,
             amount: 0,
             fee,
+            max_fee_per_gas: fee,
+            max_priority_fee_per_gas: fee,
             nonce,
             timestamp: chrono::Utc::now().timestamp(),
             signature: None,
@@ -258,6 +328,8 @@ impl Transaction {
             to: contract_addr,
             amount: value,
             fee,
+            max_fee_per_gas: fee,
+            max_priority_fee_per_gas: fee,
             nonce,
             timestamp: chrono::Utc::now().timestamp(),
             signature: None,
@@ -291,6 +363,8 @@ impl Transaction {
             to: Vec::new(),
             amount,
             fee,
+            max_fee_per_gas: fee,
+            max_priority_fee_per_gas: fee,
             nonce,
             timestamp: chrono::Utc::now().timestamp(),
             signature: None,
