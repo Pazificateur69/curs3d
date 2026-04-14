@@ -1,223 +1,224 @@
 <p align="center">
-  <strong>CURS3D</strong><br>
-  Quantum-Resistant Layer 1 Blockchain
-</p>
-
-<p align="center">
+  <br>
+  <strong style="font-size: 2rem;">CURS3D</strong><br>
+  <em>Quantum-Resistant Layer 1 Blockchain</em>
+  <br><br>
   <a href="https://github.com/Pazificateur69/curs3d/actions"><img src="https://github.com/Pazificateur69/curs3d/workflows/CI/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
-  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.94+-orange.svg" alt="Rust 1.94+"></a>
-  <img src="https://img.shields.io/badge/tests-46%20passing-brightgreen.svg" alt="46 tests">
+  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-2024_edition-orange.svg" alt="Rust 2024"></a>
+  <img src="https://img.shields.io/badge/tests-80%20passing-brightgreen.svg" alt="80 tests">
+  <img src="https://img.shields.io/badge/clippy-0%20warnings-brightgreen.svg" alt="0 clippy warnings">
   <img src="https://img.shields.io/badge/quantum-resistant-blueviolet.svg" alt="Quantum Resistant">
+  <br>
+  <a href="https://curs3d.fr">Website</a> · <a href="https://curs3d.fr/docs.html">Docs</a> · <a href="https://curs3d.fr/whitepaper.html">Whitepaper</a> · <a href="https://curs3d.fr/explorer.html">Explorer</a> · <a href="https://curs3d.fr/examples.html">Tutorials</a>
 </p>
 
 ---
 
-CURS3D is a **Layer 1 blockchain** written from scratch in Rust, designed to remain secure against quantum computing attacks. It uses NIST-standardized post-quantum cryptography, BFT Proof of Stake consensus with explicit finality, and ships with a full REST API, block explorer, and Docker support.
+CURS3D is a **Layer 1 blockchain written from scratch in Rust**, designed to resist quantum computing attacks. It uses NIST-standardized post-quantum cryptography (CRYSTALS-Dilithium 5), BFT Proof of Stake consensus with explicit 2/3 finality, a WASM smart contract engine with instruction-level gas metering, and an EIP-1559 dynamic fee market. Every component is original — no fork of Ethereum, Cosmos, or Substrate.
 
-## Highlights
+## Why CURS3D?
 
-- **Post-Quantum Cryptography** -- CRYSTALS-Dilithium Level 5 signatures + SHA-3 hashing
-- **BFT Finality** -- Blocks finalized when 2/3+ of stake votes (irreversible)
-- **Fork Choice** -- Heaviest-chain rule with automatic reorg and finality boundary
-- **Provable Slashing** -- Equivocation detection with cryptographic proof, 33% stake penalty
-- **REST API** -- 10 HTTP endpoints with CORS for browser/app integration
-- **Block Explorer** -- Web UI with live dashboard, account lookup, faucet, tx search
-- **Stake/Unstake** -- Lock and unlock tokens for validation
-- **Encrypted Wallets** -- AES-256-GCM + Argon2 password-based encryption
-- **Docker Ready** -- Multi-stage build + docker-compose for 2-node networks
-- **CI Pipeline** -- GitHub Actions with check, test, clippy, fmt
+**The quantum threat is real.** NIST finalized post-quantum cryptography standards in 2024. Most blockchains still rely on ECDSA/EdDSA, which will be broken by Shor's algorithm. CURS3D is built from the ground up with quantum-resistant primitives — not retrofitted.
+
+| What | How |
+|------|-----|
+| **Signatures** | CRYSTALS-Dilithium Level 5 (NIST FIPS 204) |
+| **Hashing** | SHA-3 Keccak-256, double-hash blocks, Merkle trees |
+| **Wallet encryption** | AES-256-GCM + Argon2 KDF |
+| **Consensus** | BFT Proof of Stake, 2/3 stake-weighted finality |
+| **Smart contracts** | WASM VM (Wasmer 5 + Cranelift), per-instruction fuel metering |
+| **Fee market** | EIP-1559 dynamic base fee, priority fees, gas refunds |
+| **Fork choice** | Heaviest chain by cumulative proposer stake |
+| **Slashing** | Cryptographic equivocation proof, 33% penalty, 64-block jail |
+| **Networking** | libp2p 0.54 (Gossipsub + mDNS + noise + yamux) |
+| **Storage** | sled embedded DB, schema v4, auto-migration |
 
 ## Quick Start
 
 ```bash
-# Clone and build
+# Build from source
 git clone https://github.com/Pazificateur69/curs3d.git
 cd curs3d
 cargo build --release
 
-# Create an encrypted wallet
-./target/release/curs3d wallet --output my_wallet.json
+# Create an encrypted wallet (CRYSTALS-Dilithium 5 keypair)
+./target/release/curs3d wallet --output validator.json
 
 # Run a validator node
-./target/release/curs3d node --validator-wallet my_wallet.json
+./target/release/curs3d node --validator-wallet validator.json
 
-# Check blockchain status
-./target/release/curs3d status
+# The node exposes:
+#   P2P:      0.0.0.0:4337  (Gossipsub + mDNS)
+#   HTTP API: 127.0.0.1:8080
+#   TCP RPC:  127.0.0.1:9545
+
+# Check chain status
+curl http://localhost:8080/api/status | jq .data
 ```
 
 ### With Docker
 
 ```bash
-docker compose up -d          # Start 2-node network
-curl localhost:8080/api/status # Check via REST API
-docker compose down            # Stop
+docker compose up -d           # Start 2-node network
+curl localhost:8080/api/status  # Query the chain
+docker compose down             # Stop
 ```
 
-## CLI Reference
+## What's Built (Current State)
 
-```
-curs3d node     [--port 4337] [--data-dir curs3d_data] [--validator-wallet path]
-                [--bootnode /ip4/.../tcp/4337] [--rpc-addr 127.0.0.1:9545]
-                [--genesis-config genesis.json]
+CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technically substantial. Here's what exists in the codebase today, all tested:
 
-curs3d wallet   [--output wallet.json]          # Create encrypted wallet
-curs3d info     [--wallet wallet.json]           # Show wallet details
-curs3d send     --to CUR... --amount 100         # Send tokens
-                [--wallet wallet.json] [--fee 1000]
-curs3d stake    --amount 1000                    # Stake tokens for validation
-                [--wallet wallet.json] [--fee 1000]
-curs3d status   [--data-dir curs3d_data]         # Blockchain status
-                [--rpc-addr 127.0.0.1:9545]
-```
+- **BFT PoS consensus** with epoch-frozen validator sets and 2/3 finality threshold
+- **WASM smart contracts** with Wasmer 5, Cranelift backend, 11 host functions, instruction-level fuel metering
+- **EIP-1559 fee market** with dynamic base fee, separate max/priority fees, gas refunds, mempool pressure management
+- **6 transaction types**: Transfer, Stake, Unstake, Coinbase, DeployContract, CallContract
+- **Fork choice tree** with heaviest-chain rule, automatic reorg, finality boundary, non-canonical pruning
+- **Provable slashing** with cryptographic EquivocationEvidence (dual Dilithium signatures)
+- **State sync** with Merkle-verified snapshot chunks, manifest protocol, finalized checkpoints
+- **Account + storage proofs** exportable via API (Merkle inclusion proofs)
+- **Encrypted wallets** (AES-256-GCM + Argon2), auto-migration from legacy format
+- **Protocol versioning** with upgrade-at-height activation and network topic filtering
+- **Persistent storage** (sled, 10 trees, schema v4 with auto-migration)
+- **REST API** (11 endpoints) + TCP RPC + CLI
+- **Block explorer** web UI with live dashboard
+- **Docker** multi-stage build + docker-compose
+- **CI/CD** pipeline (check, test, clippy 0 warnings, fmt)
+- **80 tests** across 9 modules, all passing
 
-## REST API
+### What Remains for Mainnet
 
-The node exposes an HTTP API on port **8080** (alongside the TCP RPC on 9545).
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/status` | Chain height, finalized height, validators, pending txs |
-| GET | `/api/block/:height` | Block details with transactions |
-| GET | `/api/blocks?from=&limit=` | Paginated recent blocks |
-| GET | `/api/account/:address` | Balance, nonce, staked balance |
-| GET | `/api/tx/:hash` | Transaction lookup |
-| GET | `/api/pending` | Pending transactions |
-| GET | `/api/validators` | Active validators with stakes |
-| GET | `/api/faucet/:address` | Testnet faucet (100 CUR) |
-| POST | `/api/tx/submit` | Submit a signed transaction |
-| OPTIONS | `*` | CORS preflight |
-
-```bash
-# Examples
-curl http://localhost:8080/api/status
-curl http://localhost:8080/api/block/0
-curl http://localhost:8080/api/validators
-curl http://localhost:8080/api/faucet/YOUR_ADDRESS_HEX
-```
+- External security audit (consensus, VM, crypto)
+- Peer scoring + anti-spam hardening
+- State trie (MPT or Verkle tree)
+- Indexed receipts + log filters
+- Prometheus metrics + structured logging
+- Epoch-based rewards + inactivity penalties
+- Fuzzing + long-run soak tests
+- Contract SDK (Rust + AssemblyScript)
 
 ## Architecture
 
 ```
 src/
-  api/           HTTP REST API server (hyper)
-  consensus/     BFT PoS, finality votes, equivocation evidence, slashing
+  api/             HTTP REST API (hyper 1.x, 128 max connections, 1MB body limit)
+  consensus/       BFT PoS, FinalityVote, FinalityTracker, EquivocationEvidence, slashing
   core/
-    block.rs       Block headers, signatures, verification
-    blocktree.rs   Fork choice tree, heaviest-chain rule, pruning
-    chain.rs       Blockchain state, validation, reorg, genesis config
-    transaction.rs Transfer, Stake, Unstake, Coinbase
+    block.rs         BlockHeader, Block, genesis, signatures, verification
+    blocktree.rs     BlockTree, fork choice (heaviest chain), pruning
+    chain.rs         Blockchain state, validation, reorg, fee market, snapshots
+    transaction.rs   6 types: Transfer, Stake, Unstake, Coinbase, DeployContract, CallContract
+    receipt.rs       Execution receipts with gas details and logs
+    state_proof.rs   AccountProof, StorageProof (Merkle inclusion)
   crypto/
-    dilithium.rs   CRYSTALS-Dilithium Level 5 (NIST PQC)
-    hash.rs        SHA-3, double-hash, Merkle trees, address derivation
-  network/       libp2p P2P with Gossipsub, mDNS, sync protocol
-  rpc/           TCP JSON RPC for CLI
-  storage/       sled persistent storage (blocks, accounts, evidence, pending)
-  wallet/        Encrypted wallet (AES-256-GCM + Argon2)
-  main.rs        CLI entry point (clap)
+    dilithium.rs     CRYSTALS-Dilithium Level 5 (pqcrypto)
+    hash.rs          SHA-3, double-hash, Merkle trees/proofs, address derivation
+  network/         libp2p P2P (Gossipsub + mDNS), sync, block production, state sync
+  rpc/             TCP JSON RPC (port 9545)
+  storage/         sled DB (10 trees, schema v4, snapshots, migration)
+  vm/
+    mod.rs           Wasmer WASM execution, host functions, fuel middleware
+    gas.rs           Gas cost schedule
+    state.rs         ContractState (code, storage, owner)
+  wallet/          Encrypted wallet (AES-256-GCM + Argon2)
+  main.rs          CLI entry point (clap 4)
 
-website/
-  index.html       Landing page
-  docs.html        Full documentation
-  examples.html    Step-by-step tutorials (9 tutorials)
-  whitepaper.html  Technical whitepaper v2.0
-  explorer.html    Block explorer (connects to REST API)
-  style.css        Shared styles
-  script.js        Shared scripts
+website/           Documentation site (6 pages)
 ```
 
-## Tech Stack
+## REST API
 
-| Component | Technology |
-|-----------|-----------|
-| Language | Rust 2024 edition |
-| Signatures | CRYSTALS-Dilithium Level 5 (pqcrypto) |
-| Hashing | SHA-3 Keccak-256 (sha3) |
-| Wallet Encryption | AES-256-GCM + Argon2 |
-| Consensus | BFT Proof of Stake (2/3 finality) |
-| Fork Choice | Heaviest chain by cumulative stake |
-| P2P Network | libp2p (Gossipsub + mDNS) |
-| HTTP API | hyper 1.x |
-| Storage | sled embedded database |
-| Serialization | bincode + serde_json |
-| CLI | clap 4 |
-| Containers | Docker multi-stage build |
-| CI | GitHub Actions |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/status` | Chain height, finalized height, epoch, validators, protocol version |
+| GET | `/api/block/:height` | Block with transactions, state root, merkle root |
+| GET | `/api/blocks?from=&limit=` | Paginated blocks (max 100) |
+| GET | `/api/account/:address` | Balance, nonce, staked balance |
+| GET | `/api/account/:address/proof` | Merkle account proof |
+| GET | `/api/contract/:addr/storage/:key/proof` | Merkle storage proof |
+| GET | `/api/tx/:hash` | Transaction by hash |
+| GET | `/api/pending` | Mempool pending transactions |
+| GET | `/api/validators` | Active validator set with stakes |
+| POST | `/api/tx/submit` | Submit signed transaction (auth optional) |
+| POST | `/api/tx/estimate` | Dry-run: gas estimate, fees, replacement check |
+
+All responses: `{"ok": true, "data": {...}}` or `{"ok": false, "error": "..."}`.
+
+Auth: set `CURS3D_API_TOKEN` env var to require `Authorization: Bearer <token>` on POST endpoints.
+
+## Smart Contracts
+
+CURS3D runs WebAssembly contracts via Wasmer 5 with Cranelift. The VM injects fuel metering per instruction — contracts with unmetered loops are rejected at deploy time.
+
+| Operation | Gas Cost |
+|-----------|----------|
+| Base transaction | 21,000 |
+| Contract deploy | 32,000 |
+| Contract call | 2,600 |
+| Storage read | 200 |
+| Storage write | 5,000 |
+| Log emit | 375 |
+| Per byte (data) | 16 |
+| WASM loop tick | 50 |
+
+**Host functions:** `storage_get`, `storage_set`, `storage_read`, `storage_write_bytes`, `emit_log`, `emit_log_bytes`, `input`, `input_len`, `input_read`, `consume_gas`, `loop_tick`
 
 ## Consensus
 
-CURS3D uses **BFT Proof of Stake** with explicit finality:
-
-1. **Validator Selection** -- Deterministic, stake-weighted selection using SHA-3 hash of (block_height + prev_hash)
-2. **Block Production** -- Selected validator produces and signs blocks every 10 seconds
-3. **Finality Votes** -- Validators sign attestations for blocks they accept
-4. **Finalization** -- When votes representing >= 2/3 of total staked amount are collected, the block becomes irreversible
-5. **Slashing** -- Validators caught signing two blocks at the same height lose 33% of stake and are jailed
-6. **Fork Choice** -- If competing chains exist, the one with higher cumulative proposer-stake wins
-
-## Transactions
-
-| Type | Description |
-|------|-------------|
-| **Transfer** | Send CUR tokens to an address |
-| **Stake** | Lock tokens to become a validator |
-| **Unstake** | Unlock staked tokens back to available balance |
-| **Coinbase** | Block reward (automatically created per block) |
+1. **Validator Selection** — Deterministic, stake-weighted using `SHA-3(height || prev_hash)`
+2. **Block Production** — Selected validator signs blocks every 10 seconds
+3. **Finality Votes** — Validators sign attestations (`block_hash || height || epoch`)
+4. **Finalization** — Block irreversible when votes representing >= 2/3 total stake are collected
+5. **Slashing** — Dual-signed block headers at same height = cryptographic proof. 33% stake penalty + jail
+6. **Epochs** — Validator set frozen per epoch (default 32 blocks). No mid-epoch manipulation
+7. **Fork Choice** — Heaviest cumulative proposer-stake wins. Finality boundary prevents deep reorgs
 
 ## Testing
 
 ```bash
-cargo test          # Run all 46 tests
-cargo clippy        # Lint check
-cargo fmt --check   # Format check
+cargo test           # 80 tests, all passing
+cargo clippy         # 0 warnings (CI enforces -D warnings)
+cargo fmt --check    # Enforced formatting
 ```
 
-Test coverage includes: cryptographic operations, block validation, transaction flow, staking/unstaking, slashing with evidence, BFT finality threshold, fork choice, block tree pruning, wallet encryption/decryption, storage persistence.
+Coverage: cryptographic operations, block validation, transaction flow (all 6 types), staking/unstaking, slashing with evidence, BFT finality threshold, fork choice, block tree pruning, wallet encryption/decryption, storage persistence, WASM VM execution, gas metering, state sync snapshots, epoch management.
 
 ## Genesis Configuration
 
-Create a `genesis.json` to customize the chain:
-
 ```json
 {
-  "chain_name": "my-testnet",
+  "chain_id": "my-testnet",
+  "chain_name": "My Testnet",
   "block_reward": 50000000,
   "minimum_stake": 1000000000,
+  "unstake_delay_blocks": 10,
+  "epoch_length": 32,
+  "jail_duration_blocks": 64,
+  "block_gas_limit": 10000000,
+  "initial_base_fee_per_gas": 0,
+  "base_fee_change_denominator": 8,
   "allocations": [
     {
       "public_key": "0xVALIDATOR_PUBLIC_KEY_HEX",
       "balance": 1000000000000,
       "staked_balance": 5000000000
     }
+  ],
+  "upgrades": [
+    { "height": 1000, "version": 2, "description": "Enable feature X" }
   ]
 }
 ```
 
-```bash
-curs3d node --genesis-config genesis.json --validator-wallet validator.json
-```
-
-## Website
-
-The project includes a complete documentation website:
-
-- **Landing Page** -- Project overview with animated design
-- **Documentation** -- CLI reference, architecture, API docs, consensus details
-- **Examples** -- 9 step-by-step tutorials
-- **Whitepaper** -- Technical whitepaper v2.0 (13 sections)
-- **Block Explorer** -- Live blockchain dashboard with faucet
-
-Serve locally: `cd website && python3 -m http.server 3000`
-
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing`)
-3. Commit your changes
-4. Push to the branch
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Make your changes
+4. Ensure `cargo test`, `cargo clippy -- -D warnings`, and `cargo fmt --check` all pass
 5. Open a Pull Request
 
-Please ensure `cargo test`, `cargo clippy`, and `cargo fmt --check` pass before submitting.
+All contributions welcome — whether it's code, documentation, bug reports, or ideas.
 
 ## License
 
