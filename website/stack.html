@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en" data-current-lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CURS3D Stack</title>
+    <meta name="description" content="Understand the CURS3D protocol stack: consensus, execution, networking, state model, storage, APIs and operator surfaces.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-title-en="CURS3D Stack" data-title-fr="CURS3D Stack" data-description-en="Understand the CURS3D protocol stack: consensus, execution, networking, state model, storage, APIs and operator surfaces." data-description-fr="Comprendre la stack protocolaire de CURS3D : consensus, exécution, réseau, modèle d’état, stockage, APIs et surfaces opérateurs.">
+<div class="site-shell">
+    <nav class="site-nav" id="nav">
+        <div class="container nav-inner">
+            <a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a>
+            <div class="nav-links">
+                <a href="index.html"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
+                <a href="docs.html">Docs</a>
+                <a class="active" href="stack.html">Stack</a>
+                <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
+                <a href="tokenomics.html">Tokenomics</a>
+                <a href="whitepaper.html">Whitepaper</a>
+                <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
+                <a href="explorer.html">Explorer</a>
+                <div class="lang-switch"><button type="button" data-lang-switch="en">EN</button><button type="button" data-lang-switch="fr">FR</button></div>
+                <a class="nav-cta" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
+            </div>
+            <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation"><span></span><span></span><span></span></button>
+        </div>
+        <div class="mobile-menu" id="mobileMenu">
+            <a href="index.html"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
+            <a href="docs.html">Docs</a>
+            <a href="stack.html">Stack</a>
+            <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
+            <a href="tokenomics.html">Tokenomics</a>
+            <a href="whitepaper.html">Whitepaper</a>
+            <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
+            <a href="explorer.html">Explorer</a>
+            <div class="lang-switch"><button type="button" data-lang-switch="en">EN</button><button type="button" data-lang-switch="fr">FR</button></div>
+        </div>
+    </nav>
+
+    <main>
+        <section class="page-hero">
+            <div class="container">
+                <span class="section-tag">Stack</span>
+                <h1><span data-lang="en">A complete protocol stack, not just a slogan.</span><span data-lang="fr">Une stack protocolaire complète, pas juste un slogan.</span></h1>
+                <p class="lede" data-lang-block="en">CURS3D is presented as infrastructure. That means the stack has to be understandable across consensus, execution, state, networking, APIs and operator surfaces.</p>
+                <p class="lede" data-lang-block="fr">CURS3D est présentée comme une infrastructure. Cela signifie que la stack doit être compréhensible à travers le consensus, l’exécution, l’état, le réseau, les APIs et les surfaces opérateurs.</p>
+            </div>
+        </section>
+
+        <section class="section" style="padding-top:1rem;">
+            <div class="container page-layout">
+                <aside class="sidebar">
+                    <div class="sidebar-title"><span data-lang="en">Sections</span><span data-lang="fr">Sections</span></div>
+                    <a data-toc-link href="#overview"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
+                    <a data-toc-link href="#consensus">Consensus</a>
+                    <a data-toc-link href="#execution"><span data-lang="en">Execution</span><span data-lang="fr">Exécution</span></a>
+                    <a data-toc-link href="#state"><span data-lang="en">State and proofs</span><span data-lang="fr">État et preuves</span></a>
+                    <a data-toc-link href="#network"><span data-lang="en">Network</span><span data-lang="fr">Réseau</span></a>
+                    <a data-toc-link href="#interfaces"><span data-lang="en">Interfaces</span><span data-lang="fr">Interfaces</span></a>
+                    <a data-toc-link href="#ops"><span data-lang="en">Operator path</span><span data-lang="fr">Parcours opérateur</span></a>
+                </aside>
+                <div class="content-stack">
+                    <section class="content-section reveal" id="overview">
+                        <h2><span data-lang="en">Stack overview</span><span data-lang="fr">Vue d'ensemble de la stack</span></h2>
+                        <div class="split-grid three">
+                            <div class="card"><h3>Consensus</h3><p data-lang-block="en">Stake-based validator participation, block production, finality voting and fork-choice logic.</p><p data-lang-block="fr">Participation validateurs basée sur le stake, production de blocs, votes de finalité et logique de fork-choice.</p></div>
+                            <div class="card"><h3 data-lang="en">Execution</h3><h3 data-lang="fr">Exécution</h3><p data-lang-block="en">Native transaction flow, token and governance primitives, plus WASM contract execution.</p><p data-lang-block="fr">Flux transactionnel natif, primitives token et gouvernance, plus exécution de contrats WASM.</p></div>
+                            <div class="card"><h3>Interfaces</h3><p data-lang-block="en">CLI, REST API, TCP RPC, explorer surface and deployment assets.</p><p data-lang-block="fr">CLI, API REST, TCP RPC, surface explorer et assets de déploiement.</p></div>
+                        </div>
+                    </section>
+                    <section class="content-section reveal" id="consensus">
+                        <h2>Consensus</h2>
+                        <div class="prose">
+                            <p data-lang-block="en">The consensus layer must explain how validators join, how blocks are proposed, how finality is reached and how the protocol reacts to misbehavior. That is part of product credibility, not just low-level engineering.</p>
+                            <p data-lang-block="fr">La couche consensus doit expliquer comment les validateurs rejoignent le réseau, comment les blocs sont proposés, comment la finalité est atteinte et comment le protocole réagit aux comportements fautifs. Cela fait partie de la crédibilité produit, pas seulement de l’ingénierie bas niveau.</p>
+                            <ul>
+                                <li><span data-lang="en">PoS validator participation</span><span data-lang="fr">Participation validateurs PoS</span></li>
+                                <li><span data-lang="en">Finality and block acceptance logic</span><span data-lang="fr">Finalité et logique d’acceptation des blocs</span></li>
+                                <li><span data-lang="en">Reorg and replay-aware state reconstruction</span><span data-lang="fr">Reconstruction d’état compatible reorg et replay</span></li>
+                            </ul>
+                        </div>
+                    </section>
+                    <section class="content-section reveal" id="execution">
+                        <h2><span data-lang="en">Execution model</span><span data-lang="fr">Modèle d’exécution</span></h2>
+                        <div class="split-grid two">
+                            <div class="card">
+                                <h3 data-lang="en">Native transactions</h3><h3 data-lang="fr">Transactions natives</h3>
+                                <p data-lang-block="en">Transfers, staking flows, token operations and governance transactions all belong to the state transition and must not be treated as cosmetic features.</p>
+                                <p data-lang-block="fr">Les transferts, le staking, les opérations token et les transactions de gouvernance appartiennent à la transition d’état et ne doivent pas être traités comme des features cosmétiques.</p>
+                            </div>
+                            <div class="card">
+                                <h3>WASM</h3>
+                                <p data-lang-block="en">WASM execution matters because CURS3D is meant to be programmable infrastructure, not only a value-transfer chain.</p>
+                                <p data-lang-block="fr">L’exécution WASM est importante car CURS3D vise une infrastructure programmable, pas seulement une chaîne de transfert de valeur.</p>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="content-section reveal" id="state">
+                        <h2><span data-lang="en">State and proofs</span><span data-lang="fr">État et preuves</span></h2>
+                        <p data-lang-block="en">A trust-layer claim is stronger when state can be exported, verified and rebuilt deterministically. That is why account proofs, storage proofs, restart behavior and replay consistency matter.</p>
+                        <p data-lang-block="fr">Une revendication de trust-layer est plus forte quand l’état peut être exporté, vérifié et reconstruit de façon déterministe. C’est pourquoi les preuves de compte, les preuves de stockage, le comportement au redémarrage et la cohérence du replay comptent autant.</p>
+                    </section>
+                    <section class="content-section reveal" id="network">
+                        <h2><span data-lang="en">Networking and synchronization</span><span data-lang="fr">Réseau et synchronisation</span></h2>
+                        <p data-lang-block="en">The network surface is not only about peer discovery. It includes message propagation, node identity, public bootnode publication and the safety of the light-client direction.</p>
+                        <p data-lang-block="fr">La surface réseau ne concerne pas seulement la découverte de pairs. Elle inclut la propagation des messages, l’identité du nœud, la publication des bootnodes publics et la robustesse de la direction light client.</p>
+                    </section>
+                    <section class="content-section reveal" id="interfaces">
+                        <h2><span data-lang="en">Public interfaces</span><span data-lang="fr">Interfaces publiques</span></h2>
+                        <div class="table-wrap">
+                            <table>
+                                <thead><tr><th><span data-lang="en">Surface</span><span data-lang="fr">Surface</span></th><th><span data-lang="en">Role</span><span data-lang="fr">Rôle</span></th></tr></thead>
+                                <tbody>
+                                    <tr><td>CLI</td><td><span data-lang="en">Operator and validator path</span><span data-lang="fr">Parcours opérateur et validateur</span></td></tr>
+                                    <tr><td>HTTP API</td><td><span data-lang="en">App and explorer consumption</span><span data-lang="fr">Consommation apps et explorer</span></td></tr>
+                                    <tr><td>TCP RPC</td><td><span data-lang="en">Operational commands and status flow</span><span data-lang="fr">Commandes opérationnelles et flux de statut</span></td></tr>
+                                    <tr><td>Explorer</td><td><span data-lang="en">Human-readable live chain surface</span><span data-lang="fr">Surface live lisible pour les humains</span></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                    <section class="content-section reveal" id="ops">
+                        <h2><span data-lang="en">Operator path</span><span data-lang="fr">Parcours opérateur</span></h2>
+                        <div class="callout">
+                            <span data-lang="en">A protocol can lose credibility because its operator experience feels improvised. Node deployment, configuration, restart and observability are part of the product.</span>
+                            <span data-lang="fr">Un protocole peut perdre en crédibilité si son expérience opérateur paraît improvisée. Le déploiement du node, la configuration, le redémarrage et l’observabilité font partie du produit.</span>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer"><div class="container"><div class="footer-inner"><div><a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a><p style="margin-top:0.9rem;" data-lang-block="en">Public stack documentation for CURS3D.</p><p style="margin-top:0.9rem;" data-lang-block="fr">Documentation publique de la stack de CURS3D.</p></div><div><h4>Protocol</h4><div class="footer-links"><a href="docs.html">Docs</a><a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a><a href="tokenomics.html">Tokenomics</a></div></div><div><h4>Read</h4><div class="footer-links"><a href="whitepaper.html">Whitepaper</a><a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a></div></div><div><h4>Live</h4><div class="footer-links"><a href="explorer.html">Explorer</a><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a></div></div><div><h4>Source</h4><div class="footer-links"><a href="https://github.com/Pazificateur69/curs3d/blob/main/docs/foundation/03-product-and-protocol.md" target="_blank" rel="noopener">Foundation</a></div></div></div><div class="footer-bottom"><span data-lang="en">© </span><span data-lang="fr">© </span><span data-year></span> CURS3D.</div></div></footer>
+</div>
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en" data-current-lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CURS3D Tokenomics</title>
+    <meta name="description" content="Tokenomics framework for CURS3D: token role, allocation philosophy, fee flows, validator incentives and treasury logic.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-title-en="CURS3D Tokenomics" data-title-fr="CURS3D Tokenomics" data-description-en="Tokenomics framework for CURS3D: token role, allocation philosophy, fee flows, validator incentives and treasury logic." data-description-fr="Cadre tokenomics de CURS3D : rôle du token, philosophie d’allocation, flux de frais, incentives validateurs et logique de trésorerie.">
+<div class="site-shell">
+    <nav class="site-nav" id="nav">
+        <div class="container nav-inner">
+            <a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a>
+            <div class="nav-links">
+                <a href="index.html"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
+                <a href="docs.html">Docs</a>
+                <a href="stack.html">Stack</a>
+                <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
+                <a class="active" href="tokenomics.html">Tokenomics</a>
+                <a href="whitepaper.html">Whitepaper</a>
+                <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
+                <a href="explorer.html">Explorer</a>
+                <div class="lang-switch"><button type="button" data-lang-switch="en">EN</button><button type="button" data-lang-switch="fr">FR</button></div>
+                <a class="nav-cta" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
+            </div>
+            <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation"><span></span><span></span><span></span></button>
+        </div>
+        <div class="mobile-menu" id="mobileMenu">
+            <a href="index.html"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
+            <a href="docs.html">Docs</a>
+            <a href="stack.html">Stack</a>
+            <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
+            <a href="tokenomics.html">Tokenomics</a>
+            <a href="whitepaper.html">Whitepaper</a>
+            <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
+            <a href="explorer.html">Explorer</a>
+            <div class="lang-switch"><button type="button" data-lang-switch="en">EN</button><button type="button" data-lang-switch="fr">FR</button></div>
+        </div>
+    </nav>
+
+    <main>
+        <section class="page-hero">
+            <div class="container">
+                <span class="section-tag">Tokenomics</span>
+                <h1><span data-lang="en">Tokenomics should explain value coordination, not just token supply.</span><span data-lang="fr">Les tokenomics doivent expliquer la coordination de valeur, pas seulement l’offre du token.</span></h1>
+                <p class="lede" data-lang-block="en">The native token has to secure the network, align governance, support validator economics and reflect how value flows through the protocol.</p>
+                <p class="lede" data-lang-block="fr">Le token natif doit sécuriser le réseau, aligner la gouvernance, soutenir l’économie validateurs et refléter la manière dont la valeur circule dans le protocole.</p>
+            </div>
+        </section>
+
+        <section class="section" style="padding-top:1rem;">
+            <div class="container content-stack">
+                <section class="content-section reveal">
+                    <h2><span data-lang="en">Token role</span><span data-lang="fr">Rôle du token</span></h2>
+                    <div class="split-grid four">
+                        <div class="card"><h3>Fees</h3><p data-lang-block="en">The token pays for network usage and execution.</p><p data-lang-block="fr">Le token paie l’usage réseau et l’exécution.</p></div>
+                        <div class="card"><h3>Staking</h3><p data-lang-block="en">The token secures validator participation and protocol safety.</p><p data-lang-block="fr">Le token sécurise la participation validateurs et la sûreté du protocole.</p></div>
+                        <div class="card"><h3 data-lang="en">Governance</h3><h3 data-lang="fr">Gouvernance</h3><p data-lang-block="en">The token aligns decision-making and network evolution.</p><p data-lang-block="fr">Le token aligne la prise de décision et l’évolution du réseau.</p></div>
+                        <div class="card"><h3 data-lang="en">Alignment</h3><h3 data-lang="fr">Alignement</h3><p data-lang-block="en">The token links network activity, treasury design and ecosystem growth.</p><p data-lang-block="fr">Le token relie activité réseau, design de trésorerie et croissance écosystème.</p></div>
+                    </div>
+                </section>
+
+                <section class="content-section reveal">
+                    <h2><span data-lang="en">Allocation philosophy</span><span data-lang="fr">Philosophie d’allocation</span></h2>
+                    <div class="prose">
+                        <p data-lang-block="en">CURS3D should avoid chaotic token design. A credible framework must balance founding incentives, validator alignment, treasury resilience, ecosystem grants and long-term lock discipline.</p>
+                        <p data-lang-block="fr">CURS3D doit éviter les tokenomics chaotiques. Un cadre crédible doit équilibrer les incentives fondatrices, l’alignement validateurs, la résilience de trésorerie, les grants écosystème et une discipline de lock long terme.</p>
+                    </div>
+                    <div class="table-wrap" style="margin-top:1rem;">
+                        <table>
+                            <thead><tr><th><span data-lang="en">Bucket</span><span data-lang="fr">Bucket</span></th><th><span data-lang="en">Purpose</span><span data-lang="fr">Rôle</span></th></tr></thead>
+                            <tbody>
+                                <tr><td><span data-lang="en">Founding team</span><span data-lang="fr">Équipe fondatrice</span></td><td><span data-lang="en">Long-term execution and protocol ownership</span><span data-lang="fr">Exécution long terme et ownership protocolaire</span></td></tr>
+                                <tr><td><span data-lang="en">Treasury / foundation</span><span data-lang="fr">Trésorerie / fondation</span></td><td><span data-lang="en">Security, operations, ecosystem and continuity</span><span data-lang="fr">Sécurité, opérations, écosystème et continuité</span></td></tr>
+                                <tr><td><span data-lang="en">Ecosystem incentives</span><span data-lang="fr">Incentives écosystème</span></td><td><span data-lang="en">Partner onboarding and developer growth</span><span data-lang="fr">Onboarding partenaires et croissance développeurs</span></td></tr>
+                                <tr><td><span data-lang="en">Investors</span><span data-lang="fr">Investisseurs</span></td><td><span data-lang="en">Capital for protocol hardening and go-to-market</span><span data-lang="fr">Capital pour le hardening protocolaire et le go-to-market</span></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="content-section reveal">
+                    <h2><span data-lang="en">Fee and value flow</span><span data-lang="fr">Flux de frais et de valeur</span></h2>
+                    <div class="split-grid two">
+                        <div class="card"><h3 data-lang="en">Network usage</h3><h3 data-lang="fr">Usage réseau</h3><p data-lang-block="en">Network activity should generate defensible economic relevance for the token rather than purely narrative demand.</p><p data-lang-block="fr">L’activité réseau doit générer une pertinence économique défendable pour le token, pas seulement une demande narrative.</p></div>
+                        <div class="card"><h3 data-lang="en">Validator incentives</h3><h3 data-lang="fr">Incentives validateurs</h3><p data-lang-block="en">Validators must be paid enough to sustain network quality, but not through incoherent or short-term inflation policies.</p><p data-lang-block="fr">Les validateurs doivent être suffisamment rémunérés pour maintenir la qualité réseau, mais pas via des politiques inflationnistes incohérentes ou court-termistes.</p></div>
+                    </div>
+                </section>
+
+                <section class="content-section reveal">
+                    <h2><span data-lang="en">Treasury logic</span><span data-lang="fr">Logique de trésorerie</span></h2>
+                    <p data-lang-block="en">Treasury design is part of protocol survivability. If CURS3D aims to be long-horizon infrastructure, the treasury must be able to support audits, operations, ecosystem support and incident response over time.</p>
+                    <p data-lang-block="fr">Le design de trésorerie fait partie de la survivabilité du protocole. Si CURS3D vise une infrastructure pensée sur le long terme, la trésorerie doit pouvoir soutenir les audits, les opérations, le support écosystème et la réponse aux incidents dans la durée.</p>
+                </section>
+
+                <section class="content-section reveal">
+                    <h2><span data-lang="en">Important note</span><span data-lang="fr">Note importante</span></h2>
+                    <div class="status-banner warning">
+                        <span data-lang="en">This page describes a tokenomics framework, not a final public token sale plan. Any concrete issuance, distribution or fundraising execution must be aligned with legal advice and operating jurisdiction.</span>
+                        <span data-lang="fr">Cette page décrit un cadre tokenomics, pas un plan final de vente publique. Toute émission, distribution ou exécution de fundraising concrète doit être alignée avec un conseil juridique adapté à la juridiction d’exploitation.</span>
+                    </div>
+                </section>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer"><div class="container"><div class="footer-inner"><div><a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a><p style="margin-top:0.9rem;" data-lang-block="en">Public tokenomics framework for CURS3D.</p><p style="margin-top:0.9rem;" data-lang-block="fr">Cadre tokenomics public pour CURS3D.</p></div><div><h4>Protocol</h4><div class="footer-links"><a href="stack.html">Stack</a><a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a></div></div><div><h4>Read</h4><div class="footer-links"><a href="whitepaper.html">Whitepaper</a><a href="https://github.com/Pazificateur69/curs3d/blob/main/docs/foundation/06-tokenomics-framework.md" target="_blank" rel="noopener">Framework</a></div></div><div><h4>Live</h4><div class="footer-links"><a href="explorer.html">Explorer</a></div></div><div><h4>Source</h4><div class="footer-links"><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a></div></div></div><div class="footer-bottom"><span data-lang="en">© </span><span data-lang="fr">© </span><span data-year></span> CURS3D.</div></div></footer>
+</div>
+<script src="script.js"></script>
+</body>
+</html>

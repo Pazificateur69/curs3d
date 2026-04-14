@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-current-lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,28 +10,35 @@
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-title-en="CURS3D Explorer" data-title-fr="CURS3D Explorer" data-description-en="Live explorer for CURS3D. Inspect chain status, recent blocks, accounts and transactions through the node HTTP API." data-description-fr="Explorer live pour CURS3D. Inspectez le statut de chaîne, les blocs récents, les comptes et les transactions via l’API HTTP du node.">
 <div class="site-shell">
     <nav class="site-nav" id="nav">
         <div class="container nav-inner">
             <a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a>
             <div class="nav-links">
+                <a href="index.html"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
                 <a href="docs.html">Docs</a>
-                <a href="examples.html">Examples</a>
+                <a href="stack.html">Stack</a>
+                <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
+                <a href="tokenomics.html">Tokenomics</a>
                 <a href="whitepaper.html">Whitepaper</a>
+                <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
                 <a class="active" href="explorer.html">Explorer</a>
+                <div class="lang-switch"><button type="button" data-lang-switch="en">EN</button><button type="button" data-lang-switch="fr">FR</button></div>
                 <a class="nav-cta" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
             </div>
-            <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
-                <span></span><span></span><span></span>
-            </button>
+            <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation"><span></span><span></span><span></span></button>
         </div>
         <div class="mobile-menu" id="mobileMenu">
+            <a href="index.html"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
             <a href="docs.html">Docs</a>
-            <a href="examples.html">Examples</a>
+            <a href="stack.html">Stack</a>
+            <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
+            <a href="tokenomics.html">Tokenomics</a>
             <a href="whitepaper.html">Whitepaper</a>
+            <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
             <a href="explorer.html">Explorer</a>
-            <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
+            <div class="lang-switch"><button type="button" data-lang-switch="en">EN</button><button type="button" data-lang-switch="fr">FR</button></div>
         </div>
     </nav>
 
@@ -39,128 +46,52 @@
         <section class="page-hero">
             <div class="container">
                 <span class="section-tag">Explorer</span>
-                <h1>Inspect the network in <span class="gradient-text">real time</span>.</h1>
-                <p class="lede">Point the explorer at a live CURS3D node HTTP API to monitor chain status, recent blocks, validator activity and account or transaction state.</p>
+                <h1><span data-lang="en">Inspect the network in real time.</span><span data-lang="fr">Inspecter le réseau en temps réel.</span></h1>
+                <p class="lede" data-lang-block="en">Point the explorer at a live CURS3D HTTP API endpoint to monitor status, recent blocks, account state and transaction activity.</p>
+                <p class="lede" data-lang-block="fr">Pointez l’explorer vers un endpoint HTTP API CURS3D live pour suivre le statut, les blocs récents, l’état des comptes et l’activité transactionnelle.</p>
             </div>
         </section>
-
-        <section class="section" style="padding-top: 1rem;">
+        <section class="section" style="padding-top:1rem;">
             <div class="container explorer-shell">
                 <div class="status-banner">
-                    The explorer is API-driven. If the node is offline or private, the dashboard will stay empty until a reachable endpoint is configured.
+                    <span data-lang="en">The explorer is API-driven. If the node is unreachable, the dashboard stays empty until a valid endpoint is configured.</span>
+                    <span data-lang="fr">L’explorer est piloté par l’API. Si le node est inaccessible, le dashboard reste vide jusqu’à ce qu’un endpoint valide soit configuré.</span>
                 </div>
-
                 <div class="config-bar">
-                    <label for="apiEndpoint">API endpoint</label>
-                    <input type="text" id="apiEndpoint" value="http://127.0.0.1:8080" spellcheck="false">
-                    <button type="button" id="connectBtn">Connect</button>
+                    <label for="apiEndpoint"><span data-lang="en">API endpoint</span><span data-lang="fr">Endpoint API</span></label>
+                    <input type="text" id="apiEndpoint" value="http://127.0.0.1:8080" spellcheck="false" data-placeholder-en="API endpoint" data-placeholder-fr="Endpoint API">
+                    <button type="button" id="connectBtn"><span data-lang="en">Connect</span><span data-lang="fr">Connecter</span></button>
                     <span class="status-dot" id="statusDot" aria-hidden="true"></span>
                 </div>
-
                 <div class="offline-banner" id="offlineBanner">
-                    The configured node is not reachable right now. Make sure a CURS3D node is running and the HTTP API is exposed.
+                    <span data-lang="en">The configured node is not reachable right now.</span>
+                    <span data-lang="fr">Le node configuré n’est pas accessible actuellement.</span>
                 </div>
-
-                <div class="explorer-stat-grid" id="statusGrid">
-                    <div class="explorer-stat"><span class="stat-label">Chain height</span><span class="stat-value" id="statHeight">--</span></div>
-                    <div class="explorer-stat"><span class="stat-label">Finalized height</span><span class="stat-value" id="statFinalized">--</span></div>
-                    <div class="explorer-stat"><span class="stat-label">Pending txs</span><span class="stat-value" id="statPending">--</span></div>
-                    <div class="explorer-stat"><span class="stat-label">Active validators</span><span class="stat-value" id="statValidators">--</span></div>
-                    <div class="explorer-stat"><span class="stat-label">Chain name</span><span class="stat-value" id="statChainName">--</span></div>
+                <div class="explorer-stat-grid">
+                    <div class="explorer-stat"><span class="stat-label"><span data-lang="en">Chain height</span><span data-lang="fr">Hauteur</span></span><span class="stat-value" id="statHeight">--</span></div>
+                    <div class="explorer-stat"><span class="stat-label"><span data-lang="en">Finalized height</span><span data-lang="fr">Hauteur finalisée</span></span><span class="stat-value" id="statFinalized">--</span></div>
+                    <div class="explorer-stat"><span class="stat-label"><span data-lang="en">Pending txs</span><span data-lang="fr">Tx en attente</span></span><span class="stat-value" id="statPending">--</span></div>
+                    <div class="explorer-stat"><span class="stat-label"><span data-lang="en">Active validators</span><span data-lang="fr">Validateurs actifs</span></span><span class="stat-value" id="statValidators">--</span></div>
+                    <div class="explorer-stat"><span class="stat-label"><span data-lang="en">Chain name</span><span data-lang="fr">Nom de chaîne</span></span><span class="stat-value" id="statChainName">--</span></div>
                     <div class="explorer-stat"><span class="stat-label">Epoch</span><span class="stat-value" id="statEpoch">--</span></div>
                 </div>
-
                 <div class="explorer-grid">
                     <div class="explorer-panel">
-                        <div class="panel-header">Recent blocks</div>
-                        <div class="panel-body">
-                            <div class="table-wrap">
-                                <table class="blocks-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Height</th>
-                                            <th>Hash</th>
-                                            <th>Time</th>
-                                            <th>Validator</th>
-                                            <th>Txs</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="blocksBody">
-                                        <tr><td colspan="5">Waiting for data...</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+                        <div class="panel-header"><span data-lang="en">Recent blocks</span><span data-lang="fr">Blocs récents</span></div>
+                        <div class="panel-body"><div class="table-wrap"><table class="blocks-table"><thead><tr><th><span data-lang="en">Height</span><span data-lang="fr">Hauteur</span></th><th>Hash</th><th><span data-lang="en">Time</span><span data-lang="fr">Temps</span></th><th><span data-lang="en">Validator</span><span data-lang="fr">Validateur</span></th><th>Txs</th></tr></thead><tbody id="blocksBody"><tr><td colspan="5">Waiting for data...</td></tr></tbody></table></div></div>
                     </div>
-
                     <div class="content-stack">
-                        <div class="explorer-panel">
-                            <div class="panel-header">Account lookup</div>
-                            <div class="panel-body">
-                                <div class="lookup-input">
-                                    <input type="text" id="accountAddr" placeholder="CUR address or raw hex">
-                                    <button type="button" id="lookupBtn">Look up</button>
-                                </div>
-                                <div class="account-result" id="accountResult"></div>
-                            </div>
-                        </div>
-
-                        <div class="explorer-panel">
-                            <div class="panel-header">Transaction lookup</div>
-                            <div class="panel-body">
-                                <div class="lookup-input">
-                                    <input type="text" id="txHash" placeholder="Transaction hash">
-                                    <button type="button" id="txSearchBtn">Search</button>
-                                </div>
-                                <div class="account-result" id="txResult"></div>
-                            </div>
-                        </div>
-
-                        <div class="explorer-panel">
-                            <div class="panel-header">Live feed</div>
-                            <div class="panel-body">
-                                <div class="live-feed" id="liveFeed"></div>
-                            </div>
-                        </div>
+                        <div class="explorer-panel"><div class="panel-header"><span data-lang="en">Account lookup</span><span data-lang="fr">Recherche compte</span></div><div class="panel-body"><div class="lookup-input"><input type="text" id="accountAddr" data-placeholder-en="CUR address or raw hex" data-placeholder-fr="Adresse CUR ou hex brut" placeholder="CUR address or raw hex"><button type="button" id="lookupBtn"><span data-lang="en">Look up</span><span data-lang="fr">Rechercher</span></button></div><div class="account-result" id="accountResult"></div></div></div>
+                        <div class="explorer-panel"><div class="panel-header"><span data-lang="en">Transaction lookup</span><span data-lang="fr">Recherche transaction</span></div><div class="panel-body"><div class="lookup-input"><input type="text" id="txHash" data-placeholder-en="Transaction hash" data-placeholder-fr="Hash de transaction" placeholder="Transaction hash"><button type="button" id="txSearchBtn"><span data-lang="en">Search</span><span data-lang="fr">Chercher</span></button></div><div class="account-result" id="txResult"></div></div></div>
+                        <div class="explorer-panel"><div class="panel-header"><span data-lang="en">Live feed</span><span data-lang="fr">Flux live</span></div><div class="panel-body"><div class="live-feed" id="liveFeed"></div></div></div>
                     </div>
                 </div>
             </div>
         </section>
     </main>
 
-    <footer class="footer">
-        <div class="container">
-            <div class="footer-inner">
-                <div>
-                    <a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a>
-                    <p style="margin-top: 0.9rem;">Explorer UI for the live CURS3D HTTP API surface.</p>
-                </div>
-                <div>
-                    <h4>Inspect</h4>
-                    <div class="footer-links">
-                        <a href="docs.html">Docs</a>
-                        <a href="whitepaper.html">Whitepaper</a>
-                    </div>
-                </div>
-                <div>
-                    <h4>Run</h4>
-                    <div class="footer-links">
-                        <a href="examples.html">Examples</a>
-                        <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
-                    </div>
-                </div>
-                <div>
-                    <h4>Note</h4>
-                    <div class="footer-links">
-                        <a href="docs.html#api-surface">API reference</a>
-                    </div>
-                </div>
-            </div>
-            <div class="footer-bottom">© <span data-year></span> CURS3D. Explorer values are sourced directly from the node HTTP API.</div>
-        </div>
-    </footer>
+    <footer class="footer"><div class="container"><div class="footer-inner"><div><a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a><p style="margin-top:0.9rem;" data-lang-block="en">Live explorer for the CURS3D HTTP API surface.</p><p style="margin-top:0.9rem;" data-lang-block="fr">Explorer live pour la surface HTTP API de CURS3D.</p></div><div><h4>Protocol</h4><div class="footer-links"><a href="docs.html">Docs</a><a href="stack.html">Stack</a></div></div><div><h4>Read</h4><div class="footer-links"><a href="whitepaper.html">Whitepaper</a></div></div><div><h4>Build</h4><div class="footer-links"><a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a></div></div><div><h4>Source</h4><div class="footer-links"><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a></div></div></div><div class="footer-bottom"><span data-lang="en">© </span><span data-lang="fr">© </span><span data-year></span> CURS3D.</div></div></footer>
 </div>
-
 <script src="script.js"></script>
 <script>
 (function () {
@@ -178,17 +109,23 @@
     var txResult = document.getElementById("txResult");
     var txSearchBtn = document.getElementById("txSearchBtn");
     var liveFeed = document.getElementById("liveFeed");
-
     var elHeight = document.getElementById("statHeight");
     var elFinalized = document.getElementById("statFinalized");
     var elPending = document.getElementById("statPending");
     var elValidators = document.getElementById("statValidators");
     var elChainName = document.getElementById("statChainName");
     var elEpoch = document.getElementById("statEpoch");
-
     var nodeOnline = false;
     var pollTimer = null;
     var expandedRow = null;
+
+    function currentLang() {
+        return document.documentElement.getAttribute("data-current-lang") || "en";
+    }
+
+    function t(en, fr) {
+        return currentLang() === "fr" ? fr : en;
+    }
 
     function getApi() {
         return endpointInput.value.replace(/\/+$/, "");
@@ -225,16 +162,10 @@
 
     async function apiFetch(path) {
         var response = await fetch(getApi() + path);
-        if (!response.ok) {
-            throw new Error("HTTP " + response.status);
-        }
+        if (!response.ok) throw new Error("HTTP " + response.status);
         var json = await response.json();
-        if (json && json.ok === true && json.data !== undefined) {
-            return json.data;
-        }
-        if (json && json.ok === false) {
-            throw new Error(json.error || "Unknown API error");
-        }
+        if (json && json.ok === true && json.data !== undefined) return json.data;
+        if (json && json.ok === false) throw new Error(json.error || "Unknown API error");
         return json;
     }
 
@@ -260,24 +191,18 @@
     }
 
     async function refreshBlocks() {
-        if (!nodeOnline) {
-            return;
-        }
-
+        if (!nodeOnline) return;
         try {
             var data = await apiFetch("/api/blocks?from=0&limit=20");
             var blocks = Array.isArray(data) ? data : [];
             blocksBody.innerHTML = "";
-
             if (blocks.length === 0) {
-                blocksBody.innerHTML = "<tr><td colspan='5'>No blocks yet.</td></tr>";
+                blocksBody.innerHTML = "<tr><td colspan='5'>" + t("No blocks yet.", "Aucun bloc.") + "</td></tr>";
                 return;
             }
-
             blocks.forEach(function (block) {
                 var row = document.createElement("tr");
-                row.innerHTML =
-                    "<td>" + (block.height != null ? block.height : "--") + "</td>" +
+                row.innerHTML = "<td>" + (block.height != null ? block.height : "--") + "</td>" +
                     "<td class='hash-cell'>" + formatHash(block.hash) + "</td>" +
                     "<td>" + formatTimestamp(block.timestamp) + "</td>" +
                     "<td class='hash-cell'>" + formatHash(block.validator) + "</td>" +
@@ -292,42 +217,39 @@
                     ? block.transactions.map(function (tx) {
                         return typeof tx === "string" ? tx : (tx.hash || JSON.stringify(tx));
                     }).join("\n")
-                    : "No expanded transaction payload in this summary response.";
+                    : t("No expanded transaction payload in this summary response.", "Pas de payload transaction détaillé dans ce résumé.");
                 detailsCell.style.whiteSpace = "pre-wrap";
                 detailsRow.appendChild(detailsCell);
 
                 row.addEventListener("click", function () {
-                    if (expandedRow && expandedRow !== detailsRow) {
-                        expandedRow.style.display = "none";
-                    }
-                    var shouldOpen = detailsRow.style.display === "none";
-                    detailsRow.style.display = shouldOpen ? "" : "none";
-                    expandedRow = shouldOpen ? detailsRow : null;
+                    if (expandedRow && expandedRow !== detailsRow) expandedRow.style.display = "none";
+                    var open = detailsRow.style.display === "none";
+                    detailsRow.style.display = open ? "" : "none";
+                    expandedRow = open ? detailsRow : null;
                 });
 
                 blocksBody.appendChild(row);
                 blocksBody.appendChild(detailsRow);
             });
         } catch (error) {
-            addFeedLine("Block refresh failed: " + error.message);
+            addFeedLine(t("Block refresh failed: ", "Échec refresh blocs : ") + error.message);
         }
     }
 
     async function lookupAccount() {
         var value = accountAddr.value.trim();
         if (!value) {
-            accountResult.textContent = "Enter an account address.";
+            accountResult.textContent = t("Enter an account address.", "Entrer une adresse de compte.");
             return;
         }
-        accountResult.textContent = "Loading...";
+        accountResult.textContent = t("Loading...", "Chargement...");
         try {
             var data = await apiFetch("/api/account/" + encodeURIComponent(value));
             accountResult.textContent =
-                "Address: " + (data.address || value) + "\n" +
-                "Balance: " + formatUnits(data.balance) + "\n" +
+                t("Address: ", "Adresse : ") + (data.address || value) + "\n" +
+                t("Balance: ", "Balance : ") + formatUnits(data.balance) + "\n" +
                 "Nonce: " + (data.nonce != null ? data.nonce : 0) + "\n" +
-                "Staked: " + formatUnits(data.staked_balance);
-            addFeedLine("Account lookup: " + formatHash(value));
+                t("Staked: ", "Stake : ") + formatUnits(data.staked_balance);
         } catch (error) {
             accountResult.textContent = "Error: " + error.message;
         }
@@ -336,10 +258,10 @@
     async function lookupTransaction() {
         var value = txHashInput.value.trim();
         if (!value) {
-            txResult.textContent = "Enter a transaction hash.";
+            txResult.textContent = t("Enter a transaction hash.", "Entrer un hash de transaction.");
             return;
         }
-        txResult.textContent = "Loading...";
+        txResult.textContent = t("Loading...", "Chargement...");
         try {
             var data = await apiFetch("/api/tx/" + encodeURIComponent(value));
             txResult.textContent =
@@ -347,43 +269,32 @@
                 "Kind: " + (data.kind || "--") + "\n" +
                 "From: " + (data.from || "--") + "\n" +
                 "To: " + (data.to || "--") + "\n" +
-                "Amount: " + formatUnits(data.amount) + "\n" +
-                "Fee: " + formatUnits(data.fee) + "\n" +
-                "Nonce: " + (data.nonce != null ? data.nonce : "--") + "\n" +
-                "Time: " + formatTimestamp(data.timestamp);
-            addFeedLine("Transaction lookup: " + formatHash(value));
+                t("Amount: ", "Montant : ") + formatUnits(data.amount) + "\n" +
+                t("Fee: ", "Frais : ") + formatUnits(data.fee) + "\n" +
+                "Nonce: " + (data.nonce != null ? data.nonce : "--");
         } catch (error) {
             txResult.textContent = "Error: " + error.message;
         }
     }
 
-    async function tick() {
-        await refreshStatus();
-        await refreshBlocks();
-    }
-
     function startPolling() {
-        if (pollTimer) {
-            clearInterval(pollTimer);
-        }
-        tick();
-        pollTimer = setInterval(tick, 5000);
+        if (pollTimer) clearInterval(pollTimer);
+        refreshStatus();
+        refreshBlocks();
+        pollTimer = setInterval(function () {
+            refreshStatus();
+            refreshBlocks();
+        }, 5000);
     }
 
     connectBtn.addEventListener("click", function () {
-        addFeedLine("Connecting to " + getApi());
+        addFeedLine(t("Connecting to ", "Connexion à ") + getApi());
         startPolling();
     });
     lookupBtn.addEventListener("click", lookupAccount);
     txSearchBtn.addEventListener("click", lookupTransaction);
-    accountAddr.addEventListener("keydown", function (event) {
-        if (event.key === "Enter") lookupAccount();
-    });
-    txHashInput.addEventListener("keydown", function (event) {
-        if (event.key === "Enter") lookupTransaction();
-    });
-
-    addFeedLine("Explorer ready.");
+    accountAddr.addEventListener("keydown", function (event) { if (event.key === "Enter") lookupAccount(); });
+    txHashInput.addEventListener("keydown", function (event) { if (event.key === "Enter") lookupTransaction(); });
     startPolling();
 })();
 </script>

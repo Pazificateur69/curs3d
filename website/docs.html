@@ -1,37 +1,44 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-current-lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CURS3D Docs</title>
-    <meta name="description" content="Developer and operator documentation for CURS3D: quickstart, node workflow, API surface, token and governance endpoints, and deployment posture.">
+    <title>CURS3D Documentation</title>
+    <meta name="description" content="Complete documentation for CURS3D: quickstart, API routes, node workflow, operations, proofs, token and governance endpoints.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-title-en="CURS3D Documentation" data-title-fr="CURS3D Documentation" data-description-en="Complete documentation for CURS3D: quickstart, API routes, node workflow, operations, proofs, token and governance endpoints." data-description-fr="Documentation complète de CURS3D : quickstart, routes API, workflow node, opérations, preuves, endpoints token et gouvernance.">
 <div class="site-shell">
     <nav class="site-nav" id="nav">
         <div class="container nav-inner">
             <a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a>
             <div class="nav-links">
+                <a href="index.html"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
                 <a class="active" href="docs.html">Docs</a>
-                <a href="examples.html">Examples</a>
+                <a href="stack.html">Stack</a>
+                <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
+                <a href="tokenomics.html">Tokenomics</a>
                 <a href="whitepaper.html">Whitepaper</a>
+                <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
                 <a href="explorer.html">Explorer</a>
+                <div class="lang-switch"><button type="button" data-lang-switch="en">EN</button><button type="button" data-lang-switch="fr">FR</button></div>
                 <a class="nav-cta" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
             </div>
-            <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
-                <span></span><span></span><span></span>
-            </button>
+            <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation"><span></span><span></span><span></span></button>
         </div>
         <div class="mobile-menu" id="mobileMenu">
+            <a href="index.html"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
             <a href="docs.html">Docs</a>
-            <a href="examples.html">Examples</a>
+            <a href="stack.html">Stack</a>
+            <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
+            <a href="tokenomics.html">Tokenomics</a>
             <a href="whitepaper.html">Whitepaper</a>
+            <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
             <a href="explorer.html">Explorer</a>
-            <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
+            <div class="lang-switch"><button type="button" data-lang-switch="en">EN</button><button type="button" data-lang-switch="fr">FR</button></div>
         </div>
     </nav>
 
@@ -39,31 +46,30 @@
         <section class="page-hero">
             <div class="container">
                 <span class="section-tag">Documentation</span>
-                <h1>Developer and operator <span class="gradient-text">surface</span>.</h1>
-                <p class="lede">This is the practical layer of CURS3D: how to run the node, what the API exposes, and how the current protocol surface should be understood without overclaiming maturity.</p>
+                <h1><span data-lang="en">Developer and operator documentation.</span><span data-lang="fr">Documentation développeur et opérateur.</span></h1>
+                <p class="lede" data-lang-block="en">This page covers the practical protocol surface: how to run the node, how to consume the API, how to understand the exposed endpoints and how to operate CURS3D coherently.</p>
+                <p class="lede" data-lang-block="fr">Cette page couvre la surface pratique du protocole : comment lancer le node, consommer l’API, comprendre les endpoints exposés et opérer CURS3D de façon cohérente.</p>
             </div>
         </section>
 
-        <section class="section" style="padding-top: 1rem;">
+        <section class="section" style="padding-top:1rem;">
             <div class="container page-layout">
                 <aside class="sidebar">
-                    <div class="sidebar-title">On this page</div>
+                    <div class="sidebar-title"><span data-lang="en">On this page</span><span data-lang="fr">Sur cette page</span></div>
                     <a data-toc-link href="#quickstart">Quickstart</a>
-                    <a data-toc-link href="#cli">CLI workflow</a>
-                    <a data-toc-link href="#api-surface">API surface</a>
-                    <a data-toc-link href="#tokens-gov">Token and governance</a>
-                    <a data-toc-link href="#operations">Operations</a>
-                    <a data-toc-link href="#status">Current posture</a>
+                    <a data-toc-link href="#cli">CLI</a>
+                    <a data-toc-link href="#api">API</a>
+                    <a data-toc-link href="#proofs"><span data-lang="en">Proofs</span><span data-lang="fr">Preuves</span></a>
+                    <a data-toc-link href="#ops"><span data-lang="en">Operations</span><span data-lang="fr">Opérations</span></a>
+                    <a data-toc-link href="#surface"><span data-lang="en">Public surface</span><span data-lang="fr">Surface publique</span></a>
                 </aside>
                 <div class="content-stack">
                     <section class="content-section reveal" id="quickstart">
                         <h2>Quickstart</h2>
-                        <p>CURS3D is a Rust-native Layer 1 with a public node path, REST API, TCP RPC, deployment assets and a repository-level docs stack. The commands below reflect the current binary interface.</p>
-                        <div class="code-block" style="margin-top: 1rem;">
-                            <div class="code-header">
-                                <span class="code-filename">terminal</span>
-                                <button class="code-copy">Copy</button>
-                            </div>
+                        <p data-lang-block="en">The following workflow matches the current binary interface and deployment path of the project.</p>
+                        <p data-lang-block="fr">Le workflow suivant correspond à l’interface binaire actuelle et au chemin de déploiement du projet.</p>
+                        <div class="code-block" style="margin-top:1rem;">
+                            <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
                             <pre class="code-body"><code>git clone https://github.com/Pazificateur69/curs3d.git
 cd curs3d
 cargo build --release
@@ -84,88 +90,71 @@ printf '%s\n' 'change-this-validator-password' > validator.password
                     </section>
 
                     <section class="content-section reveal" id="cli">
-                        <h2>CLI workflow</h2>
+                        <h2>CLI</h2>
                         <div class="table-wrap">
                             <table>
-                                <thead>
-                                    <tr><th>Command</th><th>Purpose</th></tr>
-                                </thead>
+                                <thead><tr><th><span data-lang="en">Command</span><span data-lang="fr">Commande</span></th><th><span data-lang="en">Role</span><span data-lang="fr">Rôle</span></th></tr></thead>
                                 <tbody>
-                                    <tr><td><code>curs3d node</code></td><td>Run a node with optional validator wallet, public addr, bootnodes and genesis config.</td></tr>
-                                    <tr><td><code>curs3d wallet</code></td><td>Create an encrypted wallet file for operational use.</td></tr>
-                                    <tr><td><code>curs3d info</code></td><td>Inspect a wallet address and public key.</td></tr>
-                                    <tr><td><code>curs3d send</code></td><td>Submit a native transfer through the RPC path.</td></tr>
-                                    <tr><td><code>curs3d stake</code></td><td>Lock stake for validator participation.</td></tr>
-                                    <tr><td><code>curs3d status</code></td><td>Inspect chain status locally or via RPC.</td></tr>
-                                    <tr><td><code>curs3d genesis</code></td><td>Create a public testnet genesis aligned with real wallets.</td></tr>
-                                    <tr><td><code>curs3d bootnode-address</code></td><td>Publish a stable bootnode address for external peers.</td></tr>
+                                    <tr><td><code>curs3d node</code></td><td><span data-lang="en">Run a node with validator, bootnode and genesis options.</span><span data-lang="fr">Lancer un node avec options validateur, bootnode et genesis.</span></td></tr>
+                                    <tr><td><code>curs3d wallet</code></td><td><span data-lang="en">Create an encrypted wallet for operations.</span><span data-lang="fr">Créer un wallet chiffré pour les opérations.</span></td></tr>
+                                    <tr><td><code>curs3d info</code></td><td><span data-lang="en">Inspect address and public key.</span><span data-lang="fr">Inspecter l’adresse et la clé publique.</span></td></tr>
+                                    <tr><td><code>curs3d send</code></td><td><span data-lang="en">Submit a transfer through the RPC path.</span><span data-lang="fr">Soumettre un transfert via le chemin RPC.</span></td></tr>
+                                    <tr><td><code>curs3d stake</code></td><td><span data-lang="en">Lock stake for validator participation.</span><span data-lang="fr">Verrouiller du stake pour la participation validateur.</span></td></tr>
+                                    <tr><td><code>curs3d status</code></td><td><span data-lang="en">Inspect local or remote chain status.</span><span data-lang="fr">Inspecter le statut de la chaîne en local ou à distance.</span></td></tr>
                                 </tbody>
                             </table>
                         </div>
-                        <div class="callout" style="margin-top: 1rem;">The CLI should be understood as an operator-first surface. It is credible when deployment, restart and node identity handling are predictable.</div>
                     </section>
 
-                    <section class="content-section reveal" id="api-surface">
-                        <h2>API surface</h2>
-                        <p>The HTTP API exposes status, block, account, validator, proof and transaction endpoints. POST routes are used for actions that mutate or submit data.</p>
-                        <div class="table-wrap" style="margin-top: 1rem;">
+                    <section class="content-section reveal" id="api">
+                        <h2>API</h2>
+                        <div class="table-wrap">
                             <table>
-                                <thead>
-                                    <tr><th>Method</th><th>Route</th><th>Notes</th></tr>
-                                </thead>
+                                <thead><tr><th>Method</th><th>Route</th><th><span data-lang="en">Description</span><span data-lang="fr">Description</span></th></tr></thead>
                                 <tbody>
-                                    <tr><td>GET</td><td><code>/api/healthz</code></td><td>Health check with chain age and finalized height.</td></tr>
-                                    <tr><td>GET</td><td><code>/api/metrics</code></td><td>Prometheus-style metrics output.</td></tr>
-                                    <tr><td>GET</td><td><code>/api/status</code></td><td>Chain id, height, epoch, finalized height, pending count.</td></tr>
-                                    <tr><td>GET</td><td><code>/api/block/:height</code></td><td>Single block view.</td></tr>
-                                    <tr><td>GET</td><td><code>/api/blocks?from=&amp;limit=</code></td><td>Paginated recent blocks.</td></tr>
-                                    <tr><td>GET</td><td><code>/api/account/:address</code></td><td>Balance, nonce, staked balance.</td></tr>
-                                    <tr><td>GET</td><td><code>/api/account/:address/proof</code></td><td>Account proof export.</td></tr>
-                                    <tr><td>GET</td><td><code>/api/contract/:address/storage/:key/proof</code></td><td>Storage proof export.</td></tr>
-                                    <tr><td>GET</td><td><code>/api/tx/:hash</code></td><td>Transaction lookup.</td></tr>
-                                    <tr><td>GET</td><td><code>/api/receipt/:hash</code></td><td>Execution receipt lookup.</td></tr>
-                                    <tr><td>GET</td><td><code>/api/logs</code></td><td>Indexed log query surface.</td></tr>
-                                    <tr><td>GET</td><td><code>/api/pending</code></td><td>Pending transaction list.</td></tr>
-                                    <tr><td>GET</td><td><code>/api/validators</code></td><td>Active validator set.</td></tr>
-                                    <tr><td>POST</td><td><code>/api/faucet/request</code></td><td>JSON body with <code>address</code>.</td></tr>
-                                    <tr><td>POST</td><td><code>/api/tx/submit</code></td><td>Submit a signed transaction JSON payload.</td></tr>
-                                    <tr><td>POST</td><td><code>/api/tx/estimate</code></td><td>Estimate cost and execution path.</td></tr>
+                                    <tr><td>GET</td><td><code>/api/healthz</code></td><td><span data-lang="en">Liveness and freshness signal.</span><span data-lang="fr">Signal de vie et de fraîcheur de la chaîne.</span></td></tr>
+                                    <tr><td>GET</td><td><code>/api/metrics</code></td><td><span data-lang="en">Metrics endpoint for monitoring.</span><span data-lang="fr">Endpoint métriques pour le monitoring.</span></td></tr>
+                                    <tr><td>GET</td><td><code>/api/status</code></td><td><span data-lang="en">Chain height, finalized height, epoch and validator count.</span><span data-lang="fr">Hauteur de chaîne, finalité, epoch et nombre de validateurs.</span></td></tr>
+                                    <tr><td>GET</td><td><code>/api/block/:height</code></td><td><span data-lang="en">Single block view.</span><span data-lang="fr">Vue bloc unitaire.</span></td></tr>
+                                    <tr><td>GET</td><td><code>/api/blocks</code></td><td><span data-lang="en">Recent block summaries.</span><span data-lang="fr">Résumé des blocs récents.</span></td></tr>
+                                    <tr><td>GET</td><td><code>/api/account/:address</code></td><td><span data-lang="en">Account state.</span><span data-lang="fr">État de compte.</span></td></tr>
+                                    <tr><td>GET</td><td><code>/api/account/:address/proof</code></td><td><span data-lang="en">Account proof export.</span><span data-lang="fr">Export de preuve de compte.</span></td></tr>
+                                    <tr><td>GET</td><td><code>/api/contract/:address/storage/:key/proof</code></td><td><span data-lang="en">Storage proof export.</span><span data-lang="fr">Export de preuve de stockage.</span></td></tr>
+                                    <tr><td>GET</td><td><code>/api/tx/:hash</code></td><td><span data-lang="en">Transaction lookup.</span><span data-lang="fr">Recherche transaction.</span></td></tr>
+                                    <tr><td>GET</td><td><code>/api/receipt/:hash</code></td><td><span data-lang="en">Receipt lookup.</span><span data-lang="fr">Recherche receipt.</span></td></tr>
+                                    <tr><td>GET</td><td><code>/api/logs</code></td><td><span data-lang="en">Log query surface.</span><span data-lang="fr">Surface de requête logs.</span></td></tr>
+                                    <tr><td>GET</td><td><code>/api/validators</code></td><td><span data-lang="en">Active validators.</span><span data-lang="fr">Validateurs actifs.</span></td></tr>
+                                    <tr><td>POST</td><td><code>/api/faucet/request</code></td><td><span data-lang="en">JSON faucet request.</span><span data-lang="fr">Requête faucet JSON.</span></td></tr>
+                                    <tr><td>POST</td><td><code>/api/tx/submit</code></td><td><span data-lang="en">Submit a signed transaction.</span><span data-lang="fr">Soumettre une transaction signée.</span></td></tr>
+                                    <tr><td>POST</td><td><code>/api/tx/estimate</code></td><td><span data-lang="en">Estimate execution path and cost.</span><span data-lang="fr">Estimer le coût et le chemin d’exécution.</span></td></tr>
+                                    <tr><td>GET</td><td><code>/api/tokens</code></td><td><span data-lang="en">Token registry list.</span><span data-lang="fr">Liste du registre de tokens.</span></td></tr>
+                                    <tr><td>GET</td><td><code>/api/governance/proposals</code></td><td><span data-lang="en">Governance proposal list.</span><span data-lang="fr">Liste des propositions de gouvernance.</span></td></tr>
                                 </tbody>
                             </table>
                         </div>
                     </section>
 
-                    <section class="content-section reveal" id="tokens-gov">
-                        <h2>Token and governance endpoints</h2>
-                        <p>The current public surface also includes token registry and governance read endpoints. That matters because these features are now part of the chain state and must remain coherent across restart, replay and reorg.</p>
-                        <div class="pill-row" style="margin-top: 1rem;">
-                            <span class="pill"><code>GET /api/tokens</code></span>
-                            <span class="pill"><code>GET /api/token/&lt;address&gt;</code></span>
-                            <span class="pill"><code>GET /api/token/&lt;address&gt;/balance/&lt;owner&gt;</code></span>
-                            <span class="pill"><code>GET /api/governance/proposals</code></span>
-                            <span class="pill"><code>GET /api/governance/proposal/&lt;id&gt;</code></span>
-                        </div>
+                    <section class="content-section reveal" id="proofs">
+                        <h2><span data-lang="en">Proofs and verification</span><span data-lang="fr">Preuves et vérification</span></h2>
+                        <p data-lang-block="en">CURS3D’s trust-layer thesis becomes stronger when accounts, storage and headers can be verified instead of blindly trusted. Proof exports and light-client posture are therefore part of the public documentation surface.</p>
+                        <p data-lang-block="fr">La thèse trust-layer de CURS3D devient plus forte quand les comptes, le stockage et les headers peuvent être vérifiés au lieu d’être simplement crus. Les exports de preuves et la posture light client font donc partie de la surface de documentation publique.</p>
                     </section>
 
-                    <section class="content-section reveal" id="operations">
-                        <h2>Operations</h2>
-                        <div class="prose">
-                            <p>CURS3D should be operated as infrastructure, not as a loose experiment. The deployment assets in <code>deploy/</code> cover public VPS and service management. Wallet passwords, validator material and API tokens must remain outside the repository.</p>
-                            <ul>
-                                <li>P2P defaults to port <code>4337</code>.</li>
-                                <li>HTTP API defaults to <code>127.0.0.1:8080</code>.</li>
-                                <li>TCP RPC defaults to <code>127.0.0.1:9545</code>.</li>
-                                <li>Faucet cooldown persistence is file-backed and should point to a writable operational path.</li>
-                                <li>Public APIs should be fronted with normal production hygiene: auth where needed, observability, logs and restart policy.</li>
-                            </ul>
-                        </div>
+                    <section class="content-section reveal" id="ops">
+                        <h2><span data-lang="en">Operations</span><span data-lang="fr">Opérations</span></h2>
+                        <ul class="clean-list">
+                            <li><span data-lang="en">Default P2P port: 4337</span><span data-lang="fr">Port P2P par défaut : 4337</span></li>
+                            <li><span data-lang="en">Default HTTP API: 127.0.0.1:8080</span><span data-lang="fr">API HTTP par défaut : 127.0.0.1:8080</span></li>
+                            <li><span data-lang="en">Default TCP RPC: 127.0.0.1:9545</span><span data-lang="fr">TCP RPC par défaut : 127.0.0.1:9545</span></li>
+                            <li><span data-lang="en">Deployment assets are available under deploy/</span><span data-lang="fr">Les assets de déploiement sont disponibles dans deploy/</span></li>
+                        </ul>
                     </section>
 
-                    <section class="content-section reveal" id="status">
-                        <h2>Current posture</h2>
-                        <div class="prose">
-                            <p>CURS3D has enough surface area to be presented seriously, but it should still speak with precision. The right framing is: substantial protocol and product work, disciplined narrative, and a mainnet-readiness path that still requires hardening.</p>
-                            <div class="callout">Credibility comes from alignment: code, explorer, docs, deployment guidance and public claims must describe the same protocol reality.</div>
+                    <section class="content-section reveal" id="surface">
+                        <h2><span data-lang="en">Public surface discipline</span><span data-lang="fr">Discipline de surface publique</span></h2>
+                        <div class="callout">
+                            <span data-lang="en">Docs, explorer, whitepaper, deployment notes and protocol code should describe the same project. CURS3D becomes more credible when every public surface agrees on what exists and what still needs to be hardened.</span>
+                            <span data-lang="fr">La doc, l’explorer, le whitepaper, les notes de déploiement et le code protocolaire doivent décrire le même projet. CURS3D devient plus crédible quand chaque surface publique est d’accord sur ce qui existe et ce qui doit encore être durci.</span>
                         </div>
                     </section>
                 </div>
@@ -173,37 +162,7 @@ printf '%s\n' 'change-this-validator-password' > validator.password
         </section>
     </main>
 
-    <footer class="footer">
-        <div class="container">
-            <div class="footer-inner">
-                <div>
-                    <a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a>
-                    <p style="margin-top: 0.9rem;">Operator and developer documentation for a quantum-secure Layer 1.</p>
-                </div>
-                <div>
-                    <h4>Read</h4>
-                    <div class="footer-links">
-                        <a href="whitepaper.html">Whitepaper</a>
-                        <a href="https://github.com/Pazificateur69/curs3d/blob/main/whitepaper.md" target="_blank" rel="noopener">Markdown source</a>
-                    </div>
-                </div>
-                <div>
-                    <h4>Build</h4>
-                    <div class="footer-links">
-                        <a href="examples.html">Examples</a>
-                        <a href="explorer.html">Explorer</a>
-                    </div>
-                </div>
-                <div>
-                    <h4>Repository</h4>
-                    <div class="footer-links">
-                        <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
-                    </div>
-                </div>
-            </div>
-            <div class="footer-bottom">© <span data-year></span> CURS3D. Documentation aligned with the current public protocol surface.</div>
-        </div>
-    </footer>
+    <footer class="footer"><div class="container"><div class="footer-inner"><div><a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a><p style="margin-top:0.9rem;" data-lang-block="en">Public documentation for the CURS3D protocol surface.</p><p style="margin-top:0.9rem;" data-lang-block="fr">Documentation publique de la surface protocolaire de CURS3D.</p></div><div><h4>Protocol</h4><div class="footer-links"><a href="stack.html">Stack</a><a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a><a href="tokenomics.html">Tokenomics</a></div></div><div><h4>Read</h4><div class="footer-links"><a href="whitepaper.html">Whitepaper</a><a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a></div></div><div><h4>Live</h4><div class="footer-links"><a href="explorer.html">Explorer</a></div></div><div><h4>Source</h4><div class="footer-links"><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a></div></div></div><div class="footer-bottom"><span data-lang="en">© </span><span data-lang="fr">© </span><span data-year></span> CURS3D.</div></div></footer>
 </div>
 <script src="script.js"></script>
 </body>

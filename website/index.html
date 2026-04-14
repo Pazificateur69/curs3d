@@ -1,25 +1,33 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-current-lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CURS3D | Quantum-Secure Layer 1</title>
-    <meta name="description" content="CURS3D is the quantum-secure Layer 1 for digital assets that need to last. Post-quantum signatures, PoS finality, WASM execution, token and governance primitives, and a long-horizon trust thesis.">
+    <meta name="description" content="CURS3D is the quantum-secure Layer 1 for digital assets that need to last. Explore the thesis, stack, governance, tokenomics and full protocol documentation.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-title-en="CURS3D | Quantum-Secure Layer 1" data-title-fr="CURS3D | Layer 1 Post-Quantique" data-description-en="CURS3D is the quantum-secure Layer 1 for digital assets that need to last. Explore the thesis, stack, governance, tokenomics and full protocol documentation." data-description-fr="CURS3D est la Layer 1 post-quantique pour les actifs numériques conçus pour durer. Explorez la thèse, la stack, la gouvernance, les tokenomics et toute la documentation du protocole.">
 <div class="site-shell">
     <nav class="site-nav" id="nav">
         <div class="container nav-inner">
             <a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a>
             <div class="nav-links">
-                <a href="docs.html">Docs</a>
-                <a href="examples.html">Examples</a>
-                <a href="whitepaper.html">Whitepaper</a>
-                <a href="explorer.html">Explorer</a>
+                <a class="active" href="index.html"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
+                <a href="docs.html"><span data-lang="en">Docs</span><span data-lang="fr">Documentation</span></a>
+                <a href="stack.html"><span data-lang="en">Stack</span><span data-lang="fr">Stack</span></a>
+                <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
+                <a href="tokenomics.html"><span data-lang="en">Tokenomics</span><span data-lang="fr">Tokenomics</span></a>
+                <a href="whitepaper.html"><span data-lang="en">Whitepaper</span><span data-lang="fr">Whitepaper</span></a>
+                <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
+                <a href="explorer.html"><span data-lang="en">Explorer</span><span data-lang="fr">Explorer</span></a>
+                <div class="lang-switch">
+                    <button type="button" data-lang-switch="en">EN</button>
+                    <button type="button" data-lang-switch="fr">FR</button>
+                </div>
                 <a class="nav-cta" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
             </div>
             <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
@@ -27,10 +35,18 @@
             </button>
         </div>
         <div class="mobile-menu" id="mobileMenu">
-            <a href="docs.html">Docs</a>
-            <a href="examples.html">Examples</a>
-            <a href="whitepaper.html">Whitepaper</a>
-            <a href="explorer.html">Explorer</a>
+            <a href="index.html"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
+            <a href="docs.html"><span data-lang="en">Docs</span><span data-lang="fr">Documentation</span></a>
+            <a href="stack.html"><span data-lang="en">Stack</span><span data-lang="fr">Stack</span></a>
+            <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
+            <a href="tokenomics.html"><span data-lang="en">Tokenomics</span><span data-lang="fr">Tokenomics</span></a>
+            <a href="whitepaper.html"><span data-lang="en">Whitepaper</span><span data-lang="fr">Whitepaper</span></a>
+            <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
+            <a href="explorer.html"><span data-lang="en">Explorer</span><span data-lang="fr">Explorer</span></a>
+            <div class="lang-switch">
+                <button type="button" data-lang-switch="en">EN</button>
+                <button type="button" data-lang-switch="fr">FR</button>
+            </div>
             <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
         </div>
     </nav>
@@ -39,38 +55,85 @@
         <section class="hero">
             <div class="container hero-grid">
                 <div class="hero-copy reveal">
-                    <span class="eyebrow">Quantum-Secure Layer 1</span>
-                    <h1>The Layer 1 built for assets that <span class="gradient-text">need to last</span>.</h1>
-                    <p class="lede">CURS3D is a post-quantum blockchain built in Rust for long-duration digital assets, trust-critical on-chain systems, and teams that want a clearer long-horizon security posture from day one.</p>
+                    <span class="eyebrow">
+                        <span data-lang="en">Quantum-Secure Layer 1</span>
+                        <span data-lang="fr">Layer 1 Post-Quantique</span>
+                    </span>
+                    <h1>
+                        <span data-lang="en">The Layer 1 built for digital assets that <span class="gradient-text">need to last</span>.</span>
+                        <span data-lang="fr">La Layer 1 conçue pour les actifs numériques qui <span class="gradient-text">doivent durer</span>.</span>
+                    </h1>
+                    <p class="lede" data-lang-block="en">CURS3D is a post-quantum blockchain built in Rust for long-duration digital assets, trust-critical infrastructure and issuers that want a stronger long-horizon security posture from day one.</p>
+                    <p class="lede" data-lang-block="fr">CURS3D est une blockchain post-quantique développée en Rust pour les actifs numériques de longue durée, les infrastructures critiques et les émetteurs qui veulent une posture de sécurité plus crédible sur le long terme dès le départ.</p>
                     <div class="pill-row" style="margin: 1.25rem 0 1.5rem;">
-                        <span class="pill">Post-quantum signatures</span>
-                        <span class="pill">PoS + explicit finality</span>
-                        <span class="pill">WASM execution</span>
-                        <span class="pill">Token + governance primitives</span>
+                        <span class="pill" data-lang-block="en">Post-quantum signatures</span>
+                        <span class="pill" data-lang-block="fr">Signatures post-quantiques</span>
+                        <span class="pill" data-lang-block="en">PoS + explicit finality</span>
+                        <span class="pill" data-lang-block="fr">PoS + finalité explicite</span>
+                        <span class="pill" data-lang-block="en">WASM execution</span>
+                        <span class="pill" data-lang-block="fr">Exécution WASM</span>
+                        <span class="pill" data-lang-block="en">Token + governance primitives</span>
+                        <span class="pill" data-lang-block="fr">Primitives token + gouvernance</span>
                     </div>
                     <div class="btn-row">
-                        <a class="btn btn-primary" href="whitepaper.html">Read the thesis</a>
-                        <a class="btn btn-secondary" href="docs.html">Open the docs</a>
-                        <a class="btn btn-tertiary" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">Inspect the code</a>
+                        <a class="btn btn-primary" href="whitepaper.html"><span data-lang="en">Read the thesis</span><span data-lang="fr">Lire la thèse</span></a>
+                        <a class="btn btn-secondary" href="docs.html"><span data-lang="en">Open the docs</span><span data-lang="fr">Ouvrir la doc</span></a>
+                        <a class="btn btn-tertiary" href="stack.html"><span data-lang="en">Inspect the stack</span><span data-lang="fr">Voir la stack</span></a>
                     </div>
+                    <div class="hero-ribbon" data-lang-block="en">CURS3D is not positioned as a generic “faster chain”. It is positioned as a trust layer for assets and systems that care about cryptographic durability, governance continuity and future-proof issuance.</div>
+                    <div class="hero-ribbon" data-lang-block="fr">CURS3D n’est pas positionnée comme une “blockchain plus rapide”. Elle est positionnée comme une couche de confiance pour les actifs et systèmes qui accordent de l’importance à la durabilité cryptographique, à la continuité de gouvernance et à l’émission future-proof.</div>
                 </div>
                 <aside class="hero-panel reveal">
-                    <span class="eyebrow gold">Built to Endure</span>
+                    <span class="eyebrow gold"><span data-lang="en">Built to Endure</span><span data-lang="fr">Conçue pour durer</span></span>
                     <ul class="stack-list" style="margin-top: 1rem;">
-                        <li><span class="list-key">Category</span><span>Quantum-secure infrastructure for long-duration digital assets.</span></li>
-                        <li><span class="list-key">Positioning</span><span>Not another generic L1. A trust layer for issuers and systems that care about cryptographic durability.</span></li>
-                        <li><span class="list-key">Current state</span><span>Rust node, APIs, explorer, WASM execution, token and governance surfaces, operator path.</span></li>
-                        <li><span class="list-key">Brand promise</span><span>What you issue on CURS3D is built to endure.</span></li>
+                        <li>
+                            <span class="list-key"><span data-lang="en">Category</span><span data-lang="fr">Catégorie</span></span>
+                            <span data-lang="en">Quantum-secure infrastructure for long-duration digital assets.</span>
+                            <span data-lang="fr">Infrastructure post-quantique pour les actifs numériques de longue durée.</span>
+                        </li>
+                        <li>
+                            <span class="list-key"><span data-lang="en">Audience</span><span data-lang="fr">Public</span></span>
+                            <span data-lang="en">Issuers, builders, validators and partners that need a stronger long-term trust posture.</span>
+                            <span data-lang="fr">Émetteurs, builders, validateurs et partenaires qui ont besoin d’une posture de confiance plus forte sur le long terme.</span>
+                        </li>
+                        <li>
+                            <span class="list-key"><span data-lang="en">Site map</span><span data-lang="fr">Plan du site</span></span>
+                            <span data-lang="en">Thesis, docs, stack, governance, tokenomics, examples, explorer and public whitepaper.</span>
+                            <span data-lang="fr">Thèse, doc, stack, gouvernance, tokenomics, exemples, explorer et whitepaper public.</span>
+                        </li>
+                        <li>
+                            <span class="list-key"><span data-lang="en">Current posture</span><span data-lang="fr">Posture actuelle</span></span>
+                            <span data-lang="en">Substantial protocol surface, clearer brand, still disciplined about mainnet readiness.</span>
+                            <span data-lang="fr">Surface protocolaire déjà importante, marque plus claire, mais toujours disciplinée sur la préparation au mainnet.</span>
+                        </li>
                     </ul>
                 </aside>
             </div>
-            <div class="container metric-strip reveal">
-                <div class="metric"><strong>Post-Quantum</strong><span>Native signature posture</span></div>
-                <div class="metric"><strong>Rust Core</strong><span>Purpose-built node stack</span></div>
-                <div class="metric"><strong>PoS Finality</strong><span>Validator-driven settlement</span></div>
-                <div class="metric"><strong>WASM</strong><span>Programmable execution path</span></div>
-                <div class="metric"><strong>Open Source</strong><span>Readable, inspectable protocol</span></div>
-                <div class="metric"><strong>Long Horizon</strong><span>Security narrative with discipline</span></div>
+            <div class="container metric-strip reveal" style="margin-top: 1rem;">
+                <div class="metric">
+                    <strong data-lang="en">Post-Quantum</strong><strong data-lang="fr">Post-Quantique</strong>
+                    <span data-lang="en">Native signature posture</span><span data-lang="fr">Posture de signature native</span>
+                </div>
+                <div class="metric">
+                    <strong>Rust Core</strong>
+                    <span data-lang="en">Purpose-built node stack</span><span data-lang="fr">Node stack développée sur mesure</span>
+                </div>
+                <div class="metric">
+                    <strong data-lang="en">PoS Finality</strong><strong data-lang="fr">Finalité PoS</strong>
+                    <span data-lang="en">Validator-driven settlement</span><span data-lang="fr">Finalité portée par les validateurs</span>
+                </div>
+                <div class="metric">
+                    <strong>WASM</strong>
+                    <span data-lang="en">Programmable execution path</span><span data-lang="fr">Chemin d’exécution programmable</span>
+                </div>
+                <div class="metric">
+                    <strong data-lang="en">Open Source</strong><strong data-lang="fr">Open Source</strong>
+                    <span data-lang="en">Readable protocol surface</span><span data-lang="fr">Surface protocolaire lisible</span>
+                </div>
+                <div class="metric">
+                    <strong data-lang="en">Long Horizon</strong><strong data-lang="fr">Long Horizon</strong>
+                    <span data-lang="en">Trust narrative with discipline</span><span data-lang="fr">Narratif de confiance discipliné</span>
+                </div>
             </div>
         </section>
 
@@ -78,25 +141,34 @@
             <div class="container spotlight">
                 <div class="content-section reveal">
                     <div class="section-head">
-                        <span class="section-tag">Thesis</span>
-                        <h2>Why CURS3D exists</h2>
+                        <span class="section-tag"><span data-lang="en">Why It Exists</span><span data-lang="fr">Pourquoi ça existe</span></span>
+                        <h2>
+                            <span data-lang="en">CURS3D starts from a different question.</span>
+                            <span data-lang="fr">CURS3D part d’une question différente.</span>
+                        </h2>
                     </div>
                     <div class="prose">
-                        <p class="muted-strong">Most chains optimize first for speed, fees and composability. CURS3D starts from a different question: what should issuers use when the value they create is supposed to remain credible over many years?</p>
-                        <p>Some assets are not disposable. Governance systems, tokenized value, registries, attestations and institutional-grade issuance flows need a clearer long-horizon trust posture. CURS3D exists to serve that category.</p>
-                        <div class="callout">CURS3D is the quantum-secure Layer 1 for digital assets that need to last.</div>
+                        <p data-lang-block="en">Most blockchain narratives optimize for speed, fees and composability. CURS3D starts from a different problem: what should issuers use when the value they create is supposed to remain credible over many years?</p>
+                        <p data-lang-block="fr">La plupart des narratifs blockchain optimisent pour la vitesse, les frais et la composabilité. CURS3D part d’un autre problème : quelle infrastructure utiliser quand la valeur émise doit rester crédible pendant de nombreuses années ?</p>
+                        <p data-lang-block="en">Some assets are not disposable. Governance systems, tokenized value, registries, attestations and institutional-grade issuance flows need a clearer long-horizon trust posture.</p>
+                        <p data-lang-block="fr">Certains actifs ne sont pas jetables. Les systèmes de gouvernance, la valeur tokenisée, les registres, les attestations et les flux d’émission institutionnels ont besoin d’une posture de confiance beaucoup plus claire sur le long terme.</p>
+                        <div class="callout">
+                            <span data-lang="en">CURS3D is the quantum-secure Layer 1 for digital assets that need to last.</span>
+                            <span data-lang="fr">CURS3D est la Layer 1 post-quantique pour les actifs numériques qui doivent durer.</span>
+                        </div>
                     </div>
                 </div>
                 <div class="content-section reveal">
                     <div class="section-head">
-                        <span class="section-tag">Signal</span>
-                        <h2>What the market should hear</h2>
+                        <span class="section-tag"><span data-lang="en">What You Can Read Here</span><span data-lang="fr">Ce que tu peux lire ici</span></span>
+                        <h2><span data-lang="en">A complete public protocol site.</span><span data-lang="fr">Un vrai site protocolaire public.</span></h2>
                     </div>
-                    <ul class="signal-list">
-                        <li>Post-quantum by design, not retrofitted later.</li>
-                        <li>Infrastructure for durable digital value, not generic L1 messaging.</li>
-                        <li>Brand, protocol, docs and operator path aligned around the same idea.</li>
-                        <li>Honest about current scope, explicit about what must still be hardened.</li>
+                    <ul class="clean-list">
+                        <li><span data-lang="en">The product and developer documentation surface.</span><span data-lang="fr">La surface produit et documentation développeur.</span></li>
+                        <li><span data-lang="en">The technical stack and protocol architecture.</span><span data-lang="fr">La stack technique et l’architecture protocolaire.</span></li>
+                        <li><span data-lang="en">The governance framework and upgrade posture.</span><span data-lang="fr">Le cadre de gouvernance et la posture d’upgrade.</span></li>
+                        <li><span data-lang="en">The tokenomics logic and value-capture assumptions.</span><span data-lang="fr">La logique tokenomics et les hypothèses de capture de valeur.</span></li>
+                        <li><span data-lang="en">The examples, explorer and public whitepaper.</span><span data-lang="fr">Les exemples, l’explorer et le whitepaper public.</span></li>
                     </ul>
                 </div>
             </div>
@@ -105,26 +177,31 @@
         <section class="section">
             <div class="container">
                 <div class="section-head reveal">
-                    <span class="section-tag">Protocol Pillars</span>
-                    <h2>A protocol stack designed around <span class="gradient-text">durable trust</span>.</h2>
-                    <p>CURS3D is not meant to win by claiming universal superiority. It wins if its architecture is more coherent for assets and systems that care about long-horizon security.</p>
+                    <span class="section-tag"><span data-lang="en">Public Information Architecture</span><span data-lang="fr">Architecture publique de l’info</span></span>
+                    <h2><span data-lang="en">Everything necessary to understand the project.</span><span data-lang="fr">Tout le nécessaire pour comprendre le projet.</span></h2>
+                    <p data-lang-block="en">This site is structured so a developer, validator, investor or partner can read CURS3D from several angles without depending on a single landing page.</p>
+                    <p data-lang-block="fr">Le site est structuré pour qu’un développeur, validateur, investisseur ou partenaire puisse comprendre CURS3D sous plusieurs angles, sans dépendre d’une simple landing page.</p>
                 </div>
                 <div class="split-grid four">
                     <article class="card reveal">
-                        <h3>Cryptographic posture</h3>
-                        <p>CURS3D’s identity starts with a post-quantum signature posture and a future-proof trust narrative. The point is not panic. The point is preparation.</p>
+                        <h3 data-lang="en">Docs</h3><h3 data-lang="fr">Documentation</h3>
+                        <p data-lang-block="en">Node workflow, API surface, proofs, operations and public protocol interfaces.</p>
+                        <p data-lang-block="fr">Workflow node, surface API, preuves, opérations et interfaces publiques du protocole.</p>
                     </article>
                     <article class="card reveal">
-                        <h3>Consensus and finality</h3>
-                        <p>The chain is built around a stake-secured network with validator coordination, explicit finality and a public operator path that can mature into real network credibility.</p>
+                        <h3>Stack</h3>
+                        <p data-lang-block="en">Consensus, execution, networking, state, storage and runtime structure.</p>
+                        <p data-lang-block="fr">Consensus, exécution, réseau, état, stockage et structure runtime.</p>
                     </article>
                     <article class="card reveal">
-                        <h3>Programmable execution</h3>
-                        <p>WASM execution makes CURS3D more than a payments chain. It provides room for applications, contracts and trust-critical on-chain workflows.</p>
+                        <h3 data-lang="en">Governance</h3><h3 data-lang="fr">Gouvernance</h3>
+                        <p data-lang-block="en">Proposal flow, upgrade doctrine, validator responsibilities and emergency posture.</p>
+                        <p data-lang-block="fr">Flux de proposition, doctrine d’upgrade, responsabilités validateurs et posture d’urgence.</p>
                     </article>
                     <article class="card reveal">
-                        <h3>Token and governance surfaces</h3>
-                        <p>Token issuance and governance are part of the positioning: CURS3D wants to be a place where durable value and durable decision-making can coexist.</p>
+                        <h3>Tokenomics</h3>
+                        <p data-lang-block="en">Token role, allocation philosophy, fees, incentives and treasury logic.</p>
+                        <p data-lang-block="fr">Rôle du token, philosophie d’allocation, frais, incentives et logique de trésorerie.</p>
                     </article>
                 </div>
             </div>
@@ -133,25 +210,29 @@
         <section class="section">
             <div class="container">
                 <div class="section-head reveal">
-                    <span class="section-tag">Where It Fits</span>
-                    <h2>First use cases should be <span class="gradient-text">narrow and credible</span>.</h2>
+                    <span class="section-tag"><span data-lang="en">Target Fit</span><span data-lang="fr">Segments visés</span></span>
+                    <h2><span data-lang="en">First use cases should stay narrow and credible.</span><span data-lang="fr">Les premiers cas d’usage doivent rester ciblés et crédibles.</span></h2>
                 </div>
                 <div class="split-grid two">
                     <article class="card reveal">
-                        <h3>Tokenized value with a premium security story</h3>
-                        <p>Projects that want a future-proof issuance narrative can use CURS3D as a differentiated trust layer instead of defaulting to generic chain positioning.</p>
+                        <h3 data-lang="en">Premium token issuance</h3><h3 data-lang="fr">Émission premium de tokens</h3>
+                        <p data-lang-block="en">Projects that want a future-proof issuance story can use CURS3D as a differentiated trust layer instead of generic chain positioning.</p>
+                        <p data-lang-block="fr">Les projets qui veulent une histoire d’émission future-proof peuvent utiliser CURS3D comme couche de confiance différenciante au lieu d’un simple positionnement de chaîne générique.</p>
                     </article>
                     <article class="card reveal">
-                        <h3>RWAs and regulated-adjacent systems</h3>
-                        <p>Teams dealing with long-lived value, compliance pressure or institutional trust can benefit from a chain designed around durability rather than retail speed alone.</p>
+                        <h3>RWA</h3>
+                        <p data-lang-block="en">Teams handling long-lived value or institutional trust requirements can benefit from a more explicit long-horizon infrastructure posture.</p>
+                        <p data-lang-block="fr">Les équipes qui gèrent de la valeur de longue durée ou des contraintes de confiance institutionnelle peuvent bénéficier d’une posture d’infrastructure beaucoup plus explicite sur le long terme.</p>
                     </article>
                     <article class="card reveal">
-                        <h3>Identity, attestations and registries</h3>
-                        <p>When the lifetime of the data outlives a typical speculative cycle, the infrastructure story matters more. CURS3D is built for that argument.</p>
+                        <h3 data-lang="en">Identity and attestations</h3><h3 data-lang="fr">Identité et attestations</h3>
+                        <p data-lang-block="en">When the trust horizon of the data exceeds a speculative cycle, the infrastructure story matters more.</p>
+                        <p data-lang-block="fr">Quand l’horizon de confiance de la donnée dépasse un simple cycle spéculatif, l’histoire de l’infrastructure compte davantage.</p>
                     </article>
                     <article class="card reveal">
-                        <h3>Infrastructure-first applications</h3>
-                        <p>Some builders need a chain with a stronger protocol identity, not just another EVM venue. CURS3D can become that substrate if it stays disciplined.</p>
+                        <h3 data-lang="en">Infrastructure-first applications</h3><h3 data-lang="fr">Applications infrastructure-first</h3>
+                        <p data-lang-block="en">Some builders need a chain with a stronger protocol identity, not just another venue for deployment.</p>
+                        <p data-lang-block="fr">Certains builders ont besoin d’une chaîne avec une identité protocolaire plus forte, pas simplement d’un nouveau lieu de déploiement.</p>
                     </article>
                 </div>
             </div>
@@ -161,46 +242,27 @@
             <div class="container spotlight">
                 <div class="content-section reveal">
                     <div class="section-head">
-                        <span class="section-tag">Current Reality</span>
-                        <h2>What exists now</h2>
+                        <span class="section-tag"><span data-lang="en">Reality</span><span data-lang="fr">Réalité actuelle</span></span>
+                        <h2><span data-lang="en">What already exists.</span><span data-lang="fr">Ce qui existe déjà.</span></h2>
                     </div>
-                    <ul class="clean-list">
-                        <li>Rust-based node with build, test and release path.</li>
-                        <li>HTTP API, RPC, explorer and documentation surface.</li>
-                        <li>Validator flow, status endpoints, faucet path and operator-oriented deploy assets.</li>
-                        <li>Token and governance state integrated into the chain state model.</li>
-                        <li>Light-client direction, proofs and a public-facing protocol narrative.</li>
+                    <ul class="check-list">
+                        <li><span data-lang="en">Rust node, HTTP API, explorer and deployment surfaces.</span><span data-lang="fr">Node Rust, API HTTP, explorer et surfaces de déploiement.</span></li>
+                        <li><span data-lang="en">Validator flow, status endpoints and operational documentation.</span><span data-lang="fr">Flux validateurs, endpoints de statut et documentation opérationnelle.</span></li>
+                        <li><span data-lang="en">Token, governance and light-client surfaces integrated into the codebase.</span><span data-lang="fr">Surfaces token, gouvernance et light client intégrées dans la codebase.</span></li>
+                        <li><span data-lang="en">Foundation docs, whitepaper, brand system and public narrative.</span><span data-lang="fr">Docs fondatrices, whitepaper, système de marque et narratif public.</span></li>
                     </ul>
                 </div>
                 <div class="content-section reveal">
                     <div class="section-head">
-                        <span class="section-tag">Before Mainnet</span>
-                        <h2>What still matters</h2>
+                        <span class="section-tag"><span data-lang="en">Discipline</span><span data-lang="fr">Discipline</span></span>
+                        <h2><span data-lang="en">What still matters before scale.</span><span data-lang="fr">Ce qui compte encore avant l’échelle.</span></h2>
                     </div>
-                    <ul class="clean-list">
-                        <li>External security review and protocol hardening.</li>
-                        <li>Operational maturity for validators and public infrastructure.</li>
-                        <li>A narrow ecosystem wedge with real launch partners.</li>
-                        <li>Legal and token planning that matches the project’s ambition.</li>
-                        <li>Strict consistency between the site, docs, whitepaper and product claims.</li>
+                    <ul class="check-list">
+                        <li><span data-lang="en">External security review and protocol hardening.</span><span data-lang="fr">Audit externe et hardening protocolaire.</span></li>
+                        <li><span data-lang="en">Repeatable validator operations and incident procedures.</span><span data-lang="fr">Opérations validateurs répétables et procédures d’incident.</span></li>
+                        <li><span data-lang="en">A narrow ecosystem wedge with real launch partners.</span><span data-lang="fr">Un wedge écosystème ciblé avec de vrais partenaires de lancement.</span></li>
+                        <li><span data-lang="en">Token and legal planning aligned with public claims.</span><span data-lang="fr">Token planning et juridique alignés avec les claims publics.</span></li>
                     </ul>
-                </div>
-            </div>
-        </section>
-
-        <section class="section">
-            <div class="container">
-                <div class="content-section reveal">
-                    <div class="section-head">
-                        <span class="section-tag">Next Step</span>
-                        <h2>Read the foundation material, then inspect the product.</h2>
-                    </div>
-                    <div class="btn-row">
-                        <a class="btn btn-primary" href="whitepaper.html">Whitepaper</a>
-                        <a class="btn btn-secondary" href="docs.html">Documentation</a>
-                        <a class="btn btn-secondary" href="examples.html">Examples</a>
-                        <a class="btn btn-tertiary" href="explorer.html">Explorer</a>
-                    </div>
                 </div>
             </div>
         </section>
@@ -211,34 +273,43 @@
             <div class="footer-inner">
                 <div>
                     <a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a>
-                    <p style="margin-top: 0.9rem;">A post-quantum Layer 1 built for digital assets that need to last.</p>
+                    <p style="margin-top: 0.9rem;" data-lang-block="en">A bilingual protocol site for a post-quantum Layer 1 built for digital assets that need to last.</p>
+                    <p style="margin-top: 0.9rem;" data-lang-block="fr">Un site protocolaire bilingue pour une Layer 1 post-quantique conçue pour les actifs numériques qui doivent durer.</p>
                 </div>
                 <div>
-                    <h4>Protocol</h4>
+                    <h4 data-lang="en">Protocol</h4><h4 data-lang="fr">Protocole</h4>
                     <div class="footer-links">
+                        <a href="stack.html">Stack</a>
+                        <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
+                        <a href="tokenomics.html">Tokenomics</a>
+                    </div>
+                </div>
+                <div>
+                    <h4 data-lang="en">Documentation</h4><h4 data-lang="fr">Documentation</h4>
+                    <div class="footer-links">
+                        <a href="docs.html">Docs</a>
+                        <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
                         <a href="whitepaper.html">Whitepaper</a>
-                        <a href="docs.html">Documentation</a>
+                    </div>
+                </div>
+                <div>
+                    <h4 data-lang="en">Live Surface</h4><h4 data-lang="fr">Surface Live</h4>
+                    <div class="footer-links">
                         <a href="explorer.html">Explorer</a>
+                        <a href="https://github.com/Pazificateur69/curs3d/blob/main/whitepaper.md" target="_blank" rel="noopener">whitepaper.md</a>
                     </div>
                 </div>
                 <div>
-                    <h4>Build</h4>
+                    <h4>Source</h4>
                     <div class="footer-links">
-                        <a href="examples.html">Examples</a>
-                        <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">Repository</a>
-                        <a href="https://github.com/Pazificateur69/curs3d/blob/main/whitepaper.md" target="_blank" rel="noopener">Markdown whitepaper</a>
-                    </div>
-                </div>
-                <div>
-                    <h4>Positioning</h4>
-                    <div class="footer-links">
-                        <a href="index.html">Built to Endure</a>
-                        <a href="whitepaper.html#problem">Long-horizon thesis</a>
-                        <a href="docs.html#api-surface">Developer surface</a>
+                        <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
+                        <a href="https://github.com/Pazificateur69/curs3d/blob/main/docs/README.md" target="_blank" rel="noopener">docs/README.md</a>
                     </div>
                 </div>
             </div>
-            <div class="footer-bottom">© <span data-year></span> CURS3D. Open source protocol, disciplined trust-layer positioning.</div>
+            <div class="footer-bottom">
+                <span data-lang="en">© </span><span data-lang="fr">© </span><span data-year></span><span data-lang="en"> CURS3D. Public information architecture for a long-horizon trust layer.</span><span data-lang="fr"> CURS3D. Architecture d’information publique pour une couche de confiance pensée sur le long terme.</span>
+            </div>
         </div>
     </footer>
 </div>

@@ -1,9 +1,56 @@
 (function () {
     "use strict";
 
+    var STORAGE_KEY = "curs3d-lang";
     var nav = document.getElementById("nav");
     var navToggle = document.getElementById("navToggle");
     var mobileMenu = document.getElementById("mobileMenu");
+
+    function getPreferredLanguage() {
+        var saved = window.localStorage.getItem(STORAGE_KEY);
+        if (saved === "fr" || saved === "en") {
+            return saved;
+        }
+        var lang = (navigator.language || "en").toLowerCase();
+        return lang.indexOf("fr") === 0 ? "fr" : "en";
+    }
+
+    function setLanguage(lang) {
+        var selected = lang === "fr" ? "fr" : "en";
+        document.documentElement.setAttribute("data-current-lang", selected);
+        document.documentElement.setAttribute("lang", selected);
+        window.localStorage.setItem(STORAGE_KEY, selected);
+
+        document.querySelectorAll("[data-lang-switch]").forEach(function (button) {
+            button.classList.toggle("active", button.getAttribute("data-lang-switch") === selected);
+        });
+
+        var title = document.body.getAttribute("data-title-" + selected);
+        var description = document.body.getAttribute("data-description-" + selected);
+        var metaDescription = document.querySelector('meta[name="description"]');
+
+        if (title) {
+            document.title = title;
+        }
+        if (description && metaDescription) {
+            metaDescription.setAttribute("content", description);
+        }
+
+        document.querySelectorAll("[data-placeholder-en]").forEach(function (field) {
+            var value = field.getAttribute("data-placeholder-" + selected);
+            if (value) {
+                field.setAttribute("placeholder", value);
+            }
+        });
+    }
+
+    function closeMobileMenu() {
+        if (!navToggle || !mobileMenu) {
+            return;
+        }
+        navToggle.classList.remove("active");
+        mobileMenu.classList.remove("open");
+    }
 
     function syncNavState() {
         if (!nav) {
@@ -16,13 +63,11 @@
         }
     }
 
-    function closeMobileMenu() {
-        if (!navToggle || !mobileMenu) {
-            return;
-        }
-        navToggle.classList.remove("active");
-        mobileMenu.classList.remove("open");
-    }
+    document.querySelectorAll("[data-lang-switch]").forEach(function (button) {
+        button.addEventListener("click", function () {
+            setLanguage(button.getAttribute("data-lang-switch"));
+        });
+    });
 
     if (navToggle && mobileMenu) {
         navToggle.addEventListener("click", function () {
@@ -109,4 +154,6 @@
             tocObserver.observe(section);
         });
     }
+
+    setLanguage(getPreferredLanguage());
 })();

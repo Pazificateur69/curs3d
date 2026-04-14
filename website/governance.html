@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en" data-current-lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CURS3D Governance</title>
+    <meta name="description" content="Governance framework for CURS3D: proposal logic, upgrade doctrine, validator responsibilities, emergency posture and public decision-making principles.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-title-en="CURS3D Governance" data-title-fr="CURS3D Gouvernance" data-description-en="Governance framework for CURS3D: proposal logic, upgrade doctrine, validator responsibilities, emergency posture and public decision-making principles." data-description-fr="Cadre de gouvernance de CURS3D : logique de proposition, doctrine d’upgrade, responsabilités validateurs, posture d’urgence et principes de décision publique.">
+<div class="site-shell">
+    <nav class="site-nav" id="nav">
+        <div class="container nav-inner">
+            <a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a>
+            <div class="nav-links">
+                <a href="index.html"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
+                <a href="docs.html">Docs</a>
+                <a href="stack.html">Stack</a>
+                <a class="active" href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
+                <a href="tokenomics.html">Tokenomics</a>
+                <a href="whitepaper.html">Whitepaper</a>
+                <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
+                <a href="explorer.html">Explorer</a>
+                <div class="lang-switch"><button type="button" data-lang-switch="en">EN</button><button type="button" data-lang-switch="fr">FR</button></div>
+                <a class="nav-cta" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
+            </div>
+            <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation"><span></span><span></span><span></span></button>
+        </div>
+        <div class="mobile-menu" id="mobileMenu">
+            <a href="index.html"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
+            <a href="docs.html">Docs</a>
+            <a href="stack.html">Stack</a>
+            <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
+            <a href="tokenomics.html">Tokenomics</a>
+            <a href="whitepaper.html">Whitepaper</a>
+            <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
+            <a href="explorer.html">Explorer</a>
+            <div class="lang-switch"><button type="button" data-lang-switch="en">EN</button><button type="button" data-lang-switch="fr">FR</button></div>
+        </div>
+    </nav>
+
+    <main>
+        <section class="page-hero">
+            <div class="container">
+                <span class="section-tag"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></span>
+                <h1><span data-lang="en">Governance should protect continuity, not simulate decentralization.</span><span data-lang="fr">La gouvernance doit protéger la continuité, pas simuler la décentralisation.</span></h1>
+                <p class="lede" data-lang-block="en">For CURS3D, governance is part of long-horizon security. It exists to manage upgrades, coordinate validators, keep public legitimacy and preserve protocol continuity.</p>
+                <p class="lede" data-lang-block="fr">Pour CURS3D, la gouvernance fait partie de la sécurité long terme. Elle existe pour gérer les upgrades, coordonner les validateurs, conserver une légitimité publique et préserver la continuité du protocole.</p>
+            </div>
+        </section>
+
+        <section class="section" style="padding-top:1rem;">
+            <div class="container content-stack">
+                <section class="content-section reveal">
+                    <h2><span data-lang="en">Governance principles</span><span data-lang="fr">Principes de gouvernance</span></h2>
+                    <div class="split-grid three">
+                        <div class="card"><h3 data-lang="en">Clarity</h3><h3 data-lang="fr">Clarté</h3><p data-lang-block="en">Governance must define who can propose, what can be changed and how decisions take effect.</p><p data-lang-block="fr">La gouvernance doit définir qui peut proposer, ce qui peut être modifié et comment les décisions prennent effet.</p></div>
+                        <div class="card"><h3 data-lang="en">Continuity</h3><h3 data-lang="fr">Continuité</h3><p data-lang-block="en">The chain needs a documented path for upgrades and emergency handling, especially given its long-horizon security thesis.</p><p data-lang-block="fr">La chaîne a besoin d’un chemin documenté pour les upgrades et la gestion d’urgence, surtout avec sa thèse de sécurité long terme.</p></div>
+                        <div class="card"><h3 data-lang="en">Honesty</h3><h3 data-lang="fr">Honnêteté</h3><p data-lang-block="en">Early-stage control should be described honestly instead of hidden behind fake decentralization theater.</p><p data-lang-block="fr">Le contrôle en phase initiale doit être décrit honnêtement au lieu d’être caché derrière une fausse mise en scène de décentralisation.</p></div>
+                    </div>
+                </section>
+
+                <section class="content-section reveal">
+                    <h2><span data-lang="en">Proposal lifecycle</span><span data-lang="fr">Cycle de vie d’une proposition</span></h2>
+                    <div class="timeline">
+                        <div class="timeline-item"><strong data-lang="en">Draft</strong><strong data-lang="fr">Draft</strong><p data-lang-block="en">A protocol change or governance action should begin with a written rationale, affected modules and rollout implications.</p><p data-lang-block="fr">Un changement protocolaire ou une action de gouvernance doit commencer par une note écrite : justification, modules impactés et implications de rollout.</p></div>
+                        <div class="timeline-item"><strong data-lang="en">Submission</strong><strong data-lang="fr">Soumission</strong><p data-lang-block="en">The proposal enters the public governance surface with explicit metadata and a bounded scope.</p><p data-lang-block="fr">La proposition entre dans la surface publique de gouvernance avec des métadonnées explicites et un périmètre clair.</p></div>
+                        <div class="timeline-item"><strong data-lang="en">Voting</strong><strong data-lang="fr">Vote</strong><p data-lang-block="en">Voting should reflect who is authorized to influence protocol direction and how stake or governance weight is interpreted.</p><p data-lang-block="fr">Le vote doit refléter qui est autorisé à influencer la direction du protocole et comment le stake ou le poids de gouvernance est interprété.</p></div>
+                        <div class="timeline-item"><strong data-lang="en">Execution</strong><strong data-lang="fr">Exécution</strong><p data-lang-block="en">Accepted proposals must have a clear execution path, not just symbolic approval.</p><p data-lang-block="fr">Les propositions acceptées doivent avoir un chemin d’exécution clair, pas seulement une approbation symbolique.</p></div>
+                    </div>
+                </section>
+
+                <section class="content-section reveal">
+                    <h2><span data-lang="en">Validator role in governance</span><span data-lang="fr">Rôle des validateurs</span></h2>
+                    <div class="prose">
+                        <p data-lang-block="en">Validators are not just machines. They are part of the network’s public credibility. Governance doctrine should therefore define how validators are informed, how upgrades are coordinated and what happens in degraded conditions.</p>
+                        <p data-lang-block="fr">Les validateurs ne sont pas juste des machines. Ils font partie de la crédibilité publique du réseau. La doctrine de gouvernance doit donc définir comment les validateurs sont informés, comment les upgrades sont coordonnés et ce qui se passe en conditions dégradées.</p>
+                    </div>
+                </section>
+
+                <section class="content-section reveal">
+                    <h2><span data-lang="en">Upgrade doctrine</span><span data-lang="fr">Doctrine d’upgrade</span></h2>
+                    <ul class="clean-list">
+                        <li><span data-lang="en">Upgrades should be documented before they are activated.</span><span data-lang="fr">Les upgrades doivent être documentées avant activation.</span></li>
+                        <li><span data-lang="en">Activation heights and operator expectations must be explicit.</span><span data-lang="fr">Les hauteurs d’activation et attentes opérateurs doivent être explicites.</span></li>
+                        <li><span data-lang="en">The public site, docs and governance page should describe the same upgrade reality.</span><span data-lang="fr">Le site public, la doc et la page gouvernance doivent décrire la même réalité d’upgrade.</span></li>
+                    </ul>
+                </section>
+
+                <section class="content-section reveal">
+                    <h2><span data-lang="en">Emergency posture</span><span data-lang="fr">Posture d’urgence</span></h2>
+                    <div class="callout">
+                        <span data-lang="en">A long-horizon trust layer cannot behave as if incidents are purely technical. Governance must include a visible emergency doctrine: who communicates, who decides, what gets paused, what gets upgraded and how the network returns to normal operation.</span>
+                        <span data-lang="fr">Une trust layer pensée sur le long terme ne peut pas se comporter comme si les incidents étaient purement techniques. La gouvernance doit inclure une doctrine d’urgence visible : qui communique, qui décide, ce qui peut être mis en pause, ce qui peut être upgradé et comment le réseau revient à un fonctionnement normal.</span>
+                    </div>
+                </section>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer"><div class="container"><div class="footer-inner"><div><a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a><p style="margin-top:0.9rem;" data-lang-block="en">Public governance framework for CURS3D.</p><p style="margin-top:0.9rem;" data-lang-block="fr">Cadre public de gouvernance pour CURS3D.</p></div><div><h4>Protocol</h4><div class="footer-links"><a href="stack.html">Stack</a><a href="tokenomics.html">Tokenomics</a><a href="whitepaper.html">Whitepaper</a></div></div><div><h4>Read</h4><div class="footer-links"><a href="docs.html">Docs</a><a href="https://github.com/Pazificateur69/curs3d/blob/main/docs/foundation/07-governance-framework.md" target="_blank" rel="noopener">Framework</a></div></div><div><h4>Live</h4><div class="footer-links"><a href="explorer.html">Explorer</a></div></div><div><h4>Source</h4><div class="footer-links"><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a></div></div></div><div class="footer-bottom"><span data-lang="en">© </span><span data-lang="fr">© </span><span data-year></span> CURS3D.</div></div></footer>
+</div>
+<script src="script.js"></script>
+</body>
+</html>

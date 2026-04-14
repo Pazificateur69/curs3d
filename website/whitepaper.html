@@ -1,37 +1,44 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-current-lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CURS3D Whitepaper</title>
-    <meta name="description" content="Whitepaper and thesis for CURS3D, the quantum-secure Layer 1 for digital assets that need to last.">
+    <meta name="description" content="Whitepaper and public thesis for CURS3D: problem, category, protocol direction, risks and roadmap logic.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-title-en="CURS3D Whitepaper" data-title-fr="CURS3D Whitepaper" data-description-en="Whitepaper and public thesis for CURS3D: problem, category, protocol direction, risks and roadmap logic." data-description-fr="Whitepaper et thèse publique de CURS3D : problème, catégorie, direction protocolaire, risques et logique de roadmap.">
 <div class="site-shell">
     <nav class="site-nav" id="nav">
         <div class="container nav-inner">
             <a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a>
             <div class="nav-links">
+                <a href="index.html"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
                 <a href="docs.html">Docs</a>
-                <a href="examples.html">Examples</a>
+                <a href="stack.html">Stack</a>
+                <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
+                <a href="tokenomics.html">Tokenomics</a>
                 <a class="active" href="whitepaper.html">Whitepaper</a>
+                <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
                 <a href="explorer.html">Explorer</a>
+                <div class="lang-switch"><button type="button" data-lang-switch="en">EN</button><button type="button" data-lang-switch="fr">FR</button></div>
                 <a class="nav-cta" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
             </div>
-            <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
-                <span></span><span></span><span></span>
-            </button>
+            <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation"><span></span><span></span><span></span></button>
         </div>
         <div class="mobile-menu" id="mobileMenu">
+            <a href="index.html"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
             <a href="docs.html">Docs</a>
-            <a href="examples.html">Examples</a>
+            <a href="stack.html">Stack</a>
+            <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
+            <a href="tokenomics.html">Tokenomics</a>
             <a href="whitepaper.html">Whitepaper</a>
+            <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
             <a href="explorer.html">Explorer</a>
-            <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
+            <div class="lang-switch"><button type="button" data-lang-switch="en">EN</button><button type="button" data-lang-switch="fr">FR</button></div>
         </div>
     </nav>
 
@@ -39,133 +46,72 @@
         <section class="page-hero">
             <div class="container">
                 <span class="section-tag">Whitepaper</span>
-                <h1>A trust-layer thesis for the <span class="gradient-text">post-quantum era</span>.</h1>
-                <p class="lede">CURS3D is not framed as a generic faster chain. It is framed as a dedicated Layer 1 for long-duration digital assets, future-proof issuance and durable on-chain trust.</p>
-                <div class="btn-row" style="margin-top: 1.2rem;">
-                    <a class="btn btn-primary" href="https://github.com/Pazificateur69/curs3d/blob/main/whitepaper.md" target="_blank" rel="noopener">Read the Markdown source</a>
-                    <a class="btn btn-secondary" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">Repository</a>
+                <h1><span data-lang="en">A trust-layer thesis for the post-quantum era.</span><span data-lang="fr">Une thèse trust-layer pour l’ère post-quantique.</span></h1>
+                <p class="lede" data-lang-block="en">CURS3D is not framed as a generic faster chain. It is framed as a dedicated Layer 1 for long-duration digital assets, future-proof issuance and durable on-chain trust.</p>
+                <p class="lede" data-lang-block="fr">CURS3D n’est pas présentée comme une chaîne “plus rapide”. Elle est présentée comme une Layer 1 dédiée aux actifs numériques de longue durée, à l’émission future-proof et à la confiance durable on-chain.</p>
+                <div class="btn-row" style="margin-top:1.2rem;">
+                    <a class="btn btn-primary" href="https://github.com/Pazificateur69/curs3d/blob/main/whitepaper.md" target="_blank" rel="noopener">whitepaper.md</a>
+                    <a class="btn btn-secondary" href="https://github.com/Pazificateur69/curs3d/blob/main/docs/foundation/13-litepaper.md" target="_blank" rel="noopener">Litepaper</a>
                 </div>
             </div>
         </section>
 
-        <section class="section" style="padding-top: 1rem;">
+        <section class="section" style="padding-top:1rem;">
             <div class="container whitepaper-layout">
                 <aside class="toc">
                     <div class="sidebar-title">Contents</div>
-                    <a data-toc-link href="#abstract">Abstract</a>
-                    <a data-toc-link href="#problem">Problem</a>
+                    <a data-toc-link href="#problem"><span data-lang="en">Problem</span><span data-lang="fr">Problème</span></a>
                     <a data-toc-link href="#thesis">Thesis</a>
-                    <a data-toc-link href="#architecture">Protocol direction</a>
-                    <a data-toc-link href="#security">Security posture</a>
-                    <a data-toc-link href="#product">Product strategy</a>
-                    <a data-toc-link href="#economics">Economics</a>
-                    <a data-toc-link href="#roadmap">Roadmap logic</a>
-                    <a data-toc-link href="#conclusion">Conclusion</a>
+                    <a data-toc-link href="#category"><span data-lang="en">Category</span><span data-lang="fr">Catégorie</span></a>
+                    <a data-toc-link href="#protocol"><span data-lang="en">Protocol direction</span><span data-lang="fr">Direction protocolaire</span></a>
+                    <a data-toc-link href="#risk"><span data-lang="en">Risks</span><span data-lang="fr">Risques</span></a>
+                    <a data-toc-link href="#roadmap"><span data-lang="en">Roadmap logic</span><span data-lang="fr">Logique de roadmap</span></a>
+                    <a data-toc-link href="#conclusion"><span data-lang="en">Conclusion</span><span data-lang="fr">Conclusion</span></a>
                 </aside>
-
                 <article class="whitepaper-article">
-                    <section class="reveal" id="abstract">
-                        <h2>Abstract</h2>
-                        <p>CURS3D is a post-quantum Layer 1 blockchain built for digital assets and systems that must remain credible over a long time horizon. Its core argument is simple: assets designed to endure should not be issued on infrastructure that treats long-term trust as an afterthought.</p>
-                        <div class="quote-block" style="margin-top: 1rem;">CURS3D is the quantum-secure Layer 1 for digital assets that need to last.</div>
-                    </section>
-
                     <section class="reveal" id="problem">
-                        <h2>Problem</h2>
-                        <p>Most blockchains are marketed around speed, fees and ecosystem size. Those dimensions matter, but they do not fully address the needs of long-duration digital value.</p>
-                        <div class="prose" style="margin-top: 1rem;">
-                            <ul>
-                                <li>Some tokens and registries are expected to remain relevant far beyond a typical market cycle.</li>
-                                <li>Some issuers want a stronger trust narrative than generic chain selection provides.</li>
-                                <li>Future cryptographic migration risk is often discussed as a later problem rather than a design parameter.</li>
-                            </ul>
-                        </div>
+                        <h2><span data-lang="en">Problem</span><span data-lang="fr">Problème</span></h2>
+                        <p data-lang-block="en">Most blockchains compete on speed, fees and ecosystem gravity. CURS3D starts from a less crowded but potentially durable wedge: assets designed to live for a long time should be born on infrastructure that treats long-horizon trust as a first-class concern.</p>
+                        <p data-lang-block="fr">La plupart des blockchains se battent sur la vitesse, les frais et la gravité d’écosystème. CURS3D part d’un wedge moins encombré mais potentiellement durable : les actifs conçus pour vivre longtemps devraient naître sur une infrastructure qui traite la confiance de long terme comme une priorité de premier ordre.</p>
                     </section>
-
                     <section class="reveal" id="thesis">
                         <h2>Thesis</h2>
-                        <p>CURS3D is built around a narrow but defensible proposition: the market will eventually value infrastructure that presents long-horizon trust as a first-class feature.</p>
-                        <div class="prose" style="margin-top: 1rem;">
-                            <p>This does not require claiming that incumbent chains are immediately obsolete. It requires saying something more disciplined: for some assets, future-proof issuance is a meaningful strategic choice.</p>
-                            <p>CURS3D therefore defines its own category instead of competing on generic L1 rhetoric.</p>
+                        <div class="quote-block">
+                            <span data-lang="en">CURS3D is the quantum-secure Layer 1 for digital assets that need to last.</span>
+                            <span data-lang="fr">CURS3D est la Layer 1 post-quantique pour les actifs numériques qui doivent durer.</span>
                         </div>
                     </section>
-
-                    <section class="reveal" id="architecture">
-                        <h2>Protocol direction</h2>
-                        <p>CURS3D is implemented as a dedicated Layer 1 in Rust with a node path, APIs, explorer surface, staking model, programmable execution and additional token/governance functionality.</p>
-                        <div class="split-grid two" style="margin-top: 1rem;">
-                            <div class="card">
-                                <h3>Architecture</h3>
-                                <p>Dedicated chain, account-based state, WASM execution, node networking, proofs and explorer-facing surfaces.</p>
-                            </div>
-                            <div class="card">
-                                <h3>Product coherence</h3>
-                                <p>The node, docs, explorer and whitepaper should all tell the same story: a trust layer for long-duration assets.</p>
-                            </div>
-                        </div>
+                    <section class="reveal" id="category">
+                        <h2><span data-lang="en">Category</span><span data-lang="fr">Catégorie</span></h2>
+                        <p data-lang-block="en">CURS3D should not present itself as “another L1”. Its intended category is quantum-secure infrastructure for long-duration digital assets. That category is narrow enough to be memorable and broad enough to support real expansion if execution follows.</p>
+                        <p data-lang-block="fr">CURS3D ne doit pas se présenter comme “une L1 de plus”. Sa catégorie visée est l’infrastructure post-quantique pour les actifs numériques de longue durée. Cette catégorie est assez étroite pour être mémorable et assez large pour soutenir une vraie expansion si l’exécution suit.</p>
                     </section>
-
-                    <section class="reveal" id="security">
-                        <h2>Security posture</h2>
-                        <p>The project’s security message must stay serious and bounded.</p>
-                        <div class="prose" style="margin-top: 1rem;">
-                            <ul>
-                                <li>Post-quantum posture is a design principle, not a magic shield.</li>
-                                <li>Consensus, validator operations, API hardening and release discipline are part of protocol security.</li>
-                                <li>A credible trust layer must be explicit about what has been built and what still requires audit and hardening.</li>
-                            </ul>
-                        </div>
+                    <section class="reveal" id="protocol">
+                        <h2><span data-lang="en">Protocol direction</span><span data-lang="fr">Direction protocolaire</span></h2>
+                        <p data-lang-block="en">The protocol combines a Rust-native node, staking and finality logic, programmable execution, token and governance surfaces, operator tooling and public-facing documentation. The point is coherence: product, protocol and narrative must all reinforce the same trust-layer promise.</p>
+                        <p data-lang-block="fr">Le protocole combine un node Rust natif, une logique de staking et finalité, une exécution programmable, des surfaces token et gouvernance, de l’outillage opérateur et une documentation publique. Le point clé est la cohérence : produit, protocole et narratif doivent tous renforcer la même promesse de trust-layer.</p>
                     </section>
-
-                    <section class="reveal" id="product">
-                        <h2>Product strategy</h2>
-                        <p>CURS3D should not try to attract the whole market at once. It should become compelling for a narrower group first.</p>
-                        <div class="prose" style="margin-top: 1rem;">
-                            <ul>
-                                <li>Premium token issuance</li>
-                                <li>RWA and compliance-sensitive infrastructure</li>
-                                <li>Identity, attestations and durable registries</li>
-                                <li>Projects that want a stronger future-proof posture from day one</li>
-                            </ul>
-                        </div>
+                    <section class="reveal" id="risk">
+                        <h2><span data-lang="en">Risks</span><span data-lang="fr">Risques</span></h2>
+                        <ul class="clean-list">
+                            <li><span data-lang="en">The market may still prefer incumbent chains with retrofit narratives.</span><span data-lang="fr">Le marché peut encore préférer des chaînes établies avec un narratif retrofit.</span></li>
+                            <li><span data-lang="en">Security and operational maturity must match the ambition of the thesis.</span><span data-lang="fr">La sécurité et la maturité opérationnelle doivent être à la hauteur de l’ambition de la thèse.</span></li>
+                            <li><span data-lang="en">Without focused ecosystem adoption, the category stays theoretical.</span><span data-lang="fr">Sans adoption écosystème ciblée, la catégorie reste théorique.</span></li>
+                        </ul>
                     </section>
-
-                    <section class="reveal" id="economics">
-                        <h2>Economics</h2>
-                        <p>The code is not the business model. The business model is the combination of protocol, token alignment, network usage, partner demand and infrastructure services.</p>
-                        <div class="prose" style="margin-top: 1rem;">
-                            <p>A credible native token should secure the network, coordinate governance and align ecosystem growth. Public claims should stay tightly coupled to actual utility and legal reality.</p>
-                        </div>
-                    </section>
-
                     <section class="reveal" id="roadmap">
-                        <h2>Roadmap logic</h2>
+                        <h2><span data-lang="en">Roadmap logic</span><span data-lang="fr">Logique de roadmap</span></h2>
                         <div class="timeline">
-                            <div class="timeline-item">
-                                <strong>Foundation</strong>
-                                <p>Stabilize protocol implementation, site, docs, explorer and deployment path.</p>
-                            </div>
-                            <div class="timeline-item">
-                                <strong>Validation</strong>
-                                <p>External security review, repeatable testnet operations, validator readiness.</p>
-                            </div>
-                            <div class="timeline-item">
-                                <strong>Ecosystem</strong>
-                                <p>Bring in pilot projects with a strong fit for the long-horizon trust thesis.</p>
-                            </div>
-                            <div class="timeline-item">
-                                <strong>Launch readiness</strong>
-                                <p>Mainnet should follow accumulated credibility, not marketing pressure.</p>
-                            </div>
+                            <div class="timeline-item"><strong data-lang="en">Foundation</strong><strong data-lang="fr">Foundation</strong><p data-lang-block="en">Stabilize code, docs, operator path and public consistency.</p><p data-lang-block="fr">Stabiliser le code, la doc, le parcours opérateur et la cohérence publique.</p></div>
+                            <div class="timeline-item"><strong data-lang="en">Validation</strong><strong data-lang="fr">Validation</strong><p data-lang-block="en">Audit, hardening and repeatable testnet operations.</p><p data-lang-block="fr">Audit, hardening et opérations testnet répétables.</p></div>
+                            <div class="timeline-item"><strong data-lang="en">Ecosystem</strong><strong data-lang="fr">Écosystème</strong><p data-lang-block="en">Bring in projects that fit the long-horizon trust thesis.</p><p data-lang-block="fr">Faire venir des projets qui collent à la thèse trust long terme.</p></div>
                         </div>
                     </section>
-
                     <section class="reveal" id="conclusion">
-                        <h2>Conclusion</h2>
-                        <p>CURS3D matters if it stays coherent: coherent architecture, coherent security posture, coherent public claims and coherent brand. The opportunity is to become the reference Layer 1 for assets and systems that care about long-horizon trust.</p>
-                        <div class="status-banner" style="margin-top: 1rem;">
-                            The strongest version of CURS3D is not “the chain that does everything.” It is “the chain that knows exactly what it is for.”
+                        <h2><span data-lang="en">Conclusion</span><span data-lang="fr">Conclusion</span></h2>
+                        <div class="status-banner warning">
+                            <span data-lang="en">CURS3D becomes stronger when it knows exactly what it is for: a Layer 1 for assets and systems that care about long-horizon trust, future-proof issuance and disciplined public credibility.</span>
+                            <span data-lang="fr">CURS3D devient plus forte quand elle sait exactement à quoi elle sert : une Layer 1 pour les actifs et systèmes qui se soucient de la confiance long terme, de l’émission future-proof et d’une crédibilité publique disciplinée.</span>
                         </div>
                     </section>
                 </article>
@@ -173,37 +119,7 @@
         </section>
     </main>
 
-    <footer class="footer">
-        <div class="container">
-            <div class="footer-inner">
-                <div>
-                    <a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a>
-                    <p style="margin-top: 0.9rem;">Whitepaper and thesis for a post-quantum Layer 1 built to endure.</p>
-                </div>
-                <div>
-                    <h4>Read</h4>
-                    <div class="footer-links">
-                        <a href="https://github.com/Pazificateur69/curs3d/blob/main/whitepaper.md" target="_blank" rel="noopener">Markdown source</a>
-                        <a href="docs.html">Docs</a>
-                    </div>
-                </div>
-                <div>
-                    <h4>Inspect</h4>
-                    <div class="footer-links">
-                        <a href="explorer.html">Explorer</a>
-                        <a href="examples.html">Examples</a>
-                    </div>
-                </div>
-                <div>
-                    <h4>Repository</h4>
-                    <div class="footer-links">
-                        <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
-                    </div>
-                </div>
-            </div>
-            <div class="footer-bottom">© <span data-year></span> CURS3D. Whitepaper language should remain narrower and stronger than generic L1 marketing.</div>
-        </div>
-    </footer>
+    <footer class="footer"><div class="container"><div class="footer-inner"><div><a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a><p style="margin-top:0.9rem;" data-lang-block="en">Public whitepaper surface for CURS3D.</p><p style="margin-top:0.9rem;" data-lang-block="fr">Surface whitepaper publique pour CURS3D.</p></div><div><h4>Protocol</h4><div class="footer-links"><a href="stack.html">Stack</a><a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a><a href="tokenomics.html">Tokenomics</a></div></div><div><h4>Read</h4><div class="footer-links"><a href="https://github.com/Pazificateur69/curs3d/blob/main/docs/foundation/01-curs3d-thesis.md" target="_blank" rel="noopener">Thesis</a><a href="https://github.com/Pazificateur69/curs3d/blob/main/whitepaper.md" target="_blank" rel="noopener">whitepaper.md</a></div></div><div><h4>Live</h4><div class="footer-links"><a href="explorer.html">Explorer</a></div></div><div><h4>Source</h4><div class="footer-links"><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a></div></div></div><div class="footer-bottom"><span data-lang="en">© </span><span data-lang="fr">© </span><span data-year></span> CURS3D.</div></div></footer>
 </div>
 <script src="script.js"></script>
 </body>
