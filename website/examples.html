@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Examples &amp; Tutorials - CURS3D</title>
-    <meta name="description" content="Step-by-step tutorials for the CURS3D quantum-resistant blockchain. Run nodes, send transactions, stake, deploy smart contracts, and more.">
+    <title>Tutorials - CURS3D</title>
+    <meta name="description" content="Step-by-step tutorials for the CURS3D quantum-resistant blockchain. Run nodes, send transactions, stake tokens, deploy WASM smart contracts, and more.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -20,35 +20,47 @@
     <!-- Navigation -->
     <nav id="nav">
         <div class="nav-container">
-            <a href="index.html" class="logo"><span class="logo-diamond"></span> CURS3D</a>
+            <a href="index.html" class="logo">
+                <span class="logo-diamond"></span>
+                CURS3D
+            </a>
             <div class="nav-links" id="navLinks">
-                <a href="docs.html">Docs</a>
-                <a href="examples.html" class="active">Examples</a>
+                <a href="docs.html">Documentation</a>
+                <a href="examples.html" class="active">Tutorials</a>
                 <a href="whitepaper.html">Whitepaper</a>
                 <a href="explorer.html">Explorer</a>
-                <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener" class="btn-nav">GitHub <span class="btn-nav-arrow">&rarr;</span></a>
+                <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener" class="btn-nav">
+                    GitHub
+                    <span class="btn-nav-arrow">&rarr;</span>
+                </a>
             </div>
-            <button class="hamburger" id="hamburger" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+            <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
         </div>
     </nav>
 
+    <!-- Mobile Menu -->
     <div class="mobile-menu" id="mobileMenu">
-        <a href="docs.html">Docs</a>
-        <a href="examples.html">Examples</a>
+        <a href="docs.html">Documentation</a>
+        <a href="examples.html">Tutorials</a>
         <a href="whitepaper.html">Whitepaper</a>
         <a href="explorer.html">Explorer</a>
         <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub &rarr;</a>
     </div>
 
+    <!-- Page Hero -->
     <section class="page-hero">
         <span class="section-tag">Tutorials</span>
-        <h1>Learn by <span class="gradient-text">building</span></h1>
-        <p class="page-sub">Step-by-step guides from your first node to deploying smart contracts on the quantum-resistant blockchain.</p>
+        <h1>Learn by <span class="gradient-text">building</span> with CURS3D</h1>
+        <p class="page-sub">Progressive, hands-on guides that take you from running your first node to deploying WASM smart contracts on a quantum-resistant blockchain. Rust 2024 edition, 79 tests, 9 modules.</p>
     </section>
 
     <div class="examples-layout">
 
-        <!-- Quick Nav -->
+        <!-- Quick Nav Pills -->
         <div class="examples-nav reveal">
             <a href="#ex-1">First Node</a>
             <a href="#ex-2">First Transaction</a>
@@ -63,100 +75,151 @@
             <a href="#ex-11">Call Contract</a>
         </div>
 
-        <!-- Example 1 -->
-        <div class="example-card reveal" id="ex-1">
-            <h2><span class="example-number">1</span> Run Your First Node</h2>
-            <p>Build CURS3D from source and start a local devnet node in under 2 minutes.</p>
+        <div class="examples-container">
 
-            <div class="code-block">
-                <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                <pre class="code-body"><code><span class="cm"># Clone the repository</span>
+            <!-- Example 1: Run Your First Node -->
+            <div class="example-card reveal" id="ex-1">
+                <h2><span class="example-number">1</span> Run Your First Node</h2>
+                <p>Clone the repository, build from source, create a wallet, and start a local devnet node. The entire process takes under two minutes on a modern machine.</p>
+
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Clone the repository</span>
 git clone https://github.com/Pazificateur69/curs3d.git
-cd curs3d
+<span class="kw">cd</span> curs3d
 
-<span class="cm"># Build in release mode</span>
+<span class="cm"># Build in release mode (Rust 2024 edition)</span>
 cargo build --release
 
-<span class="cm"># Create a wallet (you'll be prompted for a password)</span>
+<span class="cm"># Run the test suite to verify the build (79 tests, 9 modules)</span>
+cargo test</code></pre>
+                </div>
+
+                <p>Once the build succeeds, create a wallet. Wallets are encrypted with AES-256-GCM using an Argon2-derived key -- you will be prompted for a password.</p>
+
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Create an encrypted wallet file</span>
 ./target/release/curs3d wallet --output my_wallet.json
 
-<span class="cm"># Start the node</span>
+<span class="cm"># View your wallet address and public key</span>
+./target/release/curs3d info --wallet my_wallet.json
+<span class="cm"># Output:</span>
+<span class="cm">#   Address: CUR7f3a1b2c4d5e6f7890abcdef1234567890abcd</span>
+<span class="cm">#   Public Key: 0a1b2c3d... (Dilithium 5)</span></code></pre>
+                </div>
+
+                <p>Now start the node. It binds to three ports: P2P on 4337, HTTP API on 8080, and TCP RPC on 9545.</p>
+
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Start a validator node</span>
 ./target/release/curs3d node --validator-wallet my_wallet.json
 
-<span class="cm"># You should see:</span>
+<span class="cm"># Expected output:</span>
 <span class="cm"># [+] Chain: curs3d-devnet | RPC: 127.0.0.1:9545 | HTTP API: :8080</span>
-<span class="cm"># [+] Gossipsub active. mDNS discovery enabled.</span></code></pre>
+<span class="cm"># [+] P2P listening on /ip4/0.0.0.0/tcp/4337</span>
+<span class="cm"># [+] Gossipsub active. mDNS discovery enabled.</span>
+<span class="cm"># [+] Block production every 10 seconds</span></code></pre>
+                </div>
+
+                <p>Your node is now live. The HTTP REST API on port 8080 serves browsers and apps, while the TCP RPC on port 9545 handles CLI commands like <code>curs3d send</code> and <code>curs3d stake</code>. Gossipsub and mDNS peer discovery activate automatically.</p>
             </div>
-            <p>The node starts with the TCP RPC on port 9545 (for CLI commands) and the HTTP REST API on port 8080 (for browsers and apps). Gossipsub and mDNS discovery activate automatically.</p>
-        </div>
 
-        <!-- Example 2 -->
-        <div class="example-card reveal" id="ex-2">
-            <h2><span class="example-number">2</span> Send Your First Transaction</h2>
-            <p>Transfer CUR tokens between two wallets using the CLI.</p>
+            <!-- Example 2: Send Your First Transaction -->
+            <div class="example-card reveal" id="ex-2">
+                <h2><span class="example-number">2</span> Send Your First Transaction</h2>
+                <p>Transfer CUR tokens between two wallets using the <code>curs3d send</code> CLI command. This creates a <code>Transfer</code> transaction -- one of the six transaction types supported by the protocol.</p>
 
-            <div class="code-block">
-                <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                <pre class="code-body"><code><span class="cm"># Create a second wallet</span>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Create a recipient wallet</span>
 ./target/release/curs3d wallet --output recipient.json
 
-<span class="cm"># Check the recipient's address</span>
+<span class="cm"># Check the recipient's address (CUR + 40 hex chars)</span>
 ./target/release/curs3d info --wallet recipient.json
-<span class="cm"># Output: CUR7f3a1b2c...9c2d</span>
+<span class="cm"># Output: Address: CUR9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a</span></code></pre>
+                </div>
 
-<span class="cm"># Send 100 CUR from your wallet to the recipient</span>
+                <p>With both wallets ready, send tokens. The fee is specified in microtokens (1 CUR = 1,000,000 microtokens). Make sure your node is running in another terminal.</p>
+
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Send 100 CUR to the recipient</span>
 ./target/release/curs3d send \
   --wallet my_wallet.json \
-  --to CUR7f3a1b2c...9c2d \
+  --to CUR9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a \
   --amount 100 \
   --fee 1000
 
-<span class="cm"># Verify the transfer via REST API</span>
-curl http://localhost:8080/api/account/CUR7f3a1b2c...9c2d</code></pre>
+<span class="cm"># The transaction is signed with Dilithium 5, broadcast</span>
+<span class="cm"># to the network via Gossipsub, and included in the next block.</span>
+
+<span class="cm"># Verify the transfer</span>
+curl http://localhost:8080/api/account/CUR9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a | jq
+<span class="cm"># {"ok": true, "data": {"balance": 100000000, "nonce": 0, "staked_balance": 0}}</span></code></pre>
+                </div>
+
+                <p>The sender's address is derived from the public key via <code>SHA-3(public_key)[0..20]</code>, and displayed in the format <code>CUR</code> + 40 hex characters. The transaction is signed with CRYSTALS-Dilithium Level 5 and verified by every node before inclusion.</p>
             </div>
-            <p>The fee is specified in microtokens (1000 microtokens = 0.001 CUR). The transaction is broadcast to the network and included in the next block.</p>
-        </div>
 
-        <!-- Example 3 -->
-        <div class="example-card reveal" id="ex-3">
-            <h2><span class="example-number">3</span> Become a Validator</h2>
-            <p>Stake CUR tokens to register as a validator and start producing blocks.</p>
+            <!-- Example 3: Become a Validator -->
+            <div class="example-card reveal" id="ex-3">
+                <h2><span class="example-number">3</span> Become a Validator</h2>
+                <p>Stake CUR tokens to register as a validator and participate in block production. The minimum stake is 1,000 CUR and validators are selected with stake-weighted deterministic selection.</p>
 
-            <div class="code-block">
-                <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                <pre class="code-body"><code><span class="cm"># Stake 1000 CUR (the minimum stake)</span>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Stake the minimum required amount (1000 CUR)</span>
 ./target/release/curs3d stake \
   --wallet my_wallet.json \
   --amount 1000 \
   --fee 1000
 
-<span class="cm"># Verify your validator status</span>
-curl http://localhost:8080/api/validators
+<span class="cm"># This creates a Stake transaction that locks your tokens</span>
+<span class="cm"># and registers you as a validator candidate.</span></code></pre>
+                </div>
 
-<span class="cm"># You'll appear in the active validator set at the next epoch</span>
-<span class="cm"># Epochs are 32 blocks by default</span>
+                <p>Your validator becomes active at the next epoch boundary. An epoch is 32 blocks, so at the default block time of 10 seconds you will wait at most ~5 minutes. Use the <code>curs3d status</code> command or the REST API to check your progress.</p>
 
-<span class="cm"># Check the current epoch</span>
-curl http://localhost:8080/api/status | jq '.data.epoch'</code></pre>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Check validator status with the CLI</span>
+./target/release/curs3d status
+
+<span class="cm"># Or query the REST API for the active validator set</span>
+curl http://localhost:8080/api/validators | jq
+
+<span class="cm"># Check the current epoch and chain height</span>
+curl http://localhost:8080/api/status | jq '.data.epoch'
+
+<span class="cm"># Once active, your node proposes blocks and earns</span>
+<span class="cm"># the block reward of 50 CUR per block (Coinbase tx).</span></code></pre>
+                </div>
+
+                <p>Validators earn the block reward of 50 CUR per proposed block via an automatic <code>Coinbase</code> transaction. Equivocation (signing two different blocks at the same height) results in provable slashing with a 33% stake penalty.</p>
             </div>
-            <p>Your validator becomes active at the next epoch boundary. The minimum stake is 1,000 CUR (1,000,000,000 microtokens). Validators are selected to propose blocks with stake-weighted deterministic selection from the epoch snapshot.</p>
-        </div>
 
-        <!-- Example 4 -->
-        <div class="example-card reveal" id="ex-4">
-            <h2><span class="example-number">4</span> Multi-Node Network</h2>
-            <p>Run a local multi-node network using bootnodes for peer discovery.</p>
+            <!-- Example 4: Multi-Node Network -->
+            <div class="example-card reveal" id="ex-4">
+                <h2><span class="example-number">4</span> Multi-Node Network</h2>
+                <p>Run a local two-node network to test peer discovery, block propagation, and consensus. Each node needs unique ports, a separate data directory, and its own wallet.</p>
 
-            <div class="code-block">
-                <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                <pre class="code-body"><code><span class="cm"># Terminal 1: Start the first node</span>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal -- node 1</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Terminal 1: Start the first node (default ports)</span>
 ./target/release/curs3d node \
   --port 4337 \
   --data-dir node1_data \
   --validator-wallet wallet1.json \
   --rpc-addr 127.0.0.1:9545
 
-<span class="cm"># Terminal 2: Start the second node connecting to the first</span>
+<span class="cm"># P2P: 4337 | HTTP API: 8080 | RPC: 9545</span></code></pre>
+                </div>
+
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal -- node 2</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Terminal 2: Start the second node, connecting to the first via bootnode</span>
 ./target/release/curs3d node \
   --port 4338 \
   --data-dir node2_data \
@@ -164,234 +227,403 @@ curl http://localhost:8080/api/status | jq '.data.epoch'</code></pre>
   --rpc-addr 127.0.0.1:9546 \
   --bootnode /ip4/127.0.0.1/tcp/4337
 
-<span class="cm"># Nodes discover each other and begin syncing</span>
-<span class="cm"># They exchange HeightAnnounce messages every 30 seconds</span></code></pre>
+<span class="cm"># P2P: 4338 | HTTP API: 8081 | RPC: 9546</span></code></pre>
+                </div>
+
+                <p>On the same LAN, mDNS discovery finds peers automatically -- bootnodes are not strictly required but ensure reliable connectivity. Once connected, nodes exchange <code>HeightAnnounce</code> messages every 30 seconds and sync blocks in batches of 50. Blocks propagate via Gossipsub and both nodes participate in consensus.</p>
             </div>
-            <p>With mDNS enabled, nodes on the same local network discover each other automatically. Bootnodes are useful for connecting nodes across different networks. Each node needs a unique port, data directory, and RPC address.</p>
-        </div>
 
-        <!-- Example 5 -->
-        <div class="example-card reveal" id="ex-5">
-            <h2><span class="example-number">5</span> Custom Genesis Configuration</h2>
-            <p>Configure the chain parameters and pre-allocate balances at genesis.</p>
+            <!-- Example 5: Custom Genesis Configuration -->
+            <div class="example-card reveal" id="ex-5">
+                <h2><span class="example-number">5</span> Custom Genesis Configuration</h2>
+                <p>Define your own chain parameters, pre-allocate balances, and schedule protocol upgrades using a genesis JSON file. Every field has a sensible default, so you only need to specify what you want to override.</p>
 
-            <div class="code-block">
-                <div class="code-header"><span class="code-filename">genesis.json</span><button class="code-copy">Copy</button></div>
-                <pre class="code-body"><code>{
-  "chain_id": "my-testnet",
-  "chain_name": "My Custom Testnet",
-  "block_reward": 100000000,
-  "minimum_stake": 500000000,
-  "epoch_length": 16,
-  "jail_duration_blocks": 32,
-  "unstake_delay_blocks": 5,
-  "block_gas_limit": 20000000,
-  "initial_base_fee_per_gas": 1,
-  "base_fee_change_denominator": 8,
-  "allocations": [
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">genesis.json</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code>{
+  <span class="str">"chain_id"</span>: <span class="str">"my-testnet"</span>,
+  <span class="str">"chain_name"</span>: <span class="str">"My Custom Testnet"</span>,
+  <span class="str">"block_reward"</span>: <span class="num">100000000</span>,
+  <span class="str">"minimum_stake"</span>: <span class="num">500000000</span>,
+  <span class="str">"epoch_length"</span>: <span class="num">16</span>,
+  <span class="str">"jail_duration_blocks"</span>: <span class="num">32</span>,
+  <span class="str">"unstake_delay_blocks"</span>: <span class="num">5</span>,
+  <span class="str">"block_gas_limit"</span>: <span class="num">20000000</span>,
+  <span class="str">"initial_base_fee_per_gas"</span>: <span class="num">1</span>,
+  <span class="str">"base_fee_change_denominator"</span>: <span class="num">8</span>,
+  <span class="str">"allocations"</span>: [
     {
-      "public_key": "&lt;your_hex_pubkey&gt;",
-      "balance": 1000000000000,
-      "staked_balance": 500000000
+      <span class="str">"public_key"</span>: <span class="str">"&lt;your_hex_pubkey_from_curs3d_info&gt;"</span>,
+      <span class="str">"balance"</span>: <span class="num">1000000000000</span>,
+      <span class="str">"staked_balance"</span>: <span class="num">500000000</span>
     }
   ],
-  "upgrades": [
+  <span class="str">"upgrades"</span>: [
     {
-      "height": 500,
-      "version": 2,
-      "description": "Enable advanced features"
+      <span class="str">"height"</span>: <span class="num">500</span>,
+      <span class="str">"version"</span>: <span class="num">2</span>,
+      <span class="str">"description"</span>: <span class="str">"Enable advanced features"</span>
     }
   ]
 }</code></pre>
-            </div>
-            <div class="code-block">
-                <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                <pre class="code-body"><code><span class="cm"># Start a node with custom genesis</span>
+                </div>
+
+                <p>Get your public key hex with <code>curs3d info --wallet my_wallet.json</code>. The <code>allocations</code> array seeds the genesis block with pre-funded accounts. The <code>upgrades</code> array schedules protocol version changes that activate automatically at the specified block heights.</p>
+
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Start a node with your custom genesis</span>
 ./target/release/curs3d node \
   --validator-wallet my_wallet.json \
-  --genesis-config genesis.json</code></pre>
+  --genesis-config genesis.json
+
+<span class="cm"># Verify the chain parameters</span>
+curl http://localhost:8080/api/status | jq
+<span class="cm"># "chain_id": "my-testnet"</span>
+<span class="cm"># "epoch_length": 16</span>
+<span class="cm"># "block_reward": 100000000</span></code></pre>
+                </div>
+
+                <p>Default values for reference: block reward 50 CUR (50,000,000 microtokens), minimum stake 1,000 CUR (1,000,000,000 microtokens), epoch length 32 blocks, block gas limit 10,000,000.</p>
             </div>
-            <p>All genesis parameters have sensible defaults. Get your public key hex from <code>curs3d info --wallet my_wallet.json</code>. Protocol upgrades activate automatically at the specified block heights.</p>
-        </div>
 
-        <!-- Example 6 -->
-        <div class="example-card reveal" id="ex-6">
-            <h2><span class="example-number">6</span> Using the REST API</h2>
-            <p>Query the blockchain using curl or any HTTP client.</p>
+            <!-- Example 6: Using the REST API -->
+            <div class="example-card reveal" id="ex-6">
+                <h2><span class="example-number">6</span> Using the REST API</h2>
+                <p>The HTTP REST API runs on port 8080 with full CORS support. All responses follow the format <code>{"ok": true, "data": {...}}</code> or <code>{"ok": false, "error": "..."}</code>. Use curl, fetch, or any HTTP client.</p>
 
-            <div class="code-block">
-                <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                <pre class="code-body"><code><span class="cm"># Chain status</span>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal -- chain status</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Get the full chain status</span>
 curl http://localhost:8080/api/status | jq
 
-<span class="cm"># Latest blocks (most recent 20)</span>
-curl "http://localhost:8080/api/blocks?limit=20" | jq
+<span class="cm"># Response includes height, finalized height, epoch,</span>
+<span class="cm"># active validators, protocol version, and chain_id.</span>
+<span class="cm"># {</span>
+<span class="cm">#   "ok": true,</span>
+<span class="cm">#   "data": {</span>
+<span class="cm">#     "height": 42,</span>
+<span class="cm">#     "finalized_height": 38,</span>
+<span class="cm">#     "epoch": 1,</span>
+<span class="cm">#     "chain_id": "curs3d-devnet",</span>
+<span class="cm">#     "validator_count": 1</span>
+<span class="cm">#   }</span>
+<span class="cm"># }</span></code></pre>
+                </div>
 
-<span class="cm"># Specific block by height</span>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal -- blocks</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Fetch the most recent 20 blocks</span>
+curl <span class="str">"http://localhost:8080/api/blocks?limit=20"</span> | jq
+
+<span class="cm"># Fetch a specific block by height (genesis = 0)</span>
 curl http://localhost:8080/api/block/0 | jq
 
-<span class="cm"># Account balance</span>
-curl http://localhost:8080/api/account/CUR7f3a...9c2d | jq
+<span class="cm"># The block includes transactions, state_root,</span>
+<span class="cm"># merkle_root, proposer, and signature.</span></code></pre>
+                </div>
 
-<span class="cm"># Pending transactions</span>
-curl http://localhost:8080/api/pending | jq
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal -- accounts &amp; validators</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Query an account balance (CUR + 40 hex chars)</span>
+curl http://localhost:8080/api/account/CUR7f3a1b2c4d5e6f7890abcdef1234567890abcd | jq
+<span class="cm"># {"ok": true, "data": {"balance": 500000000, "nonce": 3, "staked_balance": 1000000000}}</span>
 
-<span class="cm"># Active validators</span>
+<span class="cm"># List all active validators</span>
 curl http://localhost:8080/api/validators | jq
 
-<span class="cm"># Submit a transaction (with optional auth token)</span>
+<span class="cm"># View pending transactions in the mempool</span>
+curl http://localhost:8080/api/pending | jq</code></pre>
+                </div>
+
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal -- submit transaction</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Submit a signed transaction</span>
 curl -X POST http://localhost:8080/api/tx/submit \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your_token" \
-  -d '{"chain_id":"curs3d-devnet","kind":"Transfer",...}'
+  -H <span class="str">"Content-Type: application/json"</span> \
+  -H <span class="str">"Authorization: Bearer your_optional_token"</span> \
+  -d <span class="str">'{
+    "chain_id": "curs3d-devnet",
+    "kind": "Transfer",
+    "from": [127, 58, 27, ...],
+    "sender_public_key": [10, 27, 44, ...],
+    "to": [154, 139, 124, ...],
+    "amount": 100000000,
+    "fee": 1000,
+    "nonce": 1,
+    "gas_limit": 21000,
+    "data": "",
+    "timestamp": 1719500000,
+    "signature": {"0": [...]},
+    "max_fee_per_gas": 100,
+    "max_priority_fee_per_gas": 10
+  }'</span>
 
-<span class="cm"># All responses: {"ok": true, "data": {...}}</span></code></pre>
+<span class="cm"># Response: {"ok": true, "data": {"hash": "a1b2c3..."}}</span></code></pre>
+                </div>
+
+                <p>The optional <code>Authorization: Bearer</code> header enables token-gated access to write endpoints. Max request body size is 1 MB. The six transaction kinds are: <code>Transfer</code>, <code>Stake</code>, <code>Unstake</code>, <code>Coinbase</code>, <code>DeployContract</code>, and <code>CallContract</code>.</p>
             </div>
-            <p>The REST API on port 8080 has full CORS support. The optional Authorization header enables token-gated access to write endpoints. Max body size: 1 MB.</p>
-        </div>
 
-        <!-- Example 7 -->
-        <div class="example-card reveal" id="ex-7">
-            <h2><span class="example-number">7</span> Unstake Tokens</h2>
-            <p>Withdraw your staked CUR tokens after the unstake delay period.</p>
+            <!-- Example 7: Unstake Tokens -->
+            <div class="example-card reveal" id="ex-7">
+                <h2><span class="example-number">7</span> Unstake Tokens</h2>
+                <p>Withdraw your staked CUR tokens. An unstake delay protects the network from sudden validator exits -- your tokens become available after the delay period elapses.</p>
 
-            <div class="code-block">
-                <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                <pre class="code-body"><code><span class="cm"># Check your current stake</span>
-curl http://localhost:8080/api/account/CURyour_address | jq '.data.staked_balance'
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Check your current stake</span>
+curl http://localhost:8080/api/account/CUR7f3a1b2c4d5e6f7890abcdef1234567890abcd | jq '.data.staked_balance'
+<span class="cm"># 1000000000  (1000 CUR in microtokens)</span>
 
-<span class="cm"># Submit an Unstake transaction via the REST API</span>
-<span class="cm"># The unstake delay is 10 blocks by default</span>
+<span class="cm"># Submit an Unstake transaction via the CLI</span>
+./target/release/curs3d stake \
+  --wallet my_wallet.json \
+  --amount 1000 \
+  --unstake \
+  --fee 1000
 
-<span class="cm"># Monitor the chain height to wait for delay</span>
+<span class="cm"># This creates an Unstake transaction type.</span>
+<span class="cm"># The unstake delay is configurable in genesis</span>
+<span class="cm"># (default: unstake_delay_blocks in genesis.json).</span></code></pre>
+                </div>
+
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Monitor the chain height while waiting for the delay</span>
 curl http://localhost:8080/api/status | jq '.data.height'
 
-<span class="cm"># After the delay, your tokens return to your balance</span>
-curl http://localhost:8080/api/account/CURyour_address | jq '.data.balance'</code></pre>
+<span class="cm"># After the delay period, check that your tokens are back</span>
+curl http://localhost:8080/api/account/CUR7f3a1b2c4d5e6f7890abcdef1234567890abcd | jq
+<span class="cm"># staked_balance should decrease, balance should increase</span>
+
+<span class="cm"># Verify you are no longer in the active validator set</span>
+curl http://localhost:8080/api/validators | jq</code></pre>
+                </div>
+
+                <p>During the delay, your stake remains locked and you continue to participate in consensus. Once the delay expires, your tokens move from <code>staked_balance</code> back to <code>balance</code> and you are removed from the validator set at the next epoch boundary.</p>
             </div>
-            <p>The unstake delay protects the network from sudden validator exits. During the delay, your stake cannot be withdrawn. The delay is configurable in genesis (default: 10 blocks).</p>
-        </div>
 
-        <!-- Example 8 -->
-        <div class="example-card reveal" id="ex-8">
-            <h2><span class="example-number">8</span> Docker Setup</h2>
-            <p>Run CURS3D in Docker with a pre-configured 2-node network.</p>
+            <!-- Example 8: Docker Setup -->
+            <div class="example-card reveal" id="ex-8">
+                <h2><span class="example-number">8</span> Docker Setup</h2>
+                <p>Run CURS3D in Docker containers using the included multi-stage Dockerfile and docker-compose configuration. This is the fastest way to spin up a multi-node network.</p>
 
-            <div class="code-block">
-                <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                <pre class="code-body"><code><span class="cm"># Build the Docker image (multi-stage build)</span>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Build the Docker image (multi-stage: builder + minimal runtime)</span>
 docker build -t curs3d .
 
-<span class="cm"># Run a 2-node network with docker-compose</span>
-docker-compose up
+<span class="cm"># Start a pre-configured 2-node network with docker-compose</span>
+docker compose up
 
 <span class="cm"># Node 1 API: http://localhost:8080</span>
 <span class="cm"># Node 2 API: http://localhost:8081</span>
+<span class="cm"># Both nodes discover each other automatically via mDNS.</span></code></pre>
+                </div>
 
-<span class="cm"># Or run a single node</span>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Or run a single node manually with Docker</span>
 docker run -p 4337:4337 -p 8080:8080 -p 9545:9545 curs3d \
   curs3d node --validator-wallet /data/wallet.json
 
-<span class="cm"># Check the chain is running</span>
-curl http://localhost:8080/api/status</code></pre>
+<span class="cm"># Verify the node is running</span>
+curl http://localhost:8080/api/status | jq
+
+<span class="cm"># Stop the compose network</span>
+docker compose down</code></pre>
+                </div>
+
+                <p>The multi-stage Docker build compiles CURS3D in a Rust builder stage and copies only the release binary into a minimal runtime image. The docker-compose file creates wallets, configures bootnodes, and maps ports for both nodes. All three ports are exposed: P2P (4337), HTTP API (8080), and RPC (9545).</p>
             </div>
-            <p>The multi-stage Docker build produces a minimal image. The docker-compose configuration creates wallets and starts both nodes with mDNS discovery enabled.</p>
-        </div>
 
-        <!-- Example 9 -->
-        <div class="example-card reveal" id="ex-9">
-            <h2><span class="example-number">9</span> Block Explorer</h2>
-            <p>Use the built-in web-based block explorer to browse the chain.</p>
+            <!-- Example 9: Block Explorer -->
+            <div class="example-card reveal" id="ex-9">
+                <h2><span class="example-number">9</span> Block Explorer</h2>
+                <p>Use the built-in web-based block explorer to browse blocks, transactions, account balances, and validator status in real time.</p>
 
-            <div class="code-block">
-                <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                <pre class="code-body"><code><span class="cm"># Start a node first</span>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Step 1: Make sure a node is running</span>
 ./target/release/curs3d node --validator-wallet my_wallet.json
 
-<span class="cm"># Serve the website (in another terminal)</span>
-cd website &amp;&amp; python3 -m http.server 3000
+<span class="cm"># Step 2: Serve the website directory (in another terminal)</span>
+<span class="kw">cd</span> website
+python3 -m http.server 3000
 
-<span class="cm"># Open: http://localhost:3000/explorer.html</span>
-<span class="cm"># The explorer connects to http://localhost:8080 by default</span>
-<span class="cm"># You can change the API URL in the configuration bar</span></code></pre>
+<span class="cm"># Step 3: Open the explorer in your browser</span>
+<span class="cm"># http://localhost:3000/explorer.html</span>
+
+<span class="cm"># The explorer connects to http://localhost:8080 by default.</span>
+<span class="cm"># You can change the API URL in the configuration bar</span>
+<span class="cm"># at the top of the explorer page.</span></code></pre>
+                </div>
+
+                <p>The block explorer fetches data from the REST API and displays it in a searchable interface. It shows the latest blocks with their transactions, lets you look up any account by address, and displays the active validator set. Data refreshes automatically via polling.</p>
             </div>
-            <p>The block explorer connects to the REST API and displays blocks, transactions, account balances, and chain status in real time via Server-Sent Events.</p>
-        </div>
 
-        <!-- Example 10 -->
-        <div class="example-card reveal" id="ex-10">
-            <h2><span class="example-number">10</span> Deploy a Smart Contract</h2>
-            <p>Deploy a WebAssembly smart contract to the CURS3D blockchain.</p>
+            <!-- Example 10: Deploy a Smart Contract -->
+            <div class="example-card reveal" id="ex-10">
+                <h2><span class="example-number">10</span> Deploy a Smart Contract</h2>
+                <p>Deploy a WebAssembly smart contract to CURS3D. The WASM VM is powered by Wasmer with instruction-level gas metering. Contracts import host functions from the <code>"curs3d"</code> module.</p>
 
-            <div class="code-block">
-                <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                <pre class="code-body"><code><span class="cm"># 1. Write your contract in Rust (wasm32-unknown-unknown)</span>
-<span class="cm"># 2. Compile to WASM</span>
-cargo build --target wasm32-unknown-unknown --release
+                <p>Here is a simple counter contract written in WAT (WebAssembly Text Format) that demonstrates the available host functions:</p>
 
-<span class="cm"># 3. Hex-encode the WASM bytecode</span>
-xxd -p target/wasm32-unknown-unknown/release/contract.wasm | tr -d '\n'
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">counter.wat</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm">;; A counter contract for CURS3D</span>
+<span class="cm">;; Imports host functions from the "curs3d" module</span>
 
-<span class="cm"># 4. Submit a DeployContract transaction</span>
+(<span class="kw">module</span>
+  <span class="cm">;; Host functions provided by the CURS3D WASM VM:</span>
+  <span class="cm">;;   storage_get, storage_set     -- key-value storage (i64 keys/values)</span>
+  <span class="cm">;;   storage_read, storage_write_bytes -- byte-level storage (ptr+len)</span>
+  <span class="cm">;;   emit_log, emit_log_bytes     -- emit contract events</span>
+  <span class="cm">;;   consume_gas                  -- manual gas consumption</span>
+  <span class="cm">;;   loop_tick                    -- gas metering in loops</span>
+  <span class="cm">;;   input, input_len, input_read -- read transaction input data</span>
+
+  (<span class="kw">import</span> <span class="str">"curs3d"</span> <span class="str">"storage_get"</span>
+    (<span class="kw">func</span> <span class="fn">$storage_get</span> (<span class="kw">param</span> <span class="ty">i64</span>) (<span class="kw">result</span> <span class="ty">i64</span>)))
+  (<span class="kw">import</span> <span class="str">"curs3d"</span> <span class="str">"storage_set"</span>
+    (<span class="kw">func</span> <span class="fn">$storage_set</span> (<span class="kw">param</span> <span class="ty">i64</span> <span class="ty">i64</span>)))
+  (<span class="kw">import</span> <span class="str">"curs3d"</span> <span class="str">"emit_log"</span>
+    (<span class="kw">func</span> <span class="fn">$emit_log</span> (<span class="kw">param</span> <span class="ty">i64</span> <span class="ty">i64</span>)))
+  (<span class="kw">import</span> <span class="str">"curs3d"</span> <span class="str">"consume_gas"</span>
+    (<span class="kw">func</span> <span class="fn">$consume_gas</span> (<span class="kw">param</span> <span class="ty">i64</span>)))
+
+  (<span class="kw">memory</span> (<span class="kw">export</span> <span class="str">"memory"</span>) <span class="num">1</span>)
+
+  <span class="cm">;; Entry point -- called by the VM</span>
+  (<span class="kw">func</span> (<span class="kw">export</span> <span class="str">"curs3d_call"</span>) (<span class="kw">result</span> <span class="ty">i64</span>)
+    (<span class="kw">local</span> <span class="fn">$count</span> <span class="ty">i64</span>)
+
+    <span class="cm">;; Read the current counter from storage slot 0</span>
+    (<span class="kw">local.set</span> <span class="fn">$count</span>
+      (<span class="kw">call</span> <span class="fn">$storage_get</span> (<span class="ty">i64</span>.<span class="kw">const</span> <span class="num">0</span>)))
+
+    <span class="cm">;; Increment by 1</span>
+    (<span class="kw">local.set</span> <span class="fn">$count</span>
+      (<span class="ty">i64</span>.<span class="kw">add</span> (<span class="kw">local.get</span> <span class="fn">$count</span>) (<span class="ty">i64</span>.<span class="kw">const</span> <span class="num">1</span>)))
+
+    <span class="cm">;; Write the new value back to storage</span>
+    (<span class="kw">call</span> <span class="fn">$storage_set</span>
+      (<span class="ty">i64</span>.<span class="kw">const</span> <span class="num">0</span>) (<span class="kw">local.get</span> <span class="fn">$count</span>))
+
+    <span class="cm">;; Emit a log event (topic=1, value=count)</span>
+    (<span class="kw">call</span> <span class="fn">$emit_log</span>
+      (<span class="ty">i64</span>.<span class="kw">const</span> <span class="num">1</span>) (<span class="kw">local.get</span> <span class="fn">$count</span>))
+
+    <span class="cm">;; Return the new counter value</span>
+    (<span class="kw">local.get</span> <span class="fn">$count</span>))
+)</code></pre>
+                </div>
+
+                <p>Compile the WAT to WASM, hex-encode the bytecode, and deploy via the REST API with a <code>DeployContract</code> transaction.</p>
+
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Convert WAT to WASM (requires wabt toolkit)</span>
+wat2wasm counter.wat -o counter.wasm
+
+<span class="cm"># Hex-encode the WASM bytecode</span>
+xxd -p counter.wasm | tr -d <span class="str">'\n'</span> > counter_hex.txt
+
+<span class="cm"># Deploy the contract via the REST API</span>
 curl -X POST http://localhost:8080/api/tx/submit \
-  -H "Content-Type: application/json" \
-  -d '{
+  -H <span class="str">"Content-Type: application/json"</span> \
+  -d <span class="str">'{
     "chain_id": "curs3d-devnet",
     "kind": "DeployContract",
-    "from": [...],
-    "sender_public_key": [...],
+    "from": [127, 58, 27, ...],
+    "sender_public_key": [10, 27, 44, ...],
     "to": [],
     "amount": 0,
     "fee": 1000,
     "nonce": 1,
     "gas_limit": 500000,
-    "data": "&lt;hex_wasm_bytecode&gt;",
-    "timestamp": 1234567890,
-    "signature": {...}
-  }'
+    "data": "'</span>$(cat counter_hex.txt)<span class="str">'",
+    "timestamp": 1719500000,
+    "signature": {"0": [...]}
+  }'</span>
 
-<span class="cm"># Gas: 21,000 (base) + 32,000 (deploy) + 16/byte</span>
-<span class="cm"># Receipt: {"status":"Success","gas_used":53216,...}</span></code></pre>
+<span class="cm"># Gas costs for deployment:</span>
+<span class="cm">#   Base transaction:     21,000</span>
+<span class="cm">#   Contract deployment:  32,000</span>
+<span class="cm">#   Per byte of data:     16</span>
+<span class="cm">#   Total example:       ~53,200 gas</span>
+
+<span class="cm"># The contract address is derived from:</span>
+<span class="cm">#   SHA-3(deployer_address + nonce)[0..20]</span></code></pre>
+                </div>
+
+                <p>The Wasmer-powered WASM VM validates bytecode structure, injects gas metering at the instruction level, and enforces the block gas limit (10,000,000). Each contract gets isolated key-value storage. The contract address is deterministically computed from the deployer's address and nonce.</p>
             </div>
-            <p>The WASM VM validates bytecode, meters gas per instruction, and stores the contract on-chain. The contract address is derived from deployer address + nonce.</p>
-        </div>
 
-        <!-- Example 11 -->
-        <div class="example-card reveal" id="ex-11">
-            <h2><span class="example-number">11</span> Call a Smart Contract</h2>
-            <p>Invoke a function on a deployed contract using CallContract.</p>
+            <!-- Example 11: Call a Smart Contract -->
+            <div class="example-card reveal" id="ex-11">
+                <h2><span class="example-number">11</span> Call a Smart Contract</h2>
+                <p>Invoke a function on a deployed contract using a <code>CallContract</code> transaction. The VM executes the contract's <code>curs3d_call</code> export and returns a receipt with gas usage, logs, and return data.</p>
 
-            <div class="code-block">
-                <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
-                <pre class="code-body"><code><span class="cm"># Call a deployed contract</span>
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Call the deployed counter contract</span>
 curl -X POST http://localhost:8080/api/tx/submit \
-  -H "Content-Type: application/json" \
-  -d '{
+  -H <span class="str">"Content-Type: application/json"</span> \
+  -d <span class="str">'{
     "chain_id": "curs3d-devnet",
     "kind": "CallContract",
-    "from": [...],
-    "sender_public_key": [...],
-    "to": [&lt;contract_address_bytes&gt;],
+    "from": [127, 58, 27, ...],
+    "sender_public_key": [10, 27, 44, ...],
+    "to": [&lt;contract_address_20_bytes&gt;],
     "amount": 0,
     "fee": 1000,
     "nonce": 2,
     "gas_limit": 200000,
-    "data": "&lt;function_selector_and_args&gt;",
-    "timestamp": 1234567890,
-    "signature": {...}
-  }'
+    "data": "",
+    "timestamp": 1719500000,
+    "signature": {"0": [...]}
+  }'</span>
 
-<span class="cm"># Host functions available to contracts:</span>
-<span class="cm">#   storage_read   -- 200 gas</span>
-<span class="cm">#   storage_write  -- 5,000 gas</span>
-<span class="cm">#   emit_log       -- 375 gas</span>
-<span class="cm">#   get_caller / get_input / set_return</span>
+<span class="cm"># Transaction receipt:</span>
+<span class="cm"># {</span>
+<span class="cm">#   "status": "Success",</span>
+<span class="cm">#   "gas_used": 45832,</span>
+<span class="cm">#   "logs": [{"topic": 1, "value": 1}],</span>
+<span class="cm">#   "return_data": "0100000000000000"</span>
+<span class="cm"># }</span></code></pre>
+                </div>
 
-<span class="cm"># Receipt: {"status":"Success","gas_used":45832,"logs":[...]}</span></code></pre>
+                <p>Each call to the counter contract increments the stored value and emits a log. The gas costs for contract calls are:</p>
+
+                <div class="code-block">
+                    <div class="code-header"><span class="code-filename">gas costs</span><button class="code-copy">Copy</button></div>
+                    <pre class="code-body"><code><span class="cm"># Host function gas costs:</span>
+<span class="cm">#   storage_get / storage_read     200 gas</span>
+<span class="cm">#   storage_set / storage_write    5,000 gas</span>
+<span class="cm">#   emit_log / emit_log_bytes      375 gas</span>
+<span class="cm">#   consume_gas                    (custom amount)</span>
+<span class="cm">#   loop_tick                      50 gas</span>
+<span class="cm">#   host call overhead             40 gas</span>
+<span class="cm">#</span>
+<span class="cm"># Transaction-level gas:</span>
+<span class="cm">#   Base transaction               21,000 gas</span>
+<span class="cm">#   Contract call overhead         2,600 gas</span>
+<span class="cm">#   Per byte of input data         16 gas</span>
+
+<span class="cm"># Available host functions:</span>
+<span class="cm">#   storage_get, storage_set</span>
+<span class="cm">#   storage_read, storage_write_bytes</span>
+<span class="cm">#   emit_log, emit_log_bytes</span>
+<span class="cm">#   consume_gas, loop_tick</span>
+<span class="cm">#   input, input_len, input_read</span></code></pre>
+                </div>
+
+                <p>All storage changes are reflected in the block's state root. Transactions that exceed the remaining block gas budget are deferred to the next block. The EIP-1559 fee market ensures fair pricing with dynamic base fees, priority fees, and automatic gas refunds on unused gas.</p>
             </div>
-            <p>Each contract has isolated key-value storage. The block gas limit (10,000,000) is enforced -- transactions exceeding the remaining gas budget are deferred. All storage changes are reflected in the state root.</p>
-        </div>
 
+        </div>
     </div>
 
     <!-- Footer -->
@@ -399,31 +631,35 @@ curl -X POST http://localhost:8080/api/tx/submit \
         <div class="footer-container">
             <div class="footer-top">
                 <div class="footer-brand">
-                    <span class="logo"><span class="logo-diamond"></span> CURS3D</span>
-                    <p>Quantum-resistant blockchain infrastructure with smart contract execution.</p>
+                    <span class="logo">
+                        <span class="logo-diamond"></span>
+                        CURS3D
+                    </span>
+                    <p>Quantum-resistant blockchain infrastructure with WASM smart contracts. Built from scratch in Rust. MIT License.</p>
                 </div>
                 <div class="footer-links-group">
                     <span class="footer-heading">Protocol</span>
                     <a href="index.html#features">Features</a>
                     <a href="index.html#smart-contracts">Smart Contracts</a>
-                    <a href="index.html#technology">Technology</a>
+                    <a href="index.html#technology">Tech Stack</a>
                     <a href="whitepaper.html">Whitepaper</a>
                 </div>
                 <div class="footer-links-group">
                     <span class="footer-heading">Developers</span>
                     <a href="docs.html">Documentation</a>
-                    <a href="examples.html">Examples</a>
+                    <a href="examples.html">Tutorials</a>
                     <a href="explorer.html">Block Explorer</a>
+                    <a href="docs.html#rest-api">API Reference</a>
                 </div>
                 <div class="footer-links-group">
                     <span class="footer-heading">Community</span>
                     <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
-                    <a href="#">Discord</a>
-                    <a href="#">Twitter / X</a>
+                    <a href="https://github.com/Pazificateur69/curs3d/issues" target="_blank" rel="noopener">Issues</a>
+                    <a href="https://github.com/Pazificateur69/curs3d/pulls" target="_blank" rel="noopener">Pull Requests</a>
                 </div>
             </div>
             <div class="footer-bottom">
-                <p>&copy; 2026 CURS3D Protocol. MIT License.</p>
+                <p>&copy; 2026 CURS3D Protocol. MIT License. Built by <a href="https://github.com/Pazificateur69" target="_blank" rel="noopener">Pazificateur69</a>.</p>
             </div>
         </div>
     </footer>

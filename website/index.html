@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CURS3D - Quantum-Resistant Layer 1 Blockchain with Smart Contracts</title>
-    <meta name="description" content="CURS3D is a quantum-resistant Layer 1 blockchain built in Rust with WASM smart contracts, Dilithium 5 signatures, BFT consensus, and 67 passing tests.">
+    <title>CURS3D -- Quantum-Resistant Layer 1 Blockchain</title>
+    <meta name="description" content="CURS3D is a post-quantum Layer 1 blockchain built from scratch in Rust. CRYSTALS-Dilithium 5 signatures, BFT PoS consensus, WASM smart contracts, EIP-1559 fee market, and 79 passing tests.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -25,12 +25,12 @@
                 CURS3D
             </a>
             <div class="nav-links" id="navLinks">
-                <a href="docs.html">Docs</a>
-                <a href="examples.html">Examples</a>
+                <a href="docs.html">Documentation</a>
+                <a href="examples.html">Tutorials</a>
                 <a href="whitepaper.html">Whitepaper</a>
                 <a href="explorer.html">Explorer</a>
                 <a href="#features">Features</a>
-                <a href="#technology">Technology</a>
+                <a href="#technology">Tech Stack</a>
                 <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener" class="btn-nav">
                     GitHub
                     <span class="btn-nav-arrow">&rarr;</span>
@@ -46,12 +46,12 @@
 
     <!-- Mobile Menu -->
     <div class="mobile-menu" id="mobileMenu">
-        <a href="docs.html">Docs</a>
-        <a href="examples.html">Examples</a>
+        <a href="docs.html">Documentation</a>
+        <a href="examples.html">Tutorials</a>
         <a href="whitepaper.html">Whitepaper</a>
         <a href="explorer.html">Explorer</a>
         <a href="#features">Features</a>
-        <a href="#technology">Technology</a>
+        <a href="#technology">Tech Stack</a>
         <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub &rarr;</a>
     </div>
 
@@ -67,16 +67,17 @@
                 survive <span class="gradient-text animated-gradient">quantum.</span>
             </h1>
             <p class="hero-sub">
-                A post-quantum Layer 1 with a WASM VM, BFT finality, CRYSTALS-Dilithium 5 cryptography,
-                and smart contract execution. Built from scratch in Rust -- 20 modules, 67 tests, zero forks.
+                A post-quantum Layer 1 written from scratch in Rust. CRYSTALS-Dilithium 5 cryptography,
+                BFT consensus with provable finality, WASM smart contracts, and an EIP-1559 fee market.
+                9 modules, 79 tests, zero forks.
             </p>
             <div class="hero-buttons">
                 <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener" class="btn btn-primary">
-                    Explore Code
+                    Explore the Code
                     <span class="btn-icon">&rarr;</span>
                 </a>
                 <a href="docs.html" class="btn btn-secondary">
-                    Read the Docs
+                    Read the Documentation
                 </a>
             </div>
             <div class="terminal">
@@ -88,40 +89,37 @@
                 </div>
                 <div class="terminal-body" id="terminalBody">
                     <div class="terminal-line">
+                        <span class="prompt">$</span> <span class="cmd">cargo build --release</span>
+                    </div>
+                    <div class="terminal-line">
+                        <span class="output">    Compiling curs3d v0.1.0</span>
+                    </div>
+                    <div class="terminal-line">
+                        <span class="output success">    Finished `release` profile</span>
+                    </div>
+                    <div class="terminal-line">
                         <span class="prompt">$</span> <span class="cmd">curs3d wallet --output validator.json</span>
                     </div>
                     <div class="terminal-line">
-                        <span class="output">[+] Wallet created: CUR7f3a...9c2d (AES-256-GCM encrypted)</span>
+                        <span class="output success">[+] Wallet created: CUR7f3a...9c2d (AES-256-GCM encrypted)</span>
                     </div>
                     <div class="terminal-line">
-                        <span class="output">[+] Keys: CRYSTALS-Dilithium Level 5</span>
+                        <span class="output">[+] Algorithm: CRYSTALS-Dilithium Level 5</span>
                     </div>
                     <div class="terminal-line">
-                        <span class="prompt">$</span> <span class="cmd">curs3d node --validator-wallet validator.json --genesis-config genesis.json</span>
+                        <span class="prompt">$</span> <span class="cmd">curs3d node --validator-wallet validator.json</span>
                     </div>
                     <div class="terminal-line">
-                        <span class="output">[+] Chain: curs3d-devnet | RPC: 127.0.0.1:9545 | HTTP API: :8080</span>
+                        <span class="output success">[+] Chain: curs3d-devnet | P2P: 4337 | RPC: 9545 | HTTP: 8080</span>
                     </div>
                     <div class="terminal-line">
-                        <span class="output">[+] Gossipsub active. mDNS discovery enabled.</span>
+                        <span class="output">[+] Gossipsub + mDNS active. Producing blocks every 10s.</span>
                     </div>
                     <div class="terminal-line">
-                        <span class="prompt">$</span> <span class="cmd">curs3d stake --wallet validator.json --amount 1000</span>
+                        <span class="prompt">$</span> <span class="cmd">curl localhost:8080/api/status | jq .data</span>
                     </div>
                     <div class="terminal-line">
-                        <span class="output success">[+] Stake submitted. Validator active next epoch.</span>
-                    </div>
-                    <div class="terminal-line">
-                        <span class="prompt">$</span> <span class="cmd">curl -X POST localhost:8080/api/tx/submit -d '{"kind":"DeployContract",...}'</span>
-                    </div>
-                    <div class="terminal-line">
-                        <span class="output success">[+] Contract deployed. Gas used: 53,216 / 10,000,000</span>
-                    </div>
-                    <div class="terminal-line">
-                        <span class="prompt">$</span> <span class="cmd">curl localhost:8080/api/status</span>
-                    </div>
-                    <div class="terminal-line">
-                        <span class="output success">[+] {"ok":true,"data":{"height":142,"finalized_height":139,"epoch":4}}</span>
+                        <span class="output success">[+] {"height":142,"finalized_height":139,"epoch":4,"active_validators":3}</span>
                     </div>
                     <div class="terminal-line">
                         <span class="prompt">$</span> <span class="cursor">|</span>
@@ -141,27 +139,27 @@
             <div class="stat-divider"></div>
             <div class="stat-item reveal">
                 <span class="stat-value gradient-text">Dilithium 5</span>
-                <span class="stat-label">Post-Quantum Sigs</span>
+                <span class="stat-label">NIST FIPS 204 Signatures</span>
             </div>
             <div class="stat-divider"></div>
             <div class="stat-item reveal">
                 <span class="stat-value gradient-text">BFT PoS</span>
-                <span class="stat-label">Byzantine Consensus</span>
+                <span class="stat-label">2/3 Threshold Finality</span>
             </div>
             <div class="stat-divider"></div>
             <div class="stat-item reveal">
                 <span class="stat-value gradient-text">WASM VM</span>
-                <span class="stat-label">Smart Contracts</span>
+                <span class="stat-label">Wasmer + Gas Metering</span>
             </div>
             <div class="stat-divider"></div>
             <div class="stat-item reveal">
-                <span class="stat-value gradient-text">67</span>
+                <span class="stat-value gradient-text">79</span>
                 <span class="stat-label">Tests Passing</span>
             </div>
             <div class="stat-divider"></div>
             <div class="stat-item reveal">
                 <span class="stat-value gradient-text">Rust</span>
-                <span class="stat-label">Memory Safe Core</span>
+                <span class="stat-label">2024 Edition</span>
             </div>
         </div>
     </section>
@@ -172,64 +170,64 @@
             <div class="section-header reveal">
                 <span class="section-tag">Core Features</span>
                 <h2>Engineered for the <span class="gradient-text">post-quantum</span> era</h2>
-                <p class="section-sub">Every component designed from the ground up to resist quantum attacks while delivering production-grade infrastructure with smart contract execution.</p>
+                <p class="section-sub">Every component built from scratch to resist quantum attacks while delivering production-grade blockchain infrastructure with smart contract execution.</p>
             </div>
             <div class="features-grid features-grid-4">
                 <div class="feature-card reveal">
                     <div class="feature-icon-wrap">
                         <span class="feature-icon-symbol">&loz;</span>
                     </div>
-                    <h3>Quantum Cryptography</h3>
-                    <p>CRYSTALS-Dilithium Level 5 (NIST FIPS 204) for all signatures. SHA-3 Keccak-256 hashing with double-hash blocks and Merkle trees. AES-256-GCM + Argon2 wallet encryption.</p>
+                    <h3>Post-Quantum Cryptography</h3>
+                    <p>CRYSTALS-Dilithium Level 5 (NIST FIPS 204) for all signatures. SHA-3 Keccak-256 with double-hash blocks and Merkle trees. AES-256-GCM + Argon2 wallet encryption.</p>
                 </div>
                 <div class="feature-card reveal">
                     <div class="feature-icon-wrap">
                         <span class="feature-icon-symbol">&#9671;</span>
                     </div>
                     <h3>WASM Smart Contracts</h3>
-                    <p>Deterministic WebAssembly VM powered by Wasmer. DeployContract and CallContract transaction types. Per-contract key-value storage, gas metering, and full execution receipts.</p>
+                    <p>Deterministic WebAssembly VM powered by Wasmer with Cranelift. Deploy and call contracts with per-instruction gas metering, key-value storage, and execution receipts.</p>
                 </div>
                 <div class="feature-card reveal">
                     <div class="feature-icon-wrap">
                         <span class="feature-icon-symbol">&equiv;</span>
                     </div>
                     <h3>BFT Finality</h3>
-                    <p>Byzantine Fault Tolerant consensus with 2/3 threshold FinalityVote and CheckpointVote system. Epoch-based validator sets frozen per epoch for deterministic selection.</p>
+                    <p>Byzantine Fault Tolerant Proof of Stake with 2/3 stake-weighted threshold finality. Epoch-based validator sets frozen per epoch for deterministic proposer selection.</p>
                 </div>
                 <div class="feature-card reveal">
                     <div class="feature-icon-wrap">
                         <span class="feature-icon-symbol">&#9670;</span>
                     </div>
-                    <h3>Epoch Snapshots</h3>
-                    <p>Frozen validator sets per epoch with stake-weighted deterministic proposer selection. Configurable epoch length (default 32 blocks). Seamless validator rotation.</p>
+                    <h3>EIP-1559 Fee Market</h3>
+                    <p>Dynamic base fee per gas with configurable change denominator. Separate max_fee and priority_fee per gas. Automatic gas refunds on unused gas. Mempool priority ordering.</p>
                 </div>
                 <div class="feature-card reveal">
                     <div class="feature-icon-wrap">
                         <span class="feature-icon-symbol">&perp;</span>
                     </div>
-                    <h3>Fork Choice</h3>
-                    <p>BlockTree with heaviest-chain rule by cumulative proposer stake. Automatic reorg detection. Finality boundary prevents deep reorganizations. Non-canonical branch pruning.</p>
+                    <h3>Fork Choice Rule</h3>
+                    <p>BlockTree with heaviest-chain rule by cumulative proposer stake. Automatic reorg detection with finality boundary. Non-canonical branch pruning.</p>
                 </div>
                 <div class="feature-card reveal">
                     <div class="feature-icon-wrap">
                         <span class="feature-icon-symbol">&times;</span>
                     </div>
                     <h3>Provable Slashing</h3>
-                    <p>Cryptographic EquivocationEvidence with 33% stake penalty. Dual Dilithium signatures prove double-signing. Configurable jail duration (default 64 blocks).</p>
+                    <p>Cryptographic EquivocationEvidence with dual Dilithium signatures proves double-signing. 33% stake penalty and configurable jail duration (default 64 blocks).</p>
                 </div>
                 <div class="feature-card reveal">
                     <div class="feature-icon-wrap">
                         <span class="feature-icon-symbol">&#8644;</span>
                     </div>
                     <h3>State Sync</h3>
-                    <p>SnapshotManifest and StateChunks with Merkle verification. Network protocol for RequestSnapshot, SnapshotManifest, and SnapshotChunk. Fast sync from checkpoint.</p>
+                    <p>Full state snapshots with Merkle-verified chunks. Network protocol for snapshot manifest and chunk transfer. Fast sync from finalized checkpoints.</p>
                 </div>
                 <div class="feature-card reveal">
                     <div class="feature-icon-wrap">
                         <span class="feature-icon-symbol">&#8593;</span>
                     </div>
-                    <h3>Protocol Governance</h3>
-                    <p>Protocol versioning with upgrade-at-height activation. Configurable genesis parameters. ProtocolUpgrade records with height, version, and description fields.</p>
+                    <h3>Protocol Upgrades</h3>
+                    <p>Versioned protocol with upgrade-at-height activation. Network topic derived from chain_id and protocol version. Automatic peer compatibility filtering.</p>
                 </div>
             </div>
         </div>
@@ -241,7 +239,7 @@
             <div class="section-header reveal">
                 <span class="section-tag">Smart Contracts</span>
                 <h2>Deterministic <span class="gradient-text">WASM execution</span> with gas metering</h2>
-                <p class="section-sub">Deploy and call WebAssembly contracts on a quantum-resistant base layer. Full receipts, per-contract storage, and configurable gas limits.</p>
+                <p class="section-sub">Deploy and call WebAssembly contracts on a quantum-resistant base layer. Full receipts, per-contract storage, and instruction-level fuel metering.</p>
             </div>
             <div class="sc-layout">
                 <div class="reveal">
@@ -256,14 +254,8 @@
                             <tr><td>Storage Write</td><td>5,000</td></tr>
                             <tr><td>Log Emit</td><td>375</td></tr>
                             <tr><td>Per Byte (data)</td><td>16</td></tr>
-                            <tr><td>Memory Read (byte)</td><td>3</td></tr>
-                            <tr><td>Memory Write (byte)</td><td>6</td></tr>
                             <tr><td>Host Call Overhead</td><td>40</td></tr>
-                            <tr><td>WASM Default Op</td><td>2</td></tr>
-                            <tr><td>WASM Control Op</td><td>4</td></tr>
-                            <tr><td>WASM Memory Op</td><td>8</td></tr>
-                            <tr><td>WASM Call Op</td><td>12</td></tr>
-                            <tr><td>WASM Numeric Op</td><td>3</td></tr>
+                            <tr><td>WASM Loop Tick</td><td>50</td></tr>
                         </tbody>
                     </table>
                     <h3 style="font-size:1.1rem;font-weight:700;margin:1.5rem 0 0.75rem;">Transaction Types</h3>
@@ -275,56 +267,44 @@
                         <span class="tx-type-pill">CallContract</span>
                         <span class="tx-type-pill">Coinbase</span>
                     </div>
-                    <p style="color:var(--text3);font-size:0.82rem;margin-top:1rem;">Block gas limit: 10,000,000. EIP-1559-style base fee with configurable change denominator. Receipts include status, gas_used, logs, and return_data.</p>
+                    <p style="color:var(--text3);font-size:0.82rem;margin-top:1rem;">Block gas limit: 10,000,000. EIP-1559 dynamic base fee with configurable change denominator. Receipts include gas_used, effective_gas_price, priority_fee_paid, base_fee_burned, gas_refunded, logs, and return_data.</p>
                 </div>
                 <div class="code-block reveal">
                     <div class="code-header">
-                        <span class="code-filename">deploy_contract.sh</span>
+                        <span class="code-filename">counter.wat</span>
                         <button class="code-copy">Copy</button>
                     </div>
-                    <pre class="code-body"><code><span class="cm"># Deploy a WASM contract to CURS3D</span>
-<span class="kw">curl</span> -X POST http://localhost:8080/api/tx/submit \
-  -H <span class="str">"Content-Type: application/json"</span> \
-  -d <span class="str">'{
-    "chain_id": "curs3d-devnet",
-    "kind": "DeployContract",
-    "from": [...],
-    "sender_public_key": [...],
-    "to": [],
-    "amount": 0,
-    "fee": 1000,
-    "nonce": 1,
-    "gas_limit": 500000,
-    "data": "&lt;wasm_bytecode_hex&gt;",
-    "timestamp": 1234567890,
-    "signature": {...}
-  }'</span>
+                    <pre class="code-body"><code><span class="cm">;; A simple counter contract for CURS3D</span>
+<span class="cm">;; Uses storage_get / storage_set host functions</span>
 
-<span class="cm"># Call a deployed contract</span>
-<span class="kw">curl</span> -X POST http://localhost:8080/api/tx/submit \
-  -H <span class="str">"Content-Type: application/json"</span> \
-  -d <span class="str">'{
-    "chain_id": "curs3d-devnet",
-    "kind": "CallContract",
-    "from": [...],
-    "to": [&lt;contract_address&gt;],
-    "amount": 0,
-    "fee": 1000,
-    "gas_limit": 200000,
-    "data": "&lt;function_selector&gt;",
-    ...
-  }'</span>
+(<span class="kw">module</span>
+  (<span class="kw">import</span> <span class="str">"curs3d"</span> <span class="str">"storage_get"</span>
+    (<span class="kw">func</span> $storage_get (<span class="kw">param</span> <span class="ty">i64</span>) (<span class="kw">result</span> <span class="ty">i64</span>)))
+  (<span class="kw">import</span> <span class="str">"curs3d"</span> <span class="str">"storage_set"</span>
+    (<span class="kw">func</span> $storage_set (<span class="kw">param</span> <span class="ty">i64</span> <span class="ty">i64</span>)))
+  (<span class="kw">import</span> <span class="str">"curs3d"</span> <span class="str">"emit_log"</span>
+    (<span class="kw">func</span> $emit_log (<span class="kw">param</span> <span class="ty">i64</span> <span class="ty">i64</span>)))
+  (<span class="kw">import</span> <span class="str">"curs3d"</span> <span class="str">"consume_gas"</span>
+    (<span class="kw">func</span> $consume_gas (<span class="kw">param</span> <span class="ty">i64</span>)))
 
-<span class="cm"># Response receipt:</span>
-<span class="cm"># {</span>
-<span class="cm">#   "ok": true,</span>
-<span class="cm">#   "data": {</span>
-<span class="cm">#     "status": "Success",</span>
-<span class="cm">#     "gas_used": 53216,</span>
-<span class="cm">#     "logs": [],</span>
-<span class="cm">#     "return_data": "..."</span>
-<span class="cm">#   }</span>
-<span class="cm"># }</span></code></pre>
+  (<span class="kw">memory</span> (<span class="kw">export</span> <span class="str">"memory"</span>) <span class="num">1</span>)
+
+  (<span class="kw">func</span> (<span class="kw">export</span> <span class="str">"curs3d_call"</span>) (<span class="kw">result</span> <span class="ty">i64</span>)
+    <span class="cm">;; Read current counter value</span>
+    (<span class="kw">local</span> $count <span class="ty">i64</span>)
+    (<span class="kw">local.set</span> $count
+      (<span class="kw">call</span> $storage_get (<span class="ty">i64</span>.const <span class="num">0</span>)))
+    <span class="cm">;; Increment and store</span>
+    (<span class="kw">local.set</span> $count
+      (<span class="ty">i64</span>.add (<span class="kw">local.get</span> $count) (<span class="ty">i64</span>.const <span class="num">1</span>)))
+    (<span class="kw">call</span> $storage_set
+      (<span class="ty">i64</span>.const <span class="num">0</span>) (<span class="kw">local.get</span> $count))
+    <span class="cm">;; Emit event</span>
+    (<span class="kw">call</span> $emit_log
+      (<span class="ty">i64</span>.const <span class="num">1</span>) (<span class="kw">local.get</span> $count))
+    <span class="cm">;; Return new value</span>
+    (<span class="kw">local.get</span> $count))
+)</code></pre>
                 </div>
             </div>
         </div>
@@ -336,58 +316,58 @@
             <div class="section-header reveal">
                 <span class="section-tag">REST API</span>
                 <h2>Build on CURS3D with a <span class="gradient-text">simple HTTP API</span></h2>
-                <p class="section-sub">10 endpoints with full CORS support, auth token gating, and Server-Sent Events. Query the chain, look up accounts, submit transactions -- all from any HTTP client.</p>
+                <p class="section-sub">Full REST API on port 8080 with configurable CORS, optional bearer token auth, body size limits, and connection pooling. Plus a TCP RPC on port 9545 for CLI tooling.</p>
             </div>
             <div class="api-grid">
                 <div class="api-card reveal">
                     <span class="api-method get">GET</span>
                     <span class="api-path">/api/status</span>
-                    <span class="api-desc">Chain height, finalized height, epoch, validators, pending txs, protocol version</span>
+                    <span class="api-desc">Chain height, finalized height, epoch, validators, protocol version</span>
                 </div>
                 <div class="api-card reveal">
                     <span class="api-method get">GET</span>
                     <span class="api-path">/api/blocks</span>
-                    <span class="api-desc">Recent blocks with pagination (?from=0&amp;limit=20)</span>
+                    <span class="api-desc">Paginated recent blocks (?from=0&amp;limit=20, max 100)</span>
                 </div>
                 <div class="api-card reveal">
                     <span class="api-method get">GET</span>
                     <span class="api-path">/api/block/:height</span>
-                    <span class="api-desc">Full block detail with transactions, state root, merkle root</span>
+                    <span class="api-desc">Full block with transactions, state root, merkle root</span>
                 </div>
                 <div class="api-card reveal">
                     <span class="api-method get">GET</span>
                     <span class="api-path">/api/account/:addr</span>
-                    <span class="api-desc">Balance, nonce, and staked balance for any address</span>
+                    <span class="api-desc">Balance, nonce, staked balance for any address</span>
+                </div>
+                <div class="api-card reveal">
+                    <span class="api-method get">GET</span>
+                    <span class="api-path">/api/account/:addr/proof</span>
+                    <span class="api-desc">Merkle account proof with leaf index and state root</span>
                 </div>
                 <div class="api-card reveal">
                     <span class="api-method get">GET</span>
                     <span class="api-path">/api/tx/:hash</span>
-                    <span class="api-desc">Transaction details by hash (kind, from, to, amount, fee, receipt)</span>
+                    <span class="api-desc">Transaction details by hash</span>
                 </div>
                 <div class="api-card reveal">
                     <span class="api-method get">GET</span>
                     <span class="api-path">/api/pending</span>
-                    <span class="api-desc">All pending transactions in the mempool</span>
+                    <span class="api-desc">Pending transactions in the mempool</span>
                 </div>
                 <div class="api-card reveal">
                     <span class="api-method get">GET</span>
                     <span class="api-path">/api/validators</span>
-                    <span class="api-desc">Active validator set with addresses, public keys, and stakes</span>
-                </div>
-                <div class="api-card reveal">
-                    <span class="api-method get">GET</span>
-                    <span class="api-path">/api/faucet/:addr</span>
-                    <span class="api-desc">Testnet faucet -- credits CUR tokens for development</span>
+                    <span class="api-desc">Active validator set with addresses, keys, and stakes</span>
                 </div>
                 <div class="api-card reveal">
                     <span class="api-method post">POST</span>
                     <span class="api-path">/api/tx/submit</span>
-                    <span class="api-desc">Submit a signed transaction (JSON body, auth token optional)</span>
+                    <span class="api-desc">Submit a signed transaction (JSON body, auth optional)</span>
                 </div>
                 <div class="api-card reveal">
-                    <span class="api-method sse">SSE</span>
-                    <span class="api-path">/api/events</span>
-                    <span class="api-desc">Server-Sent Events -- new blocks, transactions, finality in real time</span>
+                    <span class="api-method post">POST</span>
+                    <span class="api-path">/api/tx/estimate</span>
+                    <span class="api-desc">Dry-run a transaction: gas, fees, base fee, replacement check</span>
                 </div>
             </div>
         </div>
@@ -399,7 +379,7 @@
             <div class="section-header reveal">
                 <span class="section-tag">Tech Stack</span>
                 <h2>Built with <span class="gradient-text">uncompromising</span> standards</h2>
-                <p class="section-sub">A vertically integrated protocol stack designed for security, performance, and correctness. 20 modules, zero external blockchain dependencies.</p>
+                <p class="section-sub">A vertically integrated protocol stack. 9 modules, zero external blockchain dependencies, every component written from scratch.</p>
             </div>
             <div class="tech-layout">
                 <div class="tech-grid">
@@ -409,7 +389,7 @@
                     </div>
                     <div class="tech-item reveal">
                         <span class="tech-label">Virtual Machine</span>
-                        <span class="tech-value">Wasmer WASM</span>
+                        <span class="tech-value">Wasmer 5</span>
                     </div>
                     <div class="tech-item reveal">
                         <span class="tech-label">Signatures</span>
@@ -433,7 +413,7 @@
                     </div>
                     <div class="tech-item reveal">
                         <span class="tech-label">Networking</span>
-                        <span class="tech-value">libp2p</span>
+                        <span class="tech-value">libp2p 0.54</span>
                     </div>
                     <div class="tech-item reveal">
                         <span class="tech-label">Pub/Sub</span>
@@ -470,34 +450,45 @@
                 </div>
                 <div class="code-block reveal">
                     <div class="code-header">
-                        <span class="code-filename">wallet.rs</span>
+                        <span class="code-filename">crypto/dilithium.rs</span>
                         <button class="code-copy">Copy</button>
                     </div>
-                    <pre class="code-body"><code><span class="kw">use</span> <span class="ty">pqcrypto_dilithium</span>::<span class="ty">dilithium5</span>::*;
-<span class="kw">use</span> <span class="ty">sha3</span>::{<span class="ty">Sha3_256</span>, <span class="ty">Digest</span>};
+                    <pre class="code-body"><code><span class="kw">use</span> <span class="ty">pqcrypto_dilithium</span>::<span class="ty">dilithium5</span>::{
+    <span class="ty">DetachedSignature</span>, <span class="ty">PublicKey</span>, <span class="ty">SecretKey</span>,
+    detached_sign, keypair, verify_detached_signature,
+};
 
-<span class="kw">pub struct</span> <span class="ty">Wallet</span> {
-    <span class="kw">pub</span> address: <span class="ty">String</span>,
-    <span class="kw">pub</span> public_key: <span class="ty">PublicKey</span>,
-    secret_key: <span class="ty">SecretKey</span>,
+<span class="kw">pub struct</span> <span class="ty">KeyPair</span> {
+    <span class="kw">pub</span> public_key: <span class="ty">Vec</span>&lt;<span class="ty">u8</span>&gt;,
+    <span class="kw">pub</span> secret_key: <span class="ty">Vec</span>&lt;<span class="ty">u8</span>&gt;,
 }
 
-<span class="kw">impl</span> <span class="ty">Wallet</span> {
-    <span class="kw">pub fn</span> <span class="fn">new</span>() -> <span class="ty">Self</span> {
+<span class="kw">impl</span> <span class="ty">KeyPair</span> {
+    <span class="kw">pub fn</span> <span class="fn">generate</span>() -&gt; <span class="ty">Self</span> {
         <span class="kw">let</span> (pk, sk) = <span class="fn">keypair</span>();
-        <span class="kw">let</span> <span class="kw">mut</span> hasher = <span class="ty">Sha3_256</span>::<span class="fn">new</span>();
-        hasher.<span class="fn">update</span>(pk.<span class="fn">as_bytes</span>());
-        <span class="kw">let</span> hash = hasher.<span class="fn">finalize</span>();
-        <span class="kw">let</span> address = <span class="macro">format!</span>(
-            <span class="str">"CUR{}"</span>, <span class="fn">hex</span>::<span class="fn">encode</span>(&amp;hash[..<span class="num">20</span>])
-        );
-
-        <span class="ty">Wallet</span> { address, public_key: pk, secret_key: sk }
+        <span class="ty">KeyPair</span> {
+            public_key: pk.<span class="fn">as_bytes</span>().<span class="fn">to_vec</span>(),
+            secret_key: sk.<span class="fn">as_bytes</span>().<span class="fn">to_vec</span>(),
+        }
     }
 
-    <span class="kw">pub fn</span> <span class="fn">sign</span>(&amp;<span class="kw">self</span>, msg: &amp;[<span class="ty">u8</span>]) -> <span class="ty">SignedMessage</span> {
-        <span class="fn">detached_sign</span>(msg, &amp;<span class="kw">self</span>.secret_key)
+    <span class="kw">pub fn</span> <span class="fn">sign</span>(&amp;<span class="kw">self</span>, message: &amp;[<span class="ty">u8</span>]) -&gt; <span class="ty">Signature</span> {
+        <span class="kw">let</span> sk = <span class="ty">SecretKey</span>::<span class="fn">from_bytes</span>(&amp;<span class="kw">self</span>.secret_key)
+            .<span class="fn">expect</span>(<span class="str">"invalid secret key"</span>);
+        <span class="kw">let</span> sig = <span class="fn">detached_sign</span>(message, &amp;sk);
+        <span class="ty">Signature</span>(sig.<span class="fn">as_bytes</span>().<span class="fn">to_vec</span>())
     }
+}
+
+<span class="kw">pub fn</span> <span class="fn">verify</span>(
+    message: &amp;[<span class="ty">u8</span>],
+    signature: &amp;<span class="ty">Signature</span>,
+    public_key: &amp;[<span class="ty">u8</span>],
+) -&gt; <span class="ty">bool</span> {
+    <span class="kw">let</span> pk = <span class="ty">PublicKey</span>::<span class="fn">from_bytes</span>(public_key);
+    <span class="kw">let</span> sig = <span class="ty">DetachedSignature</span>::<span class="fn">from_bytes</span>(&amp;signature.<span class="num">0</span>);
+    <span class="fn">verify_detached_signature</span>(&amp;sig, message, &amp;pk)
+        .<span class="fn">is_ok</span>()
 }</code></pre>
                 </div>
             </div>
@@ -510,7 +501,7 @@
             <div class="section-header reveal">
                 <span class="section-tag">Tokenomics</span>
                 <h2>Simple, <span class="gradient-text">transparent</span> economics</h2>
-                <p class="section-sub">Configurable genesis. Fair distribution. Predictable issuance. All amounts in microtokens (1 CUR = 1,000,000 microtokens).</p>
+                <p class="section-sub">Configurable genesis parameters. Fair distribution. Predictable issuance. All amounts in microtokens (1 CUR = 1,000,000 microtokens).</p>
             </div>
             <div class="token-grid">
                 <div class="token-card reveal">
@@ -527,7 +518,7 @@
                 </div>
                 <div class="token-card reveal">
                     <span class="token-number">$CUR</span>
-                    <span class="token-label">Ticker Symbol</span>
+                    <span class="token-label">Native Token</span>
                 </div>
             </div>
         </div>
@@ -545,9 +536,9 @@
                 <div class="roadmap-item reveal">
                     <div class="roadmap-dot completed"></div>
                     <div class="roadmap-content">
-                        <span class="roadmap-date">Q2 2026 -- DONE</span>
+                        <span class="roadmap-date">Q1-Q2 2026 -- Complete</span>
                         <h3>Core Protocol + Smart Contracts</h3>
-                        <p>BFT finality engine, Dilithium 5 wallets, fork choice rule, provable slashing, WASM VM with gas metering, DeployContract + CallContract, epoch-based validator sets, state sync, protocol governance, REST API with SSE, Block Explorer, Docker, CI pipeline. 67 tests, 20 modules, 7 website pages.</p>
+                        <p>BFT consensus with 2/3 finality, Dilithium 5 cryptography, fork choice with pruning, provable slashing, WASM VM with instruction-level metering, EIP-1559 fee market, state sync with Merkle proofs, epoch snapshots, protocol versioning, REST API + RPC, block explorer, Docker, CI/CD. 79 tests across 9 modules.</p>
                     </div>
                 </div>
                 <div class="roadmap-item reveal">
@@ -555,15 +546,15 @@
                     <div class="roadmap-content">
                         <span class="roadmap-date">Q3 2026</span>
                         <h3>Developer SDK + Public Testnet</h3>
-                        <p>Contract SDK with Rust and AssemblyScript toolchains. Public testnet with faucet. Contract registry and verification. Token standards (CUR-20, CUR-721). Light client protocol.</p>
+                        <p>Contract SDK with Rust and AssemblyScript toolchains. Public testnet with faucet and genesis onboarding. Indexed receipts and log filters. Observability with Prometheus metrics and structured logging.</p>
                     </div>
                 </div>
                 <div class="roadmap-item reveal">
                     <div class="roadmap-dot"></div>
                     <div class="roadmap-content">
                         <span class="roadmap-date">Q4 2026</span>
-                        <h3>Mainnet Launch</h3>
-                        <p>Genesis block with community validator onboarding. Third-party security audit. Ecosystem tooling release. Bridge infrastructure for cross-chain assets.</p>
+                        <h3>Security Audit + Mainnet</h3>
+                        <p>External security audit of consensus, VM, and cryptography. Peer scoring and anti-spam hardening. State trie upgrade. Mainnet genesis with community validator onboarding.</p>
                     </div>
                 </div>
                 <div class="roadmap-item reveal">
@@ -571,7 +562,7 @@
                     <div class="roadmap-content">
                         <span class="roadmap-date">2027</span>
                         <h3>Ecosystem Growth</h3>
-                        <p>Cross-chain bridges, on-chain governance, DeFi primitives, advanced VM features, zero-knowledge proof integration, and community grant program.</p>
+                        <p>Cross-chain bridges, on-chain governance, token standards (CUR-20, CUR-721), DeFi primitives, advanced VM features, and community grant program.</p>
                     </div>
                 </div>
             </div>
@@ -588,15 +579,15 @@
             <div class="infra-grid">
                 <div class="infra-card reveal">
                     <h3><span class="infra-badge">Docker</span> Containerized</h3>
-                    <p>Multi-stage Docker build with docker-compose for instant 2-node network setup. Minimal image size, reproducible builds.</p>
+                    <p>Multi-stage Docker build with docker-compose for instant 2-node network setup. Minimal image size with reproducible builds.</p>
                 </div>
                 <div class="infra-card reveal">
                     <h3><span class="infra-badge">CI/CD</span> GitHub Actions</h3>
-                    <p>Automated pipeline: cargo check, test, clippy (zero warnings), and fmt verification on every push and pull request.</p>
+                    <p>Automated pipeline: cargo check, test (79/79), clippy (zero warnings), and fmt verification on every push and pull request.</p>
                 </div>
                 <div class="infra-card reveal">
                     <h3><span class="infra-badge">Dual API</span> RPC + REST</h3>
-                    <p>TCP RPC on port 9545 for CLI tooling. HTTP REST API on port 8080 with CORS, auth tokens, and Server-Sent Events for browsers and apps.</p>
+                    <p>TCP RPC on port 9545 for CLI tooling. HTTP REST API on port 8080 with configurable CORS, optional auth tokens, body size limits, and connection pooling (128 max).</p>
                 </div>
             </div>
         </div>
@@ -607,14 +598,14 @@
         <div class="section-container">
             <div class="cta-box reveal">
                 <h2>Start building on CURS3D</h2>
-                <p>The quantum-resistant blockchain with smart contracts is live on devnet. Deploy contracts, run validators, and build the next generation of decentralized applications.</p>
+                <p>The quantum-resistant blockchain with smart contracts is live on devnet. Deploy contracts, run validators, and explore the chain.</p>
                 <div class="cta-buttons">
                     <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener" class="btn btn-primary">
-                        Start Building
+                        Clone the Repository
                         <span class="btn-icon">&rarr;</span>
                     </a>
                     <a href="docs.html" class="btn btn-secondary">
-                        Read the Docs
+                        Read the Documentation
                     </a>
                 </div>
             </div>
@@ -630,31 +621,31 @@
                         <span class="logo-diamond"></span>
                         CURS3D
                     </span>
-                    <p>Quantum-resistant blockchain infrastructure with smart contract execution. Built from scratch in Rust.</p>
+                    <p>Quantum-resistant blockchain infrastructure with WASM smart contracts. Built from scratch in Rust. MIT License.</p>
                 </div>
                 <div class="footer-links-group">
                     <span class="footer-heading">Protocol</span>
                     <a href="#features">Features</a>
                     <a href="#smart-contracts">Smart Contracts</a>
-                    <a href="#technology">Technology</a>
+                    <a href="#technology">Tech Stack</a>
                     <a href="whitepaper.html">Whitepaper</a>
                 </div>
                 <div class="footer-links-group">
                     <span class="footer-heading">Developers</span>
                     <a href="docs.html">Documentation</a>
-                    <a href="examples.html">Examples</a>
+                    <a href="examples.html">Tutorials</a>
                     <a href="explorer.html">Block Explorer</a>
                     <a href="docs.html#rest-api">API Reference</a>
                 </div>
                 <div class="footer-links-group">
                     <span class="footer-heading">Community</span>
                     <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
-                    <a href="#" target="_blank" rel="noopener">Discord</a>
-                    <a href="#" target="_blank" rel="noopener">Twitter / X</a>
+                    <a href="https://github.com/Pazificateur69/curs3d/issues" target="_blank" rel="noopener">Issues</a>
+                    <a href="https://github.com/Pazificateur69/curs3d/pulls" target="_blank" rel="noopener">Pull Requests</a>
                 </div>
             </div>
             <div class="footer-bottom">
-                <p>&copy; 2026 CURS3D Protocol. MIT License.</p>
+                <p>&copy; 2026 CURS3D Protocol. MIT License. Built by <a href="https://github.com/Pazificateur69" target="_blank" rel="noopener">Pazificateur69</a>.</p>
             </div>
         </div>
     </footer>

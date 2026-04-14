@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Whitepaper - CURS3D</title>
-    <meta name="description" content="CURS3D Technical Whitepaper. A quantum-resistant Layer 1 blockchain with post-quantum cryptography, BFT Proof of Stake consensus, REST API, and Docker infrastructure.">
+    <title>Technical Whitepaper - CURS3D</title>
+    <meta name="description" content="CURS3D Protocol Specification v3.0. A quantum-resistant Layer 1 blockchain with CRYSTALS-Dilithium Level 5, BFT PoS consensus, WASM smart contracts, EIP-1559 fee market, and state sync.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -21,8 +21,8 @@
         <div class="nav-container">
             <a href="index.html" class="logo"><span class="logo-diamond"></span> CURS3D</a>
             <div class="nav-links" id="navLinks">
-                <a href="docs.html">Docs</a>
-                <a href="examples.html">Examples</a>
+                <a href="docs.html">Documentation</a>
+                <a href="examples.html">Tutorials</a>
                 <a href="whitepaper.html" class="active">Whitepaper</a>
                 <a href="explorer.html">Explorer</a>
                 <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener" class="btn-nav">GitHub <span class="btn-nav-arrow">&rarr;</span></a>
@@ -32,282 +32,694 @@
     </nav>
 
     <div class="mobile-menu" id="mobileMenu">
-        <a href="docs.html">Docs</a>
-        <a href="examples.html">Examples</a>
+        <a href="docs.html">Documentation</a>
+        <a href="examples.html">Tutorials</a>
         <a href="whitepaper.html">Whitepaper</a>
         <a href="explorer.html">Explorer</a>
         <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub &rarr;</a>
     </div>
 
     <section class="page-hero">
-        <span class="section-tag">Whitepaper</span>
-        <h1>CURS3D: A Quantum-Resistant<br><span class="gradient-text">Layer 1 Blockchain</span></h1>
-        <p class="page-sub">Technical specification for a post-quantum blockchain protocol with BFT finality, lattice-based cryptography, deterministic fork choice, and production infrastructure.</p>
+        <span class="section-tag">Technical Whitepaper</span>
+        <h1>CURS3D Protocol<br><span class="gradient-text">Specification v3.0</span></h1>
+        <p>A quantum-resistant Layer 1 blockchain with post-quantum cryptography, BFT Proof of Stake consensus, WASM smart contracts, EIP-1559 fee market, state sync, and production infrastructure.</p>
+        <span class="wp-version">Version 3.0 -- April 2026</span>
     </section>
 
-    <div class="wp-container">
+    <div class="wp-layout">
 
-        <div class="wp-meta">
-            <span class="version">Version 2.0 -- April 2026</span>
-        </div>
-
-        <div class="wp-toc">
-            <h3>Table of Contents</h3>
-            <ol>
-                <li><a href="#wp-abstract">Abstract</a></li>
-                <li><a href="#wp-introduction">Introduction</a></li>
-                <li><a href="#wp-cryptographic-primitives">Cryptographic Primitives</a></li>
-                <li><a href="#wp-architecture">Blockchain Architecture</a></li>
-                <li><a href="#wp-consensus">Consensus Mechanism</a></li>
-                <li><a href="#wp-fork-choice">Fork Choice Rule</a></li>
-                <li><a href="#wp-network">Network Protocol</a></li>
-                <li><a href="#wp-api">API Architecture</a></li>
-                <li><a href="#wp-security">Security Model</a></li>
-                <li><a href="#wp-infrastructure">Infrastructure</a></li>
-                <li><a href="#wp-tokenomics">Tokenomics</a></li>
-                <li><a href="#wp-roadmap">Roadmap</a></li>
-                <li><a href="#wp-conclusion">Conclusion</a></li>
-            </ol>
-        </div>
+        <aside class="wp-toc">
+            <span class="wp-toc-title">Table of Contents</span>
+            <a href="#wp-abstract">Abstract</a>
+            <a href="#wp-introduction">1. Introduction</a>
+            <a href="#wp-cryptographic-primitives">2. Cryptographic Primitives</a>
+            <a href="#wp-account-model">3. Account Model</a>
+            <a href="#wp-transaction-types">4. Transaction Types</a>
+            <a href="#wp-block-structure">5. Block Structure</a>
+            <a href="#wp-consensus">6. Consensus</a>
+            <a href="#wp-fork-choice">7. Fork Choice</a>
+            <a href="#wp-fee-market">8. Fee Market (EIP-1559)</a>
+            <a href="#wp-wasm-vm">9. WASM Virtual Machine</a>
+            <a href="#wp-network">10. Network Protocol</a>
+            <a href="#wp-state-sync">11. State Sync</a>
+            <a href="#wp-api">12. API Architecture</a>
+            <a href="#wp-security">13. Security Model</a>
+            <a href="#wp-tokenomics">14. Tokenomics</a>
+            <a href="#wp-roadmap">15. Roadmap</a>
+            <a href="#wp-conclusion">16. Conclusion</a>
+        </aside>
 
         <div class="wp-content">
 
-            <section class="wp-section" id="wp-abstract">
+            <!-- ─── Abstract ──────────────────────────────────── -->
+            <section id="wp-abstract">
                 <h2>Abstract</h2>
-                <p>We present CURS3D, a Layer 1 blockchain protocol designed to provide long-term security against both classical and quantum adversaries. The protocol employs CRYSTALS-Dilithium Level 5 for all digital signatures, SHA-3 for hashing, and a Byzantine Fault Tolerant Proof of Stake consensus mechanism with deterministic finality. The system includes an HTTP REST API for browser integration, a built-in block explorer, Docker containerization, and CI/CD automation. This paper describes the protocol's cryptographic foundations, consensus design, fork choice rule, network architecture, API layer, and security guarantees.</p>
+                <p>We present CURS3D, a Layer 1 blockchain protocol designed to provide long-term security against both classical and quantum adversaries. Written from scratch in Rust 2024, the protocol employs CRYSTALS-Dilithium Level 5 (NIST FIPS 204) for all digital signatures, SHA-3 Keccak-256 for hashing (with double-hash block integrity), and a Byzantine Fault Tolerant Proof of Stake consensus mechanism with deterministic finality at a 2/3 stake-weighted threshold.</p>
+                <p>Version 3.0 introduces a WASM virtual machine (Wasmer 5 + Cranelift) with instruction-level fuel metering, an EIP-1559 adaptive fee market with base fee burning, epoch-based validator set management (32 blocks per epoch), state sync via Merkle-authenticated snapshot chunks, and a persistent storage layer (sled, schema v4) with 10 purpose-specific trees. The protocol is validated by 79 tests across 9 modules.</p>
+                <p>This paper specifies the protocol's cryptographic foundations, account model, transaction types, block structure, consensus design with BFT finality and slashing, fork choice rule, fee market, smart contract VM, network protocol, state sync mechanism, API architecture, security guarantees, tokenomics, and development roadmap.</p>
             </section>
 
-            <section class="wp-section" id="wp-introduction">
+            <!-- ─── 1. Introduction ───────────────────────────── -->
+            <section id="wp-introduction">
                 <h2>1. Introduction</h2>
-                <p>The security of existing blockchain protocols rests on the computational hardness of problems such as integer factorization (RSA) and the elliptic curve discrete logarithm problem (ECDLP). These assumptions are vulnerable to quantum algorithms. Shor's algorithm, when executed on a sufficiently powerful quantum computer, can solve both problems in polynomial time.</p>
-                <p>CURS3D addresses this threat by building on NIST-standardized post-quantum algorithms from the outset. Every signature in the protocol uses CRYSTALS-Dilithium, whose security relies on the hardness of the Module Learning With Errors (MLWE) problem, believed to be resistant to quantum attack.</p>
+                <h3>1.1 The Quantum Threat</h3>
+                <p>The security of existing blockchain protocols rests on the computational hardness of problems such as integer factorization (RSA) and the elliptic curve discrete logarithm problem (ECDLP). These assumptions are vulnerable to quantum algorithms. Shor's algorithm, when executed on a sufficiently powerful quantum computer, can solve both problems in polynomial time, rendering ECDSA, Ed25519, and secp256k1 signatures insecure.</p>
+                <p>Grover's algorithm provides a quadratic speedup for brute-force search, effectively halving the security level of symmetric ciphers and hash functions. A 256-bit hash provides only 128-bit security against quantum adversaries.</p>
+
+                <h3>1.2 Design Philosophy</h3>
+                <p>CURS3D addresses this threat by building on NIST-standardized post-quantum algorithms from the outset. Every signature in the protocol uses CRYSTALS-Dilithium, whose security relies on the hardness of the Module Learning With Errors (MLWE) problem over structured lattices, believed to be resistant to both classical and quantum attack. SHA-3 (Keccak-256) provides 128-bit quantum security via Grover's bound.</p>
+                <p>Rather than retrofitting quantum resistance onto an existing protocol, CURS3D is implemented entirely from scratch -- every component from consensus to networking to storage -- avoiding the technical debt of migration and ensuring a clean, auditable codebase with zero external blockchain dependencies.</p>
             </section>
 
-            <section class="wp-section" id="wp-cryptographic-primitives">
+            <!-- ─── 2. Cryptographic Primitives ───────────────── -->
+            <section id="wp-cryptographic-primitives">
                 <h2>2. Cryptographic Primitives</h2>
 
-                <h3>2.1 CRYSTALS-Dilithium</h3>
-                <p>CURS3D uses CRYSTALS-Dilithium at NIST security Level 5 (FIPS 204). Dilithium provides EUF-CMA security in both classical and quantum random oracle models with deterministic signatures and approximately 4.6 KB signatures at Level 5.</p>
-                <p>Dilithium is used for: transaction authorization, block proposal signing, finality vote attestation, height announcement authentication, and equivocation evidence verification.</p>
+                <h3>2.1 CRYSTALS-Dilithium Level 5 (NIST FIPS 204)</h3>
+                <p>CURS3D uses CRYSTALS-Dilithium at NIST security Level 5, the highest standardized level. Dilithium provides EUF-CMA (Existential Unforgeability under Chosen Message Attack) security in both the classical and quantum random oracle models. Level 5 provides approximately 256-bit classical security and 128-bit quantum security, with deterministic signatures of approximately 4.6 KB.</p>
+                <p>Dilithium signatures are used for:</p>
+                <ul>
+                    <li>Transaction authorization (sender signs serialized transaction data)</li>
+                    <li>Block proposal signing (validator signs the double-hashed block header)</li>
+                    <li>Finality vote attestation (validator signs <code>block_hash || height || epoch</code>)</li>
+                    <li>Height announcement authentication (peers sign network height messages)</li>
+                    <li>Equivocation evidence verification (two conflicting signed block headers)</li>
+                </ul>
+                <p>Implementation: <code>pqcrypto-dilithium</code> crate wrapping the reference C implementation.</p>
 
-                <h3>2.2 SHA-3 (Keccak)</h3>
-                <p>SHA3-256 serves as the universal hash function: block hash computation (double-hash), transaction hashing, Merkle tree construction, state root computation, address derivation, and validator selection seed generation.</p>
+                <h3>2.2 SHA-3 (Keccak-256)</h3>
+                <p>SHA-3-256 serves as the universal hash function throughout the protocol:</p>
+                <ul>
+                    <li><strong>Block hash</strong> -- Double-hash construction: <code>sha3(sha3(bincode(header)))</code></li>
+                    <li><strong>Transaction hash</strong> -- SHA-3 of bincode-serialized transaction fields</li>
+                    <li><strong>Merkle tree</strong> -- Binary Merkle tree over transaction hashes</li>
+                    <li><strong>State root</strong> -- SHA-3 of deterministically sorted and serialized account states</li>
+                    <li><strong>Address derivation</strong> -- <code>SHA-3(public_key)[0..20]</code></li>
+                    <li><strong>Validator selection seed</strong> -- <code>SHA-3(height || prev_hash)</code></li>
+                    <li><strong>Snapshot chunk root</strong> -- Merkle root of chunk hashes for state sync verification</li>
+                </ul>
+                <p>The double-hash block construction prevents length-extension attacks and provides an additional security margin against second-preimage attacks.</p>
 
                 <h3>2.3 Address Format</h3>
-                <div class="ascii-diagram">address = "CUR" || hex(SHA3-256(dilithium_public_key)[0..20])
+                <p>Addresses are derived deterministically from Dilithium public keys:</p>
+                <pre><code>address_bytes = SHA-3-256(dilithium_public_key)[0..20]   // 20 bytes
+display_form  = "CUR" || hex(address_bytes)               // 43 characters
 
-Total length: 3 (prefix) + 40 (hex) = 43 characters
-Example: CUR7f3a8b1c2d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8</div>
+Example: CUR7f3a8b1c2d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8</code></pre>
+                <p>Internally, addresses are stored as 20-byte arrays. The <code>CUR</code> prefix is used only in human-readable display contexts (CLI output, API responses, block explorer).</p>
 
                 <h3>2.4 Wallet Encryption</h3>
-                <p>Private keys are stored encrypted with AES-256-GCM. The encryption key is derived using Argon2 (memory-hard KDF). The wallet file contains Argon2 salt (16 bytes), AES-GCM nonce (12 bytes), and ciphertext.</p>
+                <p>Private keys are stored encrypted at rest using a layered encryption scheme:</p>
+                <ul>
+                    <li><strong>KDF</strong> -- Argon2 (memory-hard) derives a 256-bit encryption key from a user password</li>
+                    <li><strong>Cipher</strong> -- AES-256-GCM provides authenticated encryption with associated data</li>
+                    <li><strong>Wallet file format</strong> -- Argon2 salt (16 bytes) + AES-GCM nonce (12 bytes) + ciphertext</li>
+                </ul>
+                <p>The wallet module supports automatic migration from legacy plaintext wallet files to the encrypted format via <code>load_auto()</code>.</p>
             </section>
 
-            <section class="wp-section" id="wp-architecture">
-                <h2>3. Blockchain Architecture</h2>
+            <!-- ─── 3. Account Model ─────────────────────────── -->
+            <section id="wp-account-model">
+                <h2>3. Account Model</h2>
+                <p>CURS3D uses an account-based state model (as opposed to UTXO). Each account is identified by a 20-byte address and stores the following state:</p>
+                <pre><code>AccountState {
+    balance: u64,                        // Liquid balance in microtokens
+    nonce: u64,                          // Monotonically incrementing tx counter
+    staked_balance: u64,                 // Tokens locked for validation
+    public_key: Option&lt;Vec&lt;u8&gt;&gt;,         // Dilithium public key (set on first tx)
+    validator_active_from_height: u64,   // Height at which staking activates
+    jailed_until_height: u64,            // Non-zero if validator is jailed
+}</code></pre>
+                <p>All monetary amounts are denominated in <strong>microtokens</strong>. 1 CUR = 1,000,000 microtokens. The balance type is <code>u64</code>, providing a maximum supply of approximately 18.4 quintillion microtokens (18.4 trillion CUR).</p>
+                <p>The state root is computed by sorting all accounts deterministically by address, serializing each account state via bincode, and computing a SHA-3-256 hash over the concatenation. An empty state uses the seed <code>b"curs3d-empty-state"</code>.</p>
+            </section>
 
-                <h3>3.1 Account Model</h3>
-                <p>CURS3D uses an account-based state model. Each account stores: balance (u64), nonce (u64), staked_balance (u64), and public_key (Option).</p>
-
-                <h3>3.2 Transactions</h3>
-                <p>Four transaction types:</p>
+            <!-- ─── 4. Transaction Types ──────────────────────── -->
+            <section id="wp-transaction-types">
+                <h2>4. Transaction Types</h2>
+                <p>Six transaction types are supported, defined by the <code>TransactionKind</code> enum:</p>
                 <ul>
-                    <li><strong>Transfer</strong> -- Moves tokens from sender to recipient.</li>
-                    <li><strong>Stake</strong> -- Moves tokens from liquid balance to staked balance.</li>
-                    <li><strong>Unstake</strong> -- Moves tokens from staked balance back to liquid balance. Reduces validator stake; deactivates validator if below minimum.</li>
-                    <li><strong>Coinbase</strong> -- Block reward. No sender, no fee, no signature.</li>
+                    <li><strong>Transfer</strong> -- Moves tokens from sender to recipient. Requires valid signature, correct nonce, and sufficient balance (amount + fee).</li>
+                    <li><strong>Stake</strong> -- Moves tokens from liquid balance to staked balance. Activates the sender as a validator if staked balance meets the minimum threshold (default: 1,000 CUR). The sender's public key is registered in the validator set.</li>
+                    <li><strong>Unstake</strong> -- Moves tokens from staked balance back to liquid balance. Subject to an unstake delay (default: 10 blocks). Deactivates the validator if stake falls below minimum.</li>
+                    <li><strong>Coinbase</strong> -- Block reward issuance. No sender, no fee, no signature required. Created by the block proposer. Default reward: 50 CUR per block.</li>
+                    <li><strong>DeployContract</strong> -- Deploys WASM bytecode as a smart contract. The contract address is derived from the deployer address and nonce. Intrinsic gas: <code>GAS_BASE_TX + GAS_DEPLOY = 53,000</code>.</li>
+                    <li><strong>CallContract</strong> -- Invokes an exported function on a deployed contract. Input data is passed via the transaction <code>data</code> field. Intrinsic gas: <code>GAS_BASE_TX + GAS_CALL = 23,600</code>.</li>
                 </ul>
 
-                <h3>3.3 Block Structure</h3>
-                <div class="ascii-diagram">+-------------------------------------------------------+
-|                      Block Header                      |
-|-------------------------------------------------------|
-| height          : u64     -- Sequential block number   |
-| timestamp       : i64     -- Unix epoch seconds        |
-| prev_hash       : [u8;32] -- SHA3 hash of parent block |
-| merkle_root     : [u8;32] -- Merkle root of txs       |
-| state_root      : [u8;32] -- SHA3 of sorted accounts  |
-| validator_pubkey: Vec&lt;u8&gt;  -- Dilithium public key     |
-+-------------------------------------------------------+
-|  Transactions: Coinbase + Transfer/Stake/Unstake       |
-+-------------------------------------------------------+
-|  Dilithium Level 5 signature over block hash           |
-+-------------------------------------------------------+</div>
+                <h3>4.1 Transaction Fields</h3>
+                <pre><code>Transaction {
+    chain_id: String,                    // Chain identifier (prevents replay across chains)
+    kind: TransactionKind,               // One of the six types above
+    from: Vec&lt;u8&gt;,                       // 20-byte sender address
+    sender_public_key: Vec&lt;u8&gt;,          // Dilithium public key for signature verification
+    to: Vec&lt;u8&gt;,                         // Recipient address or contract bytecode
+    amount: u64,                         // Value in microtokens
+    fee: u64,                            // Legacy fee field
+    nonce: u64,                          // Account nonce (must match state)
+    timestamp: i64,                      // Unix epoch seconds
+    data: Vec&lt;u8&gt;,                       // Arbitrary payload (contract input)
+    signature: Option&lt;Signature&gt;,        // Dilithium signature
+    gas_limit: u64,                      // Maximum gas units
+    max_fee_per_gas: u64,                // EIP-1559: max total fee per gas unit
+    max_priority_fee_per_gas: u64,       // EIP-1559: max tip per gas unit
+}</code></pre>
 
-                <h3>3.4 State Root</h3>
-                <p>Computed by sorting all accounts deterministically by address, serializing each account state, and computing a SHA3-256 hash over the concatenation.</p>
+                <h3>4.2 Intrinsic Gas</h3>
+                <p>Every transaction consumes at least its intrinsic gas, computed as:</p>
+                <pre><code>intrinsic_gas = kind_gas + (payload_bytes * GAS_PER_BYTE)
+
+where kind_gas:
+  Transfer / Stake / Unstake / Coinbase = 21,000
+  DeployContract                        = 21,000 + 32,000 = 53,000
+  CallContract                          = 21,000 +  2,600 = 23,600</code></pre>
             </section>
 
-            <section class="wp-section" id="wp-consensus">
-                <h2>4. Consensus Mechanism</h2>
+            <!-- ─── 5. Block Structure ────────────────────────── -->
+            <section id="wp-block-structure">
+                <h2>5. Block Structure</h2>
+                <pre><code>+──────────────────────────────────────────────────────+
+|                     Block Header                      |
+|──────────────────────────────────────────────────────|
+| version           : u32       Protocol version        |
+| height            : u64       Sequential block number  |
+| timestamp         : i64       Unix epoch seconds       |
+| prev_hash         : [u8; 32]  SHA-3 hash of parent     |
+| merkle_root       : [u8; 32]  Merkle root of txs       |
+| state_root        : [u8; 32]  SHA-3 of sorted accounts |
+| gas_used          : u64       Total gas consumed       |
+| base_fee_per_gas  : u64       EIP-1559 base fee        |
+| validator_pubkey  : Vec&lt;u8&gt;   Dilithium public key     |
+| nonce             : u64       Block nonce              |
++──────────────────────────────────────────────────────+
+|  Transactions: Coinbase + Transfer/Stake/Unstake/     |
+|                DeployContract/CallContract             |
++──────────────────────────────────────────────────────+
+|  block_hash: sha3(sha3(bincode(header)))              |
+|  signature:  Dilithium Level 5 over block_hash        |
++──────────────────────────────────────────────────────+</code></pre>
 
-                <h3>4.1 Proof of Stake</h3>
-                <p>Accounts qualify as validators by staking a minimum amount (default: 1,000 CUR). The validator set is determined by current account state.</p>
+                <h3>5.1 Block Hash</h3>
+                <p>The block hash is computed via a double-hash construction: <code>sha3(sha3(bincode(header)))</code>. The header is first serialized with bincode (deterministic binary encoding), then hashed twice with SHA-3-256. This provides resistance against length-extension attacks and ensures hash commitment integrity.</p>
 
-                <h3>4.2 Validator Selection</h3>
-                <p>Deterministic, stake-weighted pseudo-random selection for each block height:</p>
-                <div class="ascii-diagram">seed = SHA3(block_height || prev_block_hash)
-selector = u64_from_le_bytes(seed[0..8]) % total_active_stake
-Iterate validators sorted by address; first where selector &lt; stake is selected</div>
+                <h3>5.2 Genesis Block</h3>
+                <p>The genesis block has height 0, no signature, a fixed timestamp of <code>1,700,000,000</code> (Unix epoch), and a state root derived from the genesis allocations. It is configured via <code>GenesisConfig</code> which specifies <code>chain_name</code>, <code>block_reward</code>, <code>minimum_stake</code>, <code>block_gas_limit</code>, <code>initial_base_fee_per_gas</code>, <code>base_fee_change_denominator</code>, <code>epoch_length</code>, <code>jail_duration_blocks</code>, and initial token allocations.</p>
 
-                <h3>4.3 BFT Finality</h3>
-                <p>Validators broadcast FinalityVote attestations (Dilithium signatures over block_hash || block_height). The FinalityTracker checks:</p>
-                <div class="ascii-diagram">Finality condition: voted_stake * 3 >= total_active_stake * 2
+                <h3>5.3 State Root</h3>
+                <p>Computed deterministically by sorting all accounts by address (lexicographic byte order), serializing each <code>AccountState</code> via bincode, concatenating, and hashing with SHA-3-256. This ensures all nodes arrive at the same state root for the same account set regardless of processing order.</p>
+            </section>
+
+            <!-- ─── 6. Consensus ──────────────────────────────── -->
+            <section id="wp-consensus">
+                <h2>6. Consensus</h2>
+
+                <h3>6.1 Proof of Stake</h3>
+                <p>Accounts qualify as validators by staking a minimum amount (default: 1,000 CUR = 1,000,000,000 microtokens). The validator set is determined by the current account state -- any account with <code>staked_balance &gt;= minimum_stake</code> and <code>jailed_until_height &lt; current_height</code> is eligible.</p>
+
+                <h3>6.2 Epoch System</h3>
+                <p>Time is divided into epochs of 32 blocks each. The validator set is <strong>frozen at epoch boundaries</strong>, meaning stake changes within an epoch do not affect validator selection until the next epoch. Each epoch boundary triggers an <code>EpochSnapshot</code> capturing the validator set, total stake, and chain metadata.</p>
+                <pre><code>epoch = block_height / epoch_length    // epoch_length = 32</code></pre>
+
+                <h3>6.3 Validator Selection</h3>
+                <p>Deterministic, stake-weighted, pseudo-random selection for each block height:</p>
+                <pre><code>seed      = SHA-3(block_height || prev_block_hash)
+selector  = u64_from_le_bytes(seed[0..8]) % total_active_stake
+
+// Iterate validators sorted by address (lexicographic)
+// First validator where cumulative_stake &gt; selector is selected</code></pre>
+                <p>This ensures that selection probability is exactly proportional to stake, and any observer can verify the expected proposer for a given height.</p>
+
+                <h3>6.4 BFT Finality</h3>
+                <p>Validators broadcast <code>FinalityVote</code> attestations -- Dilithium signatures over the concatenation of <code>block_hash || block_height || epoch</code>. The <code>FinalityTracker</code> accumulates votes per block and checks the finality condition:</p>
+                <pre><code>FinalityVote {
+    block_hash:    Vec&lt;u8&gt;,
+    block_height:  u64,
+    epoch:         u64,
+    validator_key: Vec&lt;u8&gt;,
+    signature:     Signature,     // Dilithium sign(block_hash || height || epoch)
+}
+
+Finality condition:
+    voted_stake * 3 &gt;= total_active_stake * 2
 
 Example with 3 validators (3000, 3000, 3000 stake each):
-  Total active stake = 9000
-  Required: 6000 (2/3)
-  Vote 1 (3000): 3000 * 3 = 9000 &lt; 18000 -- NOT finalized
-  Vote 2 (3000): 6000 * 3 = 18000 >= 18000 -- FINALIZED</div>
-                <p>Once finalized, a block and all its ancestors become permanent. The BlockTree prunes non-canonical branches.</p>
+    Total active stake = 9000
+    Required: 6000 (2/3 of 9000)
+    Vote 1 (3000 stake): 3000 * 3 =  9000 &lt; 18000 -- NOT finalized
+    Vote 2 (3000 stake): 6000 * 3 = 18000 &gt;= 18000 -- FINALIZED</code></pre>
+                <p>Once finalized, a block and all its ancestors become permanent. The <code>BlockTree</code> marks the finalized boundary and prunes all non-canonical branches below that height. Vote deduplication prevents a validator from voting twice for the same block.</p>
 
-                <h3>4.4 Slashing</h3>
-                <p>Equivocation is provably detectable via EquivocationEvidence containing two valid Dilithium signatures on different block hashes at the same height. Penalty: 33% of staked balance, permanent jailing. Evidence is broadcast via Gossipsub.</p>
+                <h3>6.5 Slashing</h3>
+                <p>Equivocation (signing two different blocks at the same height) is provably detectable. An <code>EquivocationEvidence</code> structure contains:</p>
+                <pre><code>EquivocationEvidence {
+    height:               u64,
+    validator_public_key: Vec&lt;u8&gt;,
+    block_header_a:       BlockHeader,    // First conflicting header
+    block_header_b:       BlockHeader,    // Second conflicting header
+    signature_a:          Signature,      // Dilithium signature on header A's hash
+    signature_b:          Signature,      // Dilithium signature on header B's hash
+}</code></pre>
+                <p>Verification confirms: (1) the two block hashes differ, (2) both headers commit to the claimed height, (3) both Dilithium signatures verify against the validator's public key. Upon valid evidence:</p>
+                <ul>
+                    <li><strong>Penalty</strong> -- 33% of the validator's staked balance is burned</li>
+                    <li><strong>Jailing</strong> -- Validator is jailed for 64 blocks (<code>jailed_until_height = current_height + 64</code>)</li>
+                    <li><strong>Broadcast</strong> -- Evidence is disseminated via Gossipsub to all peers</li>
+                    <li><strong>Persistence</strong> -- Evidence is stored in the <code>slashing_evidence</code> tree in sled</li>
+                </ul>
+                <p>Automatic equivocation detection occurs when conflicting blocks arrive from the same validator during normal sync. Evidence is constructed and broadcast immediately.</p>
             </section>
 
-            <section class="wp-section" id="wp-fork-choice">
-                <h2>5. Fork Choice Rule</h2>
-                <p>CURS3D resolves competing chain tips using a <strong>heaviest chain by cumulative proposer-stake weight</strong> rule. The BlockTree maintains a DAG of all known blocks with cumulative weight = sum of proposer stakes from genesis.</p>
-                <div class="ascii-diagram">BlockTree Fork Visualization:
-
-Genesis (weight: 0)
+            <!-- ─── 7. Fork Choice ────────────────────────────── -->
+            <section id="wp-fork-choice">
+                <h2>7. Fork Choice</h2>
+                <p>CURS3D resolves competing chain tips using a <strong>heaviest chain by cumulative proposer-stake weight</strong> rule. The <code>BlockTree</code> maintains a directed acyclic graph (DAG) of all known blocks, where each node stores:</p>
+                <ul>
+                    <li>Block hash and height</li>
+                    <li>Parent hash</li>
+                    <li>Proposer's stake at time of proposal</li>
+                    <li>Cumulative weight (sum of all proposer stakes from genesis to this block)</li>
+                </ul>
+                <pre><code>Genesis (weight: 0)
   |
-  +-- Block A1 (validator stake: 5000, weight: 5000)
+  +-- Block A1 (proposer stake: 5000, cumulative: 5000)
   |     |
-  |     +-- Block A2 (validator stake: 3000, weight: 8000) &lt;-- CANONICAL TIP
+  |     +-- Block A2 (proposer stake: 3000, cumulative: 8000)  &lt;-- CANONICAL TIP
   |
-  +-- Block B1 (validator stake: 2000, weight: 2000)
+  +-- Block B1 (proposer stake: 2000, cumulative: 2000)
         |
-        +-- Block B2 (validator stake: 4000, weight: 6000)
+        +-- Block B2 (proposer stake: 4000, cumulative: 6000)
 
-Chain A wins: 8000 > 6000 cumulative weight</div>
-                <p>Blocks below the finalized height are rejected. Pruning occurs when blocks are finalized, bounding memory overhead.</p>
+Chain A wins: 8000 &gt; 6000 cumulative weight</code></pre>
+
+                <h3>7.1 Finality Boundary</h3>
+                <p>Blocks at or below the finalized height are immutable. The <code>BlockTree</code> rejects insertions below the finality boundary. When a block is finalized via BFT voting, all non-canonical branches at or below that height are pruned, bounding memory overhead.</p>
+
+                <h3>7.2 Reorganization</h3>
+                <p>When a heavier fork tip is discovered, the chain performs a reorganization: it identifies the common ancestor of the current tip and the new tip, rolls back state to the common ancestor, and reapplies blocks along the heavier fork. This ensures convergence on the globally heaviest chain.</p>
             </section>
 
-            <section class="wp-section" id="wp-network">
-                <h2>6. Network Protocol</h2>
-                <h3>6.1 Transport</h3>
-                <p>libp2p with TCP transport, Noise encryption, Yamux multiplexing. Each node has a unique PeerId.</p>
-                <h3>6.2 Message Dissemination</h3>
-                <p>Gossipsub with strict validation, 10-second heartbeat, 10 MB max message size (for Dilithium signatures).</p>
-                <h3>6.3 Peer Discovery</h3>
-                <p>mDNS for local networks, explicit bootnode multiaddresses for WAN connectivity.</p>
-                <h3>6.4 Sync Protocol</h3>
-                <p>Signed HeightAnnounce messages trigger sync. 15-second timeout, 3 retries max. Genesis hash verification prevents cross-chain contamination. Block deduplication cache prevents redundant processing.</p>
-                <h3>6.5 Equivocation Detection</h3>
-                <p>Automatic detection when conflicting blocks arrive from the same validator. Evidence is constructed and broadcast immediately.</p>
+            <!-- ─── 8. Fee Market ─────────────────────────────── -->
+            <section id="wp-fee-market">
+                <h2>8. Fee Market (EIP-1559)</h2>
+                <p>CURS3D implements an EIP-1559-style adaptive fee market. Each block has a <code>base_fee_per_gas</code> that adjusts automatically based on network utilization.</p>
+
+                <h3>8.1 Parameters</h3>
+                <pre><code>block_gas_limit             = 10,000,000
+target_gas_usage            = block_gas_limit / 2 = 5,000,000
+base_fee_change_denominator = 8
+initial_base_fee_per_gas    = 0</code></pre>
+
+                <h3>8.2 Base Fee Adjustment</h3>
+                <p>The base fee for block <em>N+1</em> is computed from block <em>N</em>:</p>
+                <pre><code>delta = |parent_gas_used - target_gas|
+change = max(parent_base_fee, 1) * delta / (target_gas * denominator)
+change = max(change, 1)    // minimum adjustment of 1
+
+if parent_gas_used &gt; target:
+    next_base_fee = parent_base_fee + change
+else if parent_gas_used &lt; target:
+    next_base_fee = parent_base_fee - change
+else:
+    next_base_fee = parent_base_fee   // no change at target</code></pre>
+                <p>When <code>parent_base_fee = 0</code> and <code>gas_used &lt;= target</code>, the base fee remains at 0 (free transactions when the network is underutilized).</p>
+
+                <h3>8.3 Transaction Fee Fields</h3>
+                <pre><code>max_fee_per_gas          // Maximum total fee per gas unit the sender will pay
+max_priority_fee_per_gas // Maximum tip per gas unit (goes to validator)
+
+effective_gas_price = base_fee_per_gas + min(max_priority_fee_per_gas,
+                                              max_fee_per_gas - base_fee_per_gas)
+priority_fee        = effective_gas_price - base_fee_per_gas</code></pre>
+
+                <h3>8.4 Fee Distribution</h3>
+                <p>The base fee portion is <strong>burned</strong> (removed from circulation), creating deflationary pressure proportional to network usage. The priority fee (tip) is paid to the block proposer as an incentive for transaction inclusion.</p>
+
+                <h3>8.5 Receipts</h3>
+                <p>Every transaction produces a receipt with full fee accounting:</p>
+                <pre><code>Receipt {
+    tx_hash:             Vec&lt;u8&gt;,
+    success:             bool,
+    gas_used:            u64,
+    effective_gas_price: u64,
+    priority_fee_paid:   u64,
+    base_fee_burned:     u64,
+    gas_refunded:        u64,
+    logs:                Vec&lt;LogEntry&gt;,
+    return_data:         Vec&lt;u8&gt;,
+    contract_address:    Option&lt;Vec&lt;u8&gt;&gt;,   // Set on DeployContract
+}</code></pre>
             </section>
 
-            <section class="wp-section" id="wp-api">
-                <h2>7. API Architecture</h2>
-                <h3>7.1 Dual API Design</h3>
-                <p>CURS3D runs two API servers concurrently:</p>
+            <!-- ─── 9. WASM Virtual Machine ───────────────────── -->
+            <section id="wp-wasm-vm">
+                <h2>9. WASM Virtual Machine</h2>
+                <p>CURS3D executes smart contracts as WebAssembly (WASM) modules using the Wasmer 5 runtime with the Cranelift compiler backend. The VM provides deterministic execution, instruction-level fuel metering, and sandboxed isolation.</p>
+
+                <h3>9.1 Execution Model</h3>
                 <ul>
-                    <li><strong>TCP RPC</strong> (port 9545) -- Newline-delimited JSON over TCP. Used by the CLI for transaction submission, account queries, and status checks.</li>
-                    <li><strong>HTTP REST API</strong> (port 8080) -- Standard HTTP/1.1 with JSON responses. Full CORS support. Used by browsers, block explorers, and external applications.</li>
+                    <li><strong>Deploy</strong> -- WASM bytecode is validated for required loop safety (contracts with loops must import <code>consume_gas</code> or <code>loop_tick</code>). A contract address is derived from the deployer address and nonce. Static gas is estimated by scanning all instructions.</li>
+                    <li><strong>Call</strong> -- The VM instantiates the contract module, injects host functions, and invokes the exported <code>curs3d_call</code> entry point. Input data is provided via the <code>input()</code> host function.</li>
+                    <li><strong>Return</strong> -- The WASM return value and any logs emitted via <code>emit_log</code>/<code>emit_log_bytes</code> are captured in the receipt.</li>
                 </ul>
-                <h3>7.2 REST Endpoints</h3>
-                <p>The HTTP API provides 10 endpoints:</p>
+
+                <h3>9.2 Host Functions</h3>
+                <p>The VM exposes the following host imports under the <code>"curs3d"</code> module namespace:</p>
+                <pre><code>storage_get(key: i64) -&gt; i64           // Read from contract storage
+storage_set(key: i64, value: i64)      // Write to contract storage
+storage_read(key_ptr, key_len, dst_ptr, dst_capacity) -&gt; i32  // Byte-level read
+storage_write_bytes(key_ptr, key_len, value_ptr, value_len) -&gt; i32
+emit_log(topic: i64, data: i64)        // Emit a structured log event
+emit_log_bytes(topic_ptr, topic_len, data_ptr, data_len) -&gt; i32
+consume_gas(amount: i64)               // Explicit gas consumption
+loop_tick(amount: i64)                 // Gas charge for loop iterations
+input() -&gt; i64                         // Read transaction input data</code></pre>
+
+                <h3>9.3 Gas Schedule</h3>
+                <p>Gas costs are defined as constants to ensure deterministic and predictable execution pricing:</p>
+                <pre><code>GAS_BASE_TX            = 21,000    // Base cost for any transaction
+GAS_DEPLOY             = 32,000    // Additional cost for contract deployment
+GAS_CALL               =  2,600    // Additional cost for contract call
+GAS_STORAGE_READ       =    200    // Read one storage slot
+GAS_STORAGE_WRITE      =  5,000    // Write one storage slot
+GAS_LOG                =    375    // Emit one log event
+GAS_PER_BYTE           =     16    // Per-byte cost for tx payload
+GAS_WASM_LOOP_TICK     =     50    // Per-iteration loop gas charge
+
+// Internal WASM instruction costs:
+GAS_WASM_DEFAULT_OP    =      2    // Default instruction
+GAS_WASM_NUMERIC_OP    =      3    // Arithmetic/comparison
+GAS_WASM_CONTROL_OP    =      4    // Control flow (if, br, etc.)
+GAS_WASM_MEMORY_OP     =      8    // Memory load/store
+GAS_WASM_CALL_OP       =     12    // Function call/return
+GAS_HOST_CALL_OVERHEAD =     40    // Overhead per host function call
+GAS_MEMORY_READ_BYTE   =      3    // Per-byte host memory read
+GAS_MEMORY_WRITE_BYTE  =      6    // Per-byte host memory write</code></pre>
+
+                <h3>9.4 Loop Safety</h3>
+                <p>To prevent infinite loops, the VM middleware injects <code>consume_gas</code> calls at every loop back-edge and control flow instruction during compilation. Contracts that contain loops but do not import <code>consume_gas</code> or <code>loop_tick</code> are rejected at deployment time. The <code>GAS_WASM_LOOP_TICK</code> charge (50 gas) is automatically added to every loop iteration.</p>
+
+                <h3>9.5 Contract State</h3>
+                <p>Each contract has isolated key-value storage persisted in the <code>contracts</code> tree in sled. Contract state includes the WASM bytecode, owner address, creation height, and per-contract storage map. Contracts are addressed by their 20-byte derived address.</p>
+            </section>
+
+            <!-- ─── 10. Network Protocol ──────────────────────── -->
+            <section id="wp-network">
+                <h2>10. Network Protocol</h2>
+
+                <h3>10.1 Transport Stack</h3>
+                <p>Networking is built on libp2p 0.54 with the following stack:</p>
                 <ul>
-                    <li>GET /api/status -- Chain metadata including finalized height</li>
-                    <li>GET /api/blocks -- Paginated block summaries</li>
-                    <li>GET /api/block/:height -- Full block with transactions</li>
-                    <li>GET /api/account/:addr -- Account balance, nonce, staked balance</li>
-                    <li>GET /api/tx/:hash -- Transaction lookup by hash</li>
-                    <li>GET /api/pending -- Mempool contents</li>
-                    <li>GET /api/validators -- Active validator set with stakes</li>
-                    <li>GET /api/faucet/:addr -- Testnet token distribution</li>
-                    <li>POST /api/tx/submit -- Signed transaction submission</li>
-                    <li>OPTIONS * -- CORS preflight</li>
+                    <li><strong>Transport</strong> -- TCP</li>
+                    <li><strong>Encryption</strong> -- Noise protocol (XX handshake pattern)</li>
+                    <li><strong>Multiplexing</strong> -- Yamux stream multiplexer</li>
+                    <li><strong>Identity</strong> -- Each node has a unique <code>PeerId</code> derived from its keypair</li>
                 </ul>
-                <h3>7.3 Response Format</h3>
-                <p>All responses follow the envelope pattern: <code>{"ok": bool, "data": T | null, "error": string | null}</code>. HTTP status codes reflect the operation result (200 OK, 400 Bad Request, 404 Not Found).</p>
+
+                <h3>10.2 Message Dissemination</h3>
+                <p>Gossipsub protocol with strict message validation, 10-second heartbeat interval, and 10 MB maximum message size (to accommodate Dilithium Level 5 signatures at approximately 4.6 KB each).</p>
+
+                <h3>10.3 Peer Discovery</h3>
+                <ul>
+                    <li><strong>mDNS</strong> -- Zero-configuration local network discovery</li>
+                    <li><strong>Bootnodes</strong> -- Explicit multiaddresses for WAN connectivity</li>
+                </ul>
+
+                <h3>10.4 Network Messages</h3>
+                <p>The protocol defines 10 message types in the <code>NetworkMessage</code> enum:</p>
+                <pre><code>NewBlock(bincode)              // Broadcast a new block
+NewTransaction(bincode)        // Broadcast a pending transaction
+RequestBlocks {                // Request a batch of blocks
+    from_height, requester_peer_id,
+    expected_prev_hash, genesis_hash
+}
+BlockResponse {                // Response with serialized blocks
+    from_height, target_peer_id,
+    responder_peer_id, genesis_hash, blocks
+}
+HeightAnnounce {               // Signed height announcement
+    height, latest_hash, genesis_hash, peer_id,
+    public_key, signature, protocol_version
+}
+SlashingEvidence(bincode)      // Equivocation proof
+FinalityVote(bincode)          // Validator finality attestation
+RequestSnapshot {              // Request state sync snapshot
+    requester_peer_id, preferred_height,
+    start_chunk, known_finalized_height,
+    known_finalized_hash
+}
+SnapshotManifest {             // Snapshot metadata response
+    target_peer_id, data
+}
+SnapshotChunk {                // Individual snapshot chunk
+    target_peer_id, chunk_index, data
+}</code></pre>
+
+                <h3>10.5 Sync Protocol</h3>
+                <ul>
+                    <li><strong>Trigger</strong> -- Signed <code>HeightAnnounce</code> messages trigger sync when a peer reports a higher chain height</li>
+                    <li><strong>Batch size</strong> -- 50 blocks per request</li>
+                    <li><strong>Timeout</strong> -- 15 seconds per sync request</li>
+                    <li><strong>Retries</strong> -- 3 maximum retry attempts before marking a peer as unresponsive</li>
+                    <li><strong>Validation</strong> -- Genesis hash verification prevents cross-chain contamination</li>
+                    <li><strong>Deduplication</strong> -- Block deduplication cache (1000 entries) prevents redundant processing</li>
+                </ul>
+
+                <h3>10.6 Equivocation Detection</h3>
+                <p>Automatic detection occurs when conflicting blocks arrive from the same validator during normal sync or gossip. Evidence is constructed from the two conflicting signed block headers and broadcast immediately to all peers.</p>
             </section>
 
-            <section class="wp-section" id="wp-security">
-                <h2>8. Security Model</h2>
-                <h3>8.1 Quantum Resistance</h3>
-                <p>All signatures use Dilithium Level 5 (MLWE hardness). SHA-3 provides 128-bit quantum security via Grover's bound.</p>
-                <h3>8.2 Byzantine Fault Tolerance</h3>
-                <p>Tolerates f &lt; n/3 Byzantine validators (stake-weighted). 2/3+ honest stake ensures finalized blocks cannot be reverted.</p>
-                <h3>8.3 Equivocation Accountability</h3>
-                <p>Cryptographically provable. 33% slash penalty provides strong economic disincentive.</p>
-                <h3>8.4 Fork Choice Safety</h3>
-                <p>Attacker needs more cumulative stake than honest chain. Finality prevents both short-range and long-range attacks.</p>
-                <h3>8.5 Replay Protection</h3>
-                <p>Account nonces must increment with each transaction. Incorrect nonces are rejected.</p>
-                <h3>8.6 Timestamp Validation</h3>
-                <p>Blocks must have timestamps between parent timestamp and 30 seconds in the future.</p>
+            <!-- ─── 11. State Sync ────────────────────────────── -->
+            <section id="wp-state-sync">
+                <h2>11. State Sync</h2>
+                <p>State sync allows new nodes to bootstrap from a snapshot rather than replaying the entire chain history. The protocol uses Merkle-authenticated chunks for integrity verification.</p>
+
+                <h3>11.1 Snapshot Manifest</h3>
+                <pre><code>SnapshotManifest {
+    height:           u64,
+    epoch:            u64,
+    chain_id:         String,
+    genesis_hash:     Vec&lt;u8&gt;,
+    latest_hash:      Vec&lt;u8&gt;,
+    tip_height:       u64,
+    tip_hash:         Vec&lt;u8&gt;,
+    finalized_height: u64,
+    finalized_hash:   Vec&lt;u8&gt;,
+    state_root:       Vec&lt;u8&gt;,
+    chunk_root:       Vec&lt;u8&gt;,       // Merkle root of all chunk hashes
+    chunk_count:      usize,
+    chunk_hashes:     Vec&lt;Vec&lt;u8&gt;&gt;,  // SHA-3 hash of each chunk
+}</code></pre>
+
+                <h3>11.2 Snapshot State</h3>
+                <p>A full snapshot captures:</p>
+                <ul>
+                    <li>All blocks (serialized)</li>
+                    <li>All account states (address + AccountState pairs)</li>
+                    <li>All deployed contracts (address + ContractState pairs)</li>
+                    <li>All receipts (hash + Receipt pairs)</li>
+                    <li>Pending transactions in the mempool</li>
+                    <li>Slashed validator addresses</li>
+                    <li>Epoch snapshots (epoch number + EpochSnapshot pairs)</li>
+                    <li>Finalized height and hash</li>
+                </ul>
+
+                <h3>11.3 Chunk Verification</h3>
+                <p>Each <code>StateChunk</code> contains its index, data, SHA-3 hash, and a Merkle proof path. The receiving node verifies each chunk's hash against the manifest's <code>chunk_hashes</code> and validates the Merkle proof against the <code>chunk_root</code>. This ensures chunk integrity even when fetched from untrusted peers.</p>
+
+                <h3>11.4 Sync Flow</h3>
+                <pre><code>1. New node sends RequestSnapshot with preferred_height
+2. Peer responds with SnapshotManifest
+3. Node validates manifest: genesis_hash match, finalized_height check
+4. Node requests chunks starting from start_chunk
+5. Each SnapshotChunk is verified against chunk_hashes and proof
+6. After all chunks received, state is reconstructed and verified
+   against manifest.state_root</code></pre>
             </section>
 
-            <section class="wp-section" id="wp-infrastructure">
-                <h2>9. Infrastructure</h2>
-                <h3>9.1 Docker</h3>
-                <p>CURS3D provides a multi-stage Dockerfile that produces a minimal production image. The docker-compose configuration launches a 2-node network with automatic bootnode configuration and persistent volumes.</p>
-                <h3>9.2 Continuous Integration</h3>
-                <p>GitHub Actions runs on every push: cargo check, cargo test (46 tests across 16 modules), clippy linting, and rustfmt formatting verification. This ensures code quality and prevents regressions.</p>
-                <h3>9.3 Persistent Storage</h3>
-                <p>The sled embedded database provides crash-safe persistent storage for blocks, account states, and chain configuration. Each node uses an independent data directory.</p>
-                <h3>9.4 Block Explorer</h3>
-                <p>A built-in web-based block explorer connects to the REST API. It provides real-time chain monitoring, block browsing, account lookup, transaction search, and a testnet faucet.</p>
+            <!-- ─── 12. API Architecture ──────────────────────── -->
+            <section id="wp-api">
+                <h2>12. API Architecture</h2>
+                <p>CURS3D runs two API servers concurrently to serve different client types.</p>
+
+                <h3>12.1 HTTP REST API (Port 8080)</h3>
+                <p>Built on hyper 1.x with the following configuration:</p>
+                <ul>
+                    <li><strong>Max connections</strong> -- 128 concurrent connections</li>
+                    <li><strong>Body limit</strong> -- 1 MB (1,048,576 bytes) maximum request body</li>
+                    <li><strong>CORS</strong> -- Full CORS support (<code>Access-Control-Allow-Origin: *</code>)</li>
+                    <li><strong>Auth</strong> -- Optional bearer token authentication</li>
+                </ul>
+                <p>REST endpoints:</p>
+                <pre><code>GET  /api/status            Chain height, finalized height, epoch, validators
+GET  /api/blocks            Paginated block summaries (?from=N&amp;limit=M, max 100)
+GET  /api/block/:height     Full block with transactions, state root, merkle root
+GET  /api/account/:addr     Balance, nonce, staked balance, jailed status
+GET  /api/account/:addr/proof  Merkle account proof with leaf index and state root
+GET  /api/tx/:hash          Transaction lookup by hash
+GET  /api/pending           Mempool contents (pending transactions)
+GET  /api/validators        Active validator set with addresses, keys, and stakes
+GET  /api/faucet/:addr      Testnet token distribution (100 CUR)
+POST /api/tx/submit         Submit a signed transaction (JSON body)
+POST /api/tx/estimate       Dry-run: gas estimate, fees, base fee, replacement check
+GET  /metrics               Prometheus-format metrics export</code></pre>
+
+                <h3>12.2 TCP RPC (Port 9545)</h3>
+                <p>Newline-delimited JSON over raw TCP. Used by the CLI for transaction submission, account queries, and status checks. Maximum 128 concurrent connections.</p>
+
+                <h3>12.3 Response Format</h3>
+                <p>All HTTP responses follow a consistent envelope pattern:</p>
+                <pre><code>// Success:
+{"ok": true,  "data": { ... }}
+
+// Error:
+{"ok": false, "error": "descriptive error message"}
+
+HTTP status codes: 200 OK, 400 Bad Request, 404 Not Found</code></pre>
             </section>
 
-            <section class="wp-section" id="wp-tokenomics">
-                <h2>10. Tokenomics</h2>
-                <h3>10.1 Token Unit</h3>
-                <p>Native token: CUR. Smallest unit: microtoken. 1 CUR = 1,000,000 microtokens (u64).</p>
-                <h3>10.2 Block Rewards</h3>
-                <p>Default: 50 CUR per block. Configurable via genesis.</p>
-                <h3>10.3 Transaction Fees</h3>
-                <p>Default: 1,000 microtokens per transaction. Fees are burned.</p>
-                <h3>10.4 Staking Economics</h3>
-                <p>Minimum stake: 1,000 CUR (configurable). Selection probability proportional to stake. Block rewards provide return on staked capital. Unstaking returns tokens to liquid balance.</p>
-                <h3>10.5 Slashing Economics</h3>
-                <p>33% penalty + permanent exclusion. Expected value of equivocation is strongly negative.</p>
+            <!-- ─── 13. Security Model ────────────────────────── -->
+            <section id="wp-security">
+                <h2>13. Security Model</h2>
+
+                <h3>13.1 Quantum Resistance</h3>
+                <p>All digital signatures use CRYSTALS-Dilithium Level 5 (NIST FIPS 204), whose security relies on the MLWE lattice problem. SHA-3 Keccak-256 provides 128-bit quantum security via Grover's bound. No component of the protocol depends on RSA, ECDSA, or any classical-only assumption.</p>
+
+                <h3>13.2 Byzantine Fault Tolerance</h3>
+                <p>The protocol tolerates <code>f &lt; n/3</code> Byzantine validators (stake-weighted). The 2/3 supermajority threshold for finality ensures that finalized blocks cannot be reverted as long as at least 2/3 of total stake is controlled by honest validators.</p>
+
+                <h3>13.3 Equivocation Accountability</h3>
+                <p>Equivocation is cryptographically provable: an <code>EquivocationEvidence</code> containing two valid Dilithium signatures on different block headers at the same height constitutes irrefutable proof of misbehavior. The 33% slash penalty plus 64-block jailing provides a strong economic disincentive.</p>
+
+                <h3>13.4 Fork Choice Safety</h3>
+                <p>An attacker must control more cumulative proposer stake than the honest chain to produce a heavier fork. Finality prevents both short-range and long-range attacks on finalized blocks. The BlockTree's finality boundary rejects blocks below the finalized height.</p>
+
+                <h3>13.5 Replay Protection</h3>
+                <ul>
+                    <li><strong>Nonce</strong> -- Account nonces must increment monotonically with each transaction. Incorrect nonces are rejected.</li>
+                    <li><strong>Chain ID</strong> -- Transactions include a <code>chain_id</code> field, preventing replay across different CURS3D networks.</li>
+                    <li><strong>Timestamp bounds</strong> -- Transactions with timestamps more than 30 seconds in the future or more than 15 minutes old are rejected.</li>
+                </ul>
+
+                <h3>13.6 Block Timestamp Validation</h3>
+                <p>Block timestamps must satisfy: <code>parent.timestamp &lt; block.timestamp &lt;= now + 30 seconds</code>. This prevents timestamp manipulation while allowing reasonable clock skew.</p>
+
+                <h3>13.7 Wallet Security</h3>
+                <p>Private keys are encrypted at rest with AES-256-GCM using keys derived from user passwords via Argon2 (memory-hard KDF). This protects against offline brute-force attacks on stolen wallet files.</p>
+
+                <h3>13.8 State Sync Security</h3>
+                <p>Snapshot chunks are verified against Merkle proofs rooted in the <code>chunk_root</code> of the manifest. Genesis hash matching prevents cross-chain state injection. Finalized height validation ensures snapshots are only accepted from sufficiently finalized state.</p>
             </section>
 
-            <section class="wp-section" id="wp-roadmap">
-                <h2>11. Roadmap</h2>
-                <h3>Phase 1: Core Protocol (Q2 2026) -- COMPLETE</h3>
+            <!-- ─── 14. Tokenomics ────────────────────────────── -->
+            <section id="wp-tokenomics">
+                <h2>14. Tokenomics</h2>
+
+                <h3>14.1 Token Unit</h3>
+                <p>Native token: <strong>CUR</strong>. Smallest unit: <strong>microtoken</strong>. 1 CUR = 1,000,000 microtokens. All on-chain amounts are stored as <code>u64</code> microtokens.</p>
+
+                <h3>14.2 Block Rewards</h3>
+                <p>Default block reward: 50 CUR (50,000,000 microtokens) per block. Issued via a <code>Coinbase</code> transaction to the block proposer. Configurable via genesis configuration.</p>
+
+                <h3>14.3 Fee Economics</h3>
+                <ul>
+                    <li><strong>Base fee</strong> -- Determined algorithmically by EIP-1559 mechanism. Burned on use, creating deflationary pressure.</li>
+                    <li><strong>Priority fee</strong> -- Optional tip to the block proposer. Paid from the spread between <code>max_fee_per_gas</code> and <code>base_fee_per_gas</code>.</li>
+                    <li><strong>Gas refund</strong> -- Unused gas (within the gas limit) is refunded to the sender.</li>
+                </ul>
+
+                <h3>14.4 Staking Economics</h3>
+                <ul>
+                    <li><strong>Minimum stake</strong> -- 1,000 CUR (1,000,000,000 microtokens), configurable via genesis</li>
+                    <li><strong>Selection probability</strong> -- Exactly proportional to staked amount</li>
+                    <li><strong>Block rewards</strong> -- Provide return on staked capital (50 CUR per block to the proposer)</li>
+                    <li><strong>Unstake delay</strong> -- 10 blocks cooling period before staked tokens return to liquid balance</li>
+                    <li><strong>Epoch freezing</strong> -- Stake changes take effect at the next epoch boundary (32 blocks)</li>
+                </ul>
+
+                <h3>14.5 Slashing Economics</h3>
+                <p>Equivocation penalty: 33% of staked balance burned + 64-block jailing period. The expected value of equivocation is strongly negative: a validator with 10,000 CUR staked would lose 3,300 CUR and be unable to propose blocks for 64 blocks.</p>
+            </section>
+
+            <!-- ─── 15. Roadmap ───────────────────────────────── -->
+            <section id="wp-roadmap">
+                <h2>15. Roadmap</h2>
+
+                <h3>Phase 1: Core Protocol + Smart Contracts (Q1-Q2 2026) -- COMPLETE</h3>
                 <ul>
                     <li>BFT finality engine with 2/3 threshold voting</li>
                     <li>CRYSTALS-Dilithium Level 5 wallet system with AES-256-GCM + Argon2</li>
-                    <li>Heaviest-chain fork choice rule with BlockTree</li>
-                    <li>Provable equivocation slashing (33% penalty, jailing)</li>
-                    <li>Transfer, Stake, Unstake, Coinbase transaction types</li>
-                    <li>libp2p networking with Gossipsub, mDNS, bootnodes, signed HeightAnnounce</li>
-                    <li>TCP RPC + HTTP REST API (10 endpoints, full CORS)</li>
-                    <li>sled-backed persistent storage</li>
-                    <li>Block Explorer web UI</li>
-                    <li>Docker multi-stage build + docker-compose</li>
-                    <li>GitHub Actions CI (check, test, clippy, fmt)</li>
-                    <li>46 tests, 16 modules, 7 website pages</li>
+                    <li>Heaviest-chain fork choice rule with BlockTree and finality pruning</li>
+                    <li>Provable equivocation slashing (33% penalty, 64-block jailing)</li>
+                    <li>Six transaction types: Transfer, Stake, Unstake, Coinbase, DeployContract, CallContract</li>
+                    <li>WASM virtual machine (Wasmer 5 + Cranelift) with instruction-level fuel metering</li>
+                    <li>EIP-1559 adaptive fee market with base fee burning</li>
+                    <li>Epoch system (32 blocks) with frozen validator sets</li>
+                    <li>State sync with Merkle-authenticated snapshot chunks</li>
+                    <li>libp2p 0.54 networking: Gossipsub, mDNS, bootnodes, signed HeightAnnounce</li>
+                    <li>Dual API: HTTP REST (port 8080, hyper 1.x) + TCP RPC (port 9545)</li>
+                    <li>sled storage with schema v4, 10 purpose-specific trees</li>
+                    <li>Transaction receipts with full EIP-1559 fee accounting</li>
+                    <li>Block explorer web UI</li>
+                    <li>Docker multi-stage build + docker-compose (2-node network)</li>
+                    <li>GitHub Actions CI: check, test, clippy, fmt</li>
+                    <li>79 tests across 9 modules, Rust 2024 edition</li>
                 </ul>
-                <h3>Phase 2: Smart Contracts (Q3 2026)</h3>
+
+                <h3>Phase 2: Developer SDK + Public Testnet (Q3 2026)</h3>
                 <ul>
-                    <li>WASM-based execution environment</li>
-                    <li>Quantum-safe contract verification</li>
-                    <li>Gas metering and resource limits</li>
+                    <li>Contract SDK with Rust and AssemblyScript toolchains</li>
+                    <li>Public testnet with faucet and genesis onboarding</li>
+                    <li>Indexed receipts and log filters for contract event queries</li>
+                    <li>Observability with Prometheus metrics and structured logging</li>
+                    <li>Peer scoring and anti-spam hardening</li>
                 </ul>
-                <h3>Phase 3: Mainnet Launch (Q4 2026)</h3>
+
+                <h3>Phase 3: Security Audit + Mainnet (Q4 2026)</h3>
                 <ul>
-                    <li>Genesis block with community validator onboarding</li>
-                    <li>Security audit of cryptographic primitives and consensus</li>
-                    <li>Ecosystem tooling: SDK, wallet apps</li>
+                    <li>External security audit of consensus, VM, and cryptographic primitives</li>
+                    <li>State trie upgrade (Merkle Patricia Trie or equivalent)</li>
+                    <li>Mainnet genesis with community validator onboarding</li>
+                    <li>Wallet applications (CLI, desktop, browser extension)</li>
                 </ul>
+
                 <h3>Phase 4: Ecosystem Growth (2027)</h3>
                 <ul>
                     <li>Cross-chain bridges</li>
-                    <li>Developer SDK for multiple languages</li>
-                    <li>DeFi primitives, on-chain governance, light client protocol</li>
+                    <li>On-chain governance</li>
+                    <li>Token standards (CUR-20, CUR-721)</li>
+                    <li>DeFi primitives</li>
+                    <li>Advanced VM features (cross-contract calls, gas forwarding)</li>
+                    <li>Light client protocol</li>
+                    <li>Community grant program</li>
                 </ul>
             </section>
 
-            <section class="wp-section" id="wp-conclusion">
-                <h2>12. Conclusion</h2>
-                <p>CURS3D demonstrates that a blockchain protocol can be built entirely on post-quantum cryptographic primitives without sacrificing modern Layer 1 properties: deterministic finality, stake-weighted consensus, fork resolution, efficient networking, and production-grade infrastructure.</p>
-                <p>By adopting CRYSTALS-Dilithium Level 5 and SHA-3 from inception, CURS3D avoids the technical debt of retrofitting quantum resistance. The BFT finality mechanism provides safety under the standard 2/3 honesty assumption, provable slashing holds validators accountable, and the REST API + Block Explorer provide immediate developer accessibility.</p>
-                <p>The protocol is implemented in Rust and released under the MIT license. Source code: <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">github.com/Pazificateur69/curs3d</a>.</p>
+            <!-- ─── 16. Conclusion ────────────────────────────── -->
+            <section id="wp-conclusion">
+                <h2>16. Conclusion</h2>
+                <p>CURS3D demonstrates that a blockchain protocol can be built entirely on post-quantum cryptographic primitives without sacrificing modern Layer 1 capabilities: deterministic BFT finality, stake-weighted consensus with provable slashing, adaptive fee markets, smart contract execution, efficient state sync, and production-grade infrastructure.</p>
+                <p>By adopting CRYSTALS-Dilithium Level 5 and SHA-3 from inception, CURS3D avoids the technical debt of retrofitting quantum resistance onto a classical foundation. The EIP-1559 fee market provides predictable transaction costs with deflationary base fee burning. The WASM virtual machine with instruction-level gas metering enables expressive smart contracts within deterministic resource bounds. The state sync protocol with Merkle-authenticated chunks enables new nodes to join the network efficiently without replaying the full chain history.</p>
+                <p>The protocol is implemented in Rust 2024 and validated by 79 tests across 9 modules. It is released under the MIT license.</p>
+                <p>Source code: <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">github.com/Pazificateur69/curs3d</a></p>
+            </section>
+
+            <!-- ─── Appendix: Storage Schema ──────────────────── -->
+            <section id="wp-appendix-storage">
+                <h2>Appendix A: Storage Schema</h2>
+                <p>Persistent storage uses sled (embedded key-value database) with schema version 4. Ten purpose-specific trees:</p>
+                <pre><code>Tree Name               Contents
+────────────────────    ────────────────────────────────────────
+blocks                  Serialized blocks keyed by height
+accounts                AccountState keyed by 20-byte address
+meta                    Chain metadata (height, schema version, genesis config)
+pending                 Pending mempool transactions
+slashing_evidence       EquivocationEvidence records
+epochs                  EpochSnapshot keyed by epoch number
+contracts               ContractState keyed by contract address
+receipts                Transaction receipts keyed by tx hash
+snapshot_manifests      SnapshotManifest keyed by height
+snapshot_chunks         StateChunk keyed by (height, chunk_index)</code></pre>
+                <p>The schema includes automatic migration from older versions. The <code>meta</code> tree stores the <code>schema_version</code> key for version detection on startup.</p>
             </section>
 
         </div>
@@ -319,30 +731,31 @@ Chain A wins: 8000 > 6000 cumulative weight</div>
             <div class="footer-top">
                 <div class="footer-brand">
                     <span class="logo"><span class="logo-diamond"></span> CURS3D</span>
-                    <p>Quantum-resistant blockchain infrastructure for the next century.</p>
+                    <p>Quantum-resistant blockchain infrastructure with WASM smart contracts. Built from scratch in Rust. MIT License.</p>
                 </div>
                 <div class="footer-links-group">
                     <span class="footer-heading">Protocol</span>
                     <a href="index.html#features">Features</a>
-                    <a href="index.html#technology">Technology</a>
+                    <a href="index.html#smart-contracts">Smart Contracts</a>
+                    <a href="index.html#technology">Tech Stack</a>
                     <a href="whitepaper.html">Whitepaper</a>
                 </div>
                 <div class="footer-links-group">
                     <span class="footer-heading">Developers</span>
                     <a href="docs.html">Documentation</a>
-                    <a href="examples.html">Examples</a>
+                    <a href="examples.html">Tutorials</a>
                     <a href="explorer.html">Block Explorer</a>
-                    <a href="docs.html#rest-api">REST API</a>
+                    <a href="docs.html#rest-api">API Reference</a>
                 </div>
                 <div class="footer-links-group">
                     <span class="footer-heading">Community</span>
                     <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
-                    <a href="#" target="_blank" rel="noopener">Discord</a>
-                    <a href="#" target="_blank" rel="noopener">Twitter / X</a>
+                    <a href="https://github.com/Pazificateur69/curs3d/issues" target="_blank" rel="noopener">Issues</a>
+                    <a href="https://github.com/Pazificateur69/curs3d/pulls" target="_blank" rel="noopener">Pull Requests</a>
                 </div>
             </div>
             <div class="footer-bottom">
-                <p>&copy; 2026 CURS3D Protocol. MIT License. All rights reserved.</p>
+                <p>&copy; 2026 CURS3D Protocol. MIT License. Built by <a href="https://github.com/Pazificateur69" target="_blank" rel="noopener">Pazificateur69</a>.</p>
             </div>
         </div>
     </footer>
