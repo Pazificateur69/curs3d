@@ -32,6 +32,7 @@ pub struct Block {
 }
 
 impl Block {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         version: u32,
         height: u64,
@@ -70,11 +71,7 @@ impl Block {
     }
 
     pub fn genesis() -> Self {
-        Self::genesis_with_state_root(
-            hash::sha3_hash(EMPTY_STATE_ROOT_SEED),
-            "curs3d-devnet",
-            0,
-        )
+        Self::genesis_with_state_root(hash::sha3_hash(EMPTY_STATE_ROOT_SEED), "curs3d-devnet", 0)
     }
 
     pub fn genesis_with_state_root(
@@ -171,7 +168,11 @@ mod tests {
             hash::sha3_hash(b"state"),
             21_000,
             1,
-            vec![Transaction::coinbase("curs3d-devnet", vec![1; hash::ADDRESS_LEN], 50)],
+            vec![Transaction::coinbase(
+                "curs3d-devnet",
+                vec![1; hash::ADDRESS_LEN],
+                50,
+            )],
             &validator,
         );
         assert_eq!(block.header.height, 1);

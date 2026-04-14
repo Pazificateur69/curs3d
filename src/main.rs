@@ -207,7 +207,9 @@ async fn run_node(
         Ok(chain) => chain,
         Err(e) => {
             eprintln!("Failed to initialize blockchain storage: {}", e);
-            eprintln!("Node startup aborted to avoid joining the network with divergent in-memory state.");
+            eprintln!(
+                "Node startup aborted to avoid joining the network with divergent in-memory state."
+            );
             return;
         }
     };
@@ -267,7 +269,9 @@ async fn run_node(
     let http_outbound_tx = outbound_tx.clone();
     let http_addr = rpc_addr.replace("9545", "8080");
     let http_task = tokio::spawn(async move {
-        if let Err(e) = api::serve_http(&http_addr, http_chain, http_event_tx, http_outbound_tx).await {
+        if let Err(e) =
+            api::serve_http(&http_addr, http_chain, http_event_tx, http_outbound_tx).await
+        {
             tracing::error!("HTTP API error: {}", e);
         }
     });
@@ -400,7 +404,9 @@ async fn send_tokens(
     };
 
     let mut tx = crate::core::transaction::Transaction::new(
-        &resolve_chain_id(data_dir, rpc_addr).await.unwrap_or_else(|_| "curs3d-devnet".to_string()),
+        &resolve_chain_id(data_dir, rpc_addr)
+            .await
+            .unwrap_or_else(|_| "curs3d-devnet".to_string()),
         w.keypair.public_key.clone(),
         to_bytes,
         amount_micro,
@@ -537,7 +543,9 @@ async fn stake_tokens(wallet_path: &str, amount: u64, fee: u64, data_dir: &str, 
     }
 
     let mut tx = crate::core::transaction::Transaction::stake(
-        &resolve_chain_id(data_dir, rpc_addr).await.unwrap_or_else(|_| "curs3d-devnet".to_string()),
+        &resolve_chain_id(data_dir, rpc_addr)
+            .await
+            .unwrap_or_else(|_| "curs3d-devnet".to_string()),
         w.keypair.public_key.clone(),
         stake_micro,
         fee,

@@ -63,7 +63,10 @@ impl BlockTree {
             return Err(BlockTreeError::BelowFinalized);
         }
 
-        let parent = self.entries.get(&prev_hash).ok_or(BlockTreeError::OrphanBlock)?;
+        let parent = self
+            .entries
+            .get(&prev_hash)
+            .ok_or(BlockTreeError::OrphanBlock)?;
         if block.header.height != parent.block.header.height + 1 {
             return Err(BlockTreeError::InvalidHeightLink);
         }
@@ -123,6 +126,7 @@ impl BlockTree {
     }
 
     /// Get the canonical chain tip hash
+    #[allow(dead_code)]
     pub fn canonical_tip(&self) -> &[u8] {
         &self.canonical_tip
     }
@@ -223,6 +227,7 @@ impl BlockTree {
     }
 
     /// Check if a block hash is known to the tree
+    #[allow(dead_code)]
     pub fn contains(&self, hash: &[u8]) -> bool {
         self.entries.contains_key(hash)
     }
@@ -233,6 +238,7 @@ impl BlockTree {
     }
 
     /// Total number of blocks in the tree (including forks)
+    #[allow(dead_code, clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.entries.len()
     }

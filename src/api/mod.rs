@@ -1,4 +1,6 @@
 use std::sync::Arc;
+use std::sync::OnceLock;
+use std::time::Instant;
 
 use bytes::Bytes;
 use http_body_util::Full;
@@ -10,10 +12,11 @@ use hyper::{Method, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
 use serde::Serialize;
 use tokio::net::TcpListener;
-use tokio::sync::{Semaphore, broadcast, Mutex, mpsc};
+use tokio::sync::{Mutex, Semaphore, broadcast, mpsc};
 
 use crate::core::block::Block;
 use crate::core::chain::Blockchain;
+use crate::core::receipt::{IndexedLogEntry, IndexedReceipt, LogFilter};
 use crate::core::state_proof::{AccountProof, StorageProof};
 use crate::core::transaction::{Transaction, TransactionKind};
 use crate::crypto::hash;
@@ -21,6 +24,7 @@ use crate::network::NetworkMessage;
 
 const MAX_API_BODY_BYTES: usize = 1024 * 1024;
 const MAX_HTTP_CONNECTIONS: usize = 128;
+static API_START_TIME: OnceLock<Instant> = OnceLock::new();
 
 // ─── API Response Types ──────────────────────────────────────────────
 
@@ -59,6 +63,14 @@ fn json_err(status: StatusCode, msg: &str) -> Response<Full<Bytes>> {
     builder.body(Full::new(Bytes::from(body))).unwrap()
 }
 
+fn text_response(status: StatusCode, content_type: &str, body: String) -> Response<Full<Bytes>> {
+    let mut builder = Response::builder()
+        .status(status)
+        .header("Content-Type", content_type);
+    builder = with_cors_headers(builder);
+    builder.body(Full::new(Bytes::from(body))).unwrap()
+}
+
 fn cors_preflight() -> Response<Full<Bytes>> {
     if cors_allow_origin().is_none() {
         return Response::builder()
@@ -84,7 +96,10 @@ fn with_cors_headers(builder: hyper::http::response::Builder) -> hyper::http::re
     builder
         .header("Access-Control-Allow-Origin", origin)
         .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        .header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Authorization",
+        )
 }
 
 // ─── Serializable API Structs ────────────────────────────────────────
@@ -188,6 +203,44 @@ struct ApiValidator {
     stake: u64,
 }
 
+#[derive(Serialize)]
+struct ApiReceipt {
+    tx_hash: String,
+    block_height: u64,
+    tx_index: usize,
+    success: bool,
+    gas_used: u64,
+    effective_gas_price: u64,
+    priority_fee_paid: u64,
+    base_fee_burned: u64,
+    gas_refunded: u64,
+    contract_address: Option<String>,
+    return_data: String,
+    logs: Vec<ApiLogEntry>,
+}
+
+#[derive(Serialize)]
+struct ApiLogEntry {
+    block_height: u64,
+    tx_index: usize,
+    log_index: usize,
+    tx_hash: String,
+    contract: String,
+    topics: Vec<String>,
+    data: String,
+}
+
+#[derive(Serialize)]
+struct ApiHealth {
+    ok: bool,
+    chain_id: String,
+    height: u64,
+    finalized_height: u64,
+    latest_block_timestamp: i64,
+    latest_block_age_secs: i64,
+    pending_transactions: usize,
+}
+
 // ─── Converters ──────────────────────────────────────────────────────
 
 fn block_to_api(block: &Block) -> ApiBlock {
@@ -271,14 +324,58 @@ fn storage_proof_to_api(proof: StorageProof) -> ApiStorageProof {
     }
 }
 
+fn indexed_log_to_api(entry: IndexedLogEntry) -> ApiLogEntry {
+    ApiLogEntry {
+        block_height: entry.block_height,
+        tx_index: entry.tx_index,
+        log_index: entry.log_index,
+        tx_hash: hex::encode(entry.tx_hash),
+        contract: hex::encode(entry.contract),
+        topics: entry.topics.into_iter().map(hex::encode).collect(),
+        data: hex::encode(entry.data),
+    }
+}
+
+fn indexed_receipt_to_api(receipt: IndexedReceipt) -> ApiReceipt {
+    let tx_hash_hex = hex::encode(&receipt.tx_hash);
+    ApiReceipt {
+        tx_hash: tx_hash_hex.clone(),
+        block_height: receipt.block_height,
+        tx_index: receipt.tx_index,
+        success: receipt.receipt.success,
+        gas_used: receipt.receipt.gas_used,
+        effective_gas_price: receipt.receipt.effective_gas_price,
+        priority_fee_paid: receipt.receipt.priority_fee_paid,
+        base_fee_burned: receipt.receipt.base_fee_burned,
+        gas_refunded: receipt.receipt.gas_refunded,
+        contract_address: receipt.receipt.contract_address.map(hex::encode),
+        return_data: hex::encode(receipt.receipt.return_data),
+        logs: receipt
+            .receipt
+            .logs
+            .into_iter()
+            .enumerate()
+            .map(|(log_index, log)| ApiLogEntry {
+                block_height: receipt.block_height,
+                tx_index: receipt.tx_index,
+                log_index,
+                tx_hash: tx_hash_hex.clone(),
+                contract: hex::encode(log.contract),
+                topics: log.topics.into_iter().map(hex::encode).collect(),
+                data: hex::encode(log.data),
+            })
+            .collect(),
+    }
+}
+
 fn api_token() -> Option<String> {
-    std::env::var("CURS3D_API_TOKEN").ok().filter(|value| !value.is_empty())
+    std::env::var("CURS3D_API_TOKEN")
+        .ok()
+        .filter(|value| !value.is_empty())
 }
 
 fn enforce_api_auth(req: &Request<Incoming>) -> Option<Response<Full<Bytes>>> {
-    let Some(token) = api_token() else {
-        return None;
-    };
+    let token = api_token()?;
 
     let expected = format!("Bearer {}", token);
     match req
@@ -312,6 +409,70 @@ async fn handle_request(
     let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
 
     match (method, segments.as_slice()) {
+        // GET /api/healthz
+        (Method::GET, ["api", "healthz"]) => {
+            let chain = chain.lock().await;
+            let latest_ts = chain.latest_block().header.timestamp;
+            let age = chrono::Utc::now().timestamp().saturating_sub(latest_ts);
+            Ok(json_ok(ApiHealth {
+                ok: true,
+                chain_id: chain.chain_id().to_string(),
+                height: chain.height(),
+                finalized_height: chain.finalized_height(),
+                latest_block_timestamp: latest_ts,
+                latest_block_age_secs: age,
+                pending_transactions: chain.pending_transactions.len(),
+            }))
+        }
+
+        // GET /api/metrics
+        (Method::GET, ["api", "metrics"]) => {
+            let chain = chain.lock().await;
+            let uptime = API_START_TIME
+                .get()
+                .map(|start| start.elapsed().as_secs())
+                .unwrap_or_default();
+            let body = format!(
+                concat!(
+                    "# TYPE curs3d_uptime_seconds counter\n",
+                    "curs3d_uptime_seconds {}\n",
+                    "# TYPE curs3d_chain_height gauge\n",
+                    "curs3d_chain_height {}\n",
+                    "# TYPE curs3d_finalized_height gauge\n",
+                    "curs3d_finalized_height {}\n",
+                    "# TYPE curs3d_pending_transactions gauge\n",
+                    "curs3d_pending_transactions {}\n",
+                    "# TYPE curs3d_active_validators gauge\n",
+                    "curs3d_active_validators {}\n",
+                    "# TYPE curs3d_accounts_total gauge\n",
+                    "curs3d_accounts_total {}\n",
+                    "# TYPE curs3d_contracts_total gauge\n",
+                    "curs3d_contracts_total {}\n",
+                    "# TYPE curs3d_receipts_total gauge\n",
+                    "curs3d_receipts_total {}\n",
+                    "# TYPE curs3d_logs_total gauge\n",
+                    "curs3d_logs_total {}\n",
+                    "# TYPE curs3d_base_fee_per_gas gauge\n",
+                    "curs3d_base_fee_per_gas {}\n",
+                ),
+                uptime,
+                chain.height(),
+                chain.finalized_height(),
+                chain.pending_transactions.len(),
+                chain.active_validator_count(),
+                chain.accounts.len(),
+                chain.contracts.len(),
+                chain.receipts.len(),
+                chain.log_index.len(),
+                chain.current_base_fee_per_gas(),
+            );
+            Ok(text_response(
+                StatusCode::OK,
+                "text/plain; version=0.0.4",
+                body,
+            ))
+        }
+
         // GET /api/status
         (Method::GET, ["api", "status"]) => {
             let chain = chain.lock().await;
@@ -346,10 +507,8 @@ async fn handle_request(
         // GET /api/blocks?from=0&limit=20
         (Method::GET, ["api", "blocks"]) => {
             let query = req.uri().query().unwrap_or("");
-            let params: Vec<(&str, &str)> = query
-                .split('&')
-                .filter_map(|p| p.split_once('='))
-                .collect();
+            let params: Vec<(&str, &str)> =
+                query.split('&').filter_map(|p| p.split_once('=')).collect();
 
             let from: u64 = params
                 .iter()
@@ -415,7 +574,12 @@ async fn handle_request(
         (Method::GET, ["api", "contract", contract_hex, "storage", key_hex, "proof"]) => {
             let contract_address = match hex::decode(contract_hex) {
                 Ok(a) if a.len() == hash::ADDRESS_LEN => a,
-                _ => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid contract address")),
+                _ => {
+                    return Ok(json_err(
+                        StatusCode::BAD_REQUEST,
+                        "invalid contract address",
+                    ));
+                }
             };
             let key = match hex::decode(key_hex) {
                 Ok(value) => value,
@@ -443,6 +607,60 @@ async fn handle_request(
                 }
             }
             Ok(json_err(StatusCode::NOT_FOUND, "transaction not found"))
+        }
+
+        // GET /api/receipt/:hash
+        (Method::GET, ["api", "receipt", tx_hash]) => {
+            let target = match hex::decode(tx_hash) {
+                Ok(h) => h,
+                Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid tx hash")),
+            };
+            let chain = chain.lock().await;
+            match chain.get_receipt(&target) {
+                Some(receipt) => Ok(json_ok(indexed_receipt_to_api(receipt))),
+                None => Ok(json_err(StatusCode::NOT_FOUND, "receipt not found")),
+            }
+        }
+
+        // GET /api/logs?contract=&topic=&from_block=&to_block=&limit=
+        (Method::GET, ["api", "logs"]) => {
+            let query = req.uri().query().unwrap_or("");
+            let params: Vec<(&str, &str)> =
+                query.split('&').filter_map(|p| p.split_once('=')).collect();
+            let contract = params
+                .iter()
+                .find(|(k, _)| *k == "contract")
+                .and_then(|(_, v)| hex::decode(v).ok());
+            let topic = params
+                .iter()
+                .find(|(k, _)| *k == "topic")
+                .and_then(|(_, v)| hex::decode(v).ok());
+            let from_block = params
+                .iter()
+                .find(|(k, _)| *k == "from_block")
+                .and_then(|(_, v)| v.parse().ok());
+            let to_block = params
+                .iter()
+                .find(|(k, _)| *k == "to_block")
+                .and_then(|(_, v)| v.parse().ok());
+            let limit = params
+                .iter()
+                .find(|(k, _)| *k == "limit")
+                .and_then(|(_, v)| v.parse().ok());
+            let chain = chain.lock().await;
+            let filter = LogFilter {
+                contract,
+                topic,
+                from_block,
+                to_block,
+                limit,
+            };
+            let entries: Vec<ApiLogEntry> = chain
+                .query_logs(&filter)
+                .into_iter()
+                .map(indexed_log_to_api)
+                .collect();
+            Ok(json_ok(entries))
         }
 
         // GET /api/pending
@@ -493,10 +711,12 @@ async fn handle_request(
                 .get(CONTENT_LENGTH)
                 .and_then(|value| value.to_str().ok())
                 .and_then(|value| value.parse::<usize>().ok())
+                && content_length > MAX_API_BODY_BYTES
             {
-                if content_length > MAX_API_BODY_BYTES {
-                    return Ok(json_err(StatusCode::PAYLOAD_TOO_LARGE, "request body too large"));
-                }
+                return Ok(json_err(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "request body too large",
+                ));
             }
 
             let body_bytes = match http_body_util::BodyExt::collect(req.into_body()).await {
@@ -504,7 +724,10 @@ async fn handle_request(
                 Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "failed to read body")),
             };
             if body_bytes.len() > MAX_API_BODY_BYTES {
-                return Ok(json_err(StatusCode::PAYLOAD_TOO_LARGE, "request body too large"));
+                return Ok(json_err(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "request body too large",
+                ));
             }
 
             let tx: Transaction = match serde_json::from_slice(&body_bytes) {
@@ -513,7 +736,7 @@ async fn handle_request(
                     return Ok(json_err(
                         StatusCode::BAD_REQUEST,
                         &format!("invalid transaction JSON: {}", e),
-                    ))
+                    ));
                 }
             };
 
@@ -521,16 +744,58 @@ async fn handle_request(
             let mut chain = chain.lock().await;
             match chain.add_transaction(tx) {
                 Ok(()) => {
-                    if let Some(pending) = chain.pending_transactions.last() {
-                        if let Ok(data) = bincode::serialize(pending) {
-                            let _ = outbound_tx.try_send(NetworkMessage::NewTransaction(data));
-                        }
+                    if let Some(pending) = chain.pending_transactions.last()
+                        && let Ok(data) = bincode::serialize(pending)
+                    {
+                        let _ = outbound_tx.try_send(NetworkMessage::NewTransaction(data));
                     }
-                    let event =
-                        serde_json::json!({"type": "new_tx", "hash": tx_hash}).to_string();
+                    let event = serde_json::json!({"type": "new_tx", "hash": tx_hash}).to_string();
                     let _ = event_tx.send(event);
                     Ok(json_ok(serde_json::json!({"tx_hash": tx_hash})))
                 }
+                Err(e) => Ok(json_err(StatusCode::BAD_REQUEST, &e.to_string())),
+            }
+        }
+
+        // POST /api/tx/estimate
+        (Method::POST, ["api", "tx", "estimate"]) => {
+            if let Some(content_length) = req
+                .headers()
+                .get(CONTENT_LENGTH)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<usize>().ok())
+                && content_length > MAX_API_BODY_BYTES
+            {
+                return Ok(json_err(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "request body too large",
+                ));
+            }
+
+            let body_bytes = match http_body_util::BodyExt::collect(req.into_body()).await {
+                Ok(collected) => collected.to_bytes(),
+                Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "failed to read body")),
+            };
+            if body_bytes.len() > MAX_API_BODY_BYTES {
+                return Ok(json_err(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "request body too large",
+                ));
+            }
+
+            let tx: Transaction = match serde_json::from_slice(&body_bytes) {
+                Ok(t) => t,
+                Err(e) => {
+                    return Ok(json_err(
+                        StatusCode::BAD_REQUEST,
+                        &format!("invalid transaction JSON: {}", e),
+                    ));
+                }
+            };
+
+            let chain = chain.lock().await;
+            match chain.estimate_transaction(&tx) {
+                Ok(estimate) => Ok(json_ok(estimate)),
                 Err(e) => Ok(json_err(StatusCode::BAD_REQUEST, &e.to_string())),
             }
         }
@@ -547,6 +812,7 @@ pub async fn serve_http(
     event_tx: broadcast::Sender<String>,
     outbound_tx: mpsc::Sender<NetworkMessage>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let _ = API_START_TIME.get_or_init(Instant::now);
     let listener = TcpListener::bind(addr).await?;
     let connection_limit = Arc::new(Semaphore::new(MAX_HTTP_CONNECTIONS));
     tracing::info!("HTTP API listening on http://{}", addr);

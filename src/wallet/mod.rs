@@ -30,6 +30,12 @@ struct EncryptedWallet {
     version: u32,
 }
 
+impl Default for Wallet {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Wallet {
     pub fn new() -> Self {
         let keypair = KeyPair::generate();
@@ -120,6 +126,7 @@ impl Wallet {
     }
 
     /// Legacy: Save wallet unencrypted (for backwards compat during migration)
+    #[allow(dead_code)]
     pub fn save(&self, path: &str) -> Result<(), std::io::Error> {
         let json = serde_json::to_string_pretty(self).expect("failed to serialize wallet");
         fs::write(path, json)
@@ -147,10 +154,7 @@ impl Wallet {
                         w.save_encrypted(path, password)?;
                         Ok(w)
                     }
-                    Err(e) => Err(WalletError::Io(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        e.to_string(),
-                    ))),
+                    Err(e) => Err(WalletError::Io(std::io::Error::other(e.to_string()))),
                 }
             }
         }

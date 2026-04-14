@@ -4,9 +4,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{Semaphore, Mutex, mpsc};
+use tokio::sync::{Mutex, Semaphore, mpsc};
 
-use crate::core::chain::{AccountState, Blockchain};
+use crate::core::chain::{AccountState, Blockchain, TransactionEstimate};
+use crate::core::receipt::{IndexedLogEntry, IndexedReceipt, LogFilter};
 use crate::core::state_proof::{AccountProof, StorageProof};
 use crate::core::transaction::Transaction;
 use crate::network::NetworkMessage;
@@ -15,10 +16,28 @@ const MAX_RPC_CONNECTIONS: usize = 128;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RpcRequest {
-    SubmitTransaction { transaction: Transaction },
-    GetAccount { address: Vec<u8> },
-    GetAccountProof { address: Vec<u8> },
-    GetStorageProof { contract_address: Vec<u8>, key: Vec<u8> },
+    SubmitTransaction {
+        transaction: Transaction,
+    },
+    EstimateTransaction {
+        transaction: Transaction,
+    },
+    GetAccount {
+        address: Vec<u8>,
+    },
+    GetReceipt {
+        tx_hash: Vec<u8>,
+    },
+    QueryLogs {
+        filter: LogFilter,
+    },
+    GetAccountProof {
+        address: Vec<u8>,
+    },
+    GetStorageProof {
+        contract_address: Vec<u8>,
+        key: Vec<u8>,
+    },
     GetStatus,
 }
 
@@ -52,7 +71,10 @@ fn default_protocol_version() -> u32 {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum RpcResponse {
     Submitted { tx_hash: String },
+    Estimated { estimate: TransactionEstimate },
     Account { state: AccountState },
+    Receipt { receipt: IndexedReceipt },
+    Logs { entries: Vec<IndexedLogEntry> },
     AccountProof { proof: AccountProof },
     StorageProof { proof: StorageProof },
     Status { status: NodeStatus },
@@ -136,15 +158,17 @@ async fn handle_connection(
 }
 
 fn rpc_token() -> Option<String> {
-    std::env::var("CURS3D_RPC_TOKEN").ok().filter(|value| !value.is_empty())
+    std::env::var("CURS3D_RPC_TOKEN")
+        .ok()
+        .filter(|value| !value.is_empty())
 }
 
 fn parse_request(payload: &str) -> Result<RpcRequest, RpcError> {
     if let Ok(envelope) = serde_json::from_str::<RpcEnvelope>(payload) {
-        if let Some(expected) = rpc_token() {
-            if envelope.token.as_deref() != Some(expected.as_str()) {
-                return Err(RpcError::Remote("missing or invalid RPC token".to_string()));
-            }
+        if let Some(expected) = rpc_token()
+            && envelope.token.as_deref() != Some(expected.as_str())
+        {
+            return Err(RpcError::Remote("missing or invalid RPC token".to_string()));
         }
         return Ok(envelope.request);
     }
@@ -167,13 +191,22 @@ async fn handle_request(
             let mut chain = chain.lock().await;
             match chain.add_transaction(transaction) {
                 Ok(()) => {
-                    if let Some(tx) = chain.pending_transactions.last() {
-                        if let Ok(data) = bincode::serialize(tx) {
-                            let _ = outbound_tx.try_send(NetworkMessage::NewTransaction(data));
-                        }
+                    if let Some(tx) = chain.pending_transactions.last()
+                        && let Ok(data) = bincode::serialize(tx)
+                    {
+                        let _ = outbound_tx.try_send(NetworkMessage::NewTransaction(data));
                     }
                     RpcResponse::Submitted { tx_hash }
                 }
+                Err(err) => RpcResponse::Error {
+                    message: err.to_string(),
+                },
+            }
+        }
+        RpcRequest::EstimateTransaction { transaction } => {
+            let chain = chain.lock().await;
+            match chain.estimate_transaction(&transaction) {
+                Ok(estimate) => RpcResponse::Estimated { estimate },
                 Err(err) => RpcResponse::Error {
                     message: err.to_string(),
                 },
@@ -183,6 +216,21 @@ async fn handle_request(
             let chain = chain.lock().await;
             RpcResponse::Account {
                 state: chain.get_account(&address),
+            }
+        }
+        RpcRequest::GetReceipt { tx_hash } => {
+            let chain = chain.lock().await;
+            match chain.get_receipt(&tx_hash) {
+                Some(receipt) => RpcResponse::Receipt { receipt },
+                None => RpcResponse::Error {
+                    message: "receipt not found".to_string(),
+                },
+            }
+        }
+        RpcRequest::QueryLogs { filter } => {
+            let chain = chain.lock().await;
+            RpcResponse::Logs {
+                entries: chain.query_logs(&filter),
             }
         }
         RpcRequest::GetAccountProof { address } => {

@@ -11,8 +11,9 @@ use thiserror::Error;
 use wasmer::{
     CompilerConfig, Cranelift, EngineBuilder, Function, FunctionEnv, FunctionEnvMut,
     FunctionMiddleware, Instance, Memory, MemoryAccessError, MiddlewareReaderState, Module,
-    ModuleMiddleware, RuntimeError, Store, Type, Value, imports, wat2wasm,
+    ModuleMiddleware, RuntimeError, Store, Type, Value, imports,
     wasmparser::{Operator, Parser, Payload},
+    wat2wasm,
 };
 use wasmer_types::{LocalFunctionIndex, MiddlewareError};
 
@@ -31,10 +32,9 @@ fn operator_gas_cost(operator: &Operator<'_>) -> u64 {
         | Return
         | Select
         | TypedSelect { .. } => gas::GAS_WASM_CONTROL_OP,
-        Call { .. }
-        | CallIndirect { .. }
-        | ReturnCall { .. }
-        | ReturnCallIndirect { .. } => gas::GAS_WASM_CALL_OP,
+        Call { .. } | CallIndirect { .. } | ReturnCall { .. } | ReturnCallIndirect { .. } => {
+            gas::GAS_WASM_CALL_OP
+        }
         I32Load { .. }
         | I64Load { .. }
         | F32Load { .. }
@@ -170,20 +170,19 @@ impl FunctionMiddleware for FuelMeteringFunction {
                     ));
                 };
                 state.push_operator(Operator::I64Const {
-                    value: metering_cost
-                        .saturating_add(gas::GAS_WASM_LOOP_TICK) as i64,
+                    value: metering_cost.saturating_add(gas::GAS_WASM_LOOP_TICK) as i64,
                 });
                 state.push_operator(Operator::Call { function_index });
                 Ok(())
             }
             other => {
-                if let Some(function_index) = self.hook_function_index {
-                    if metering_cost > 0 {
-                        state.push_operator(Operator::I64Const {
-                            value: metering_cost as i64,
-                        });
-                        state.push_operator(Operator::Call { function_index });
-                    }
+                if let Some(function_index) = self.hook_function_index
+                    && metering_cost > 0
+                {
+                    state.push_operator(Operator::I64Const {
+                        value: metering_cost as i64,
+                    });
+                    state.push_operator(Operator::Call { function_index });
                 }
                 state.push_operator(other);
                 Ok(())
@@ -249,7 +248,8 @@ impl Vm {
         env: &mut FunctionEnvMut<VmExecutionContext>,
         amount: u64,
     ) -> Result<(), RuntimeError> {
-        Self::consume_gas(env.data_mut(), amount).map_err(|err| Self::runtime_error(err.to_string()))
+        Self::consume_gas(env.data_mut(), amount)
+            .map_err(|err| Self::runtime_error(err.to_string()))
     }
 
     fn memory_from_env(env: &FunctionEnvMut<VmExecutionContext>) -> Result<Memory, RuntimeError> {
@@ -269,9 +269,10 @@ impl Vm {
             .saturating_add((len as u64).saturating_mul(gas::GAS_MEMORY_READ_BYTE));
         Self::charge_host_gas(env, charge)?;
         let memory = Self::memory_from_env(env)?;
-        let view = memory.view(&mut *env);
+        let view = memory.view(&*env);
         let mut buffer = vec![0u8; len];
-        view.read(ptr as u64, &mut buffer).map_err(Self::memory_error)?;
+        view.read(ptr as u64, &mut buffer)
+            .map_err(Self::memory_error)?;
         Ok(buffer)
     }
 
@@ -284,7 +285,7 @@ impl Vm {
             .saturating_add((data.len() as u64).saturating_mul(gas::GAS_MEMORY_WRITE_BYTE));
         Self::charge_host_gas(env, charge)?;
         let memory = Self::memory_from_env(env)?;
-        let view = memory.view(&mut *env);
+        let view = memory.view(&*env);
         view.write(ptr as u64, data).map_err(Self::memory_error)
     }
 
@@ -297,7 +298,9 @@ impl Vm {
         for payload in Parser::new(0).parse_all(code) {
             let payload = payload.map_err(|_| VmError::InvalidWasm)?;
             if let Payload::CodeSectionEntry(body) = payload {
-                let mut reader = body.get_operators_reader().map_err(|_| VmError::InvalidWasm)?;
+                let mut reader = body
+                    .get_operators_reader()
+                    .map_err(|_| VmError::InvalidWasm)?;
                 while !reader.eof() {
                     let op = reader.read().map_err(|_| VmError::InvalidWasm)?;
                     total = total.saturating_add(operator_gas_cost(&op));
@@ -344,9 +347,14 @@ impl Vm {
         for payload in Parser::new(0).parse_all(code) {
             let payload = payload.map_err(|_| VmError::InvalidWasm)?;
             if let Payload::CodeSectionEntry(body) = payload {
-                let mut reader = body.get_operators_reader().map_err(|_| VmError::InvalidWasm)?;
+                let mut reader = body
+                    .get_operators_reader()
+                    .map_err(|_| VmError::InvalidWasm)?;
                 while !reader.eof() {
-                    if matches!(reader.read().map_err(|_| VmError::InvalidWasm)?, Operator::Loop { .. }) {
+                    if matches!(
+                        reader.read().map_err(|_| VmError::InvalidWasm)?,
+                        Operator::Loop { .. }
+                    ) {
                         return Ok(true);
                     }
                 }
@@ -355,10 +363,7 @@ impl Vm {
         Ok(false)
     }
 
-    fn build_imports(
-        store: &mut Store,
-        env: &FunctionEnv<VmExecutionContext>,
-    ) -> wasmer::Imports {
+    fn build_imports(store: &mut Store, env: &FunctionEnv<VmExecutionContext>) -> wasmer::Imports {
         imports! {
             "curs3d" => {
                 "storage_get" => Function::new_typed_with_env(store, env, |mut env: FunctionEnvMut<VmExecutionContext>, key: i64| -> Result<i64, RuntimeError> {
@@ -458,7 +463,9 @@ impl Vm {
         }
         let mut compiler = Cranelift::default();
         if hook_function_index.is_some() {
-            compiler.push_middleware(Arc::new(FuelMeteringModule { hook_function_index }));
+            compiler.push_middleware(Arc::new(FuelMeteringModule {
+                hook_function_index,
+            }));
         }
         let engine = EngineBuilder::new(compiler).engine();
         let store = Store::new(engine);
@@ -526,6 +533,7 @@ impl Vm {
 
     pub fn call(
         contract: &mut ContractState,
+        contract_address: &[u8],
         function_data: &[u8],
         caller: &[u8],
         _value: u64,
@@ -556,8 +564,7 @@ impl Vm {
         let env = FunctionEnv::new(
             &mut store,
             VmExecutionContext {
-                contract_id: contract.code_hash[..hash::ADDRESS_LEN.min(contract.code_hash.len())]
-                    .to_vec(),
+                contract_id: contract_address.to_vec(),
                 storage: contract.storage.clone(),
                 logs: Vec::new(),
                 caller: caller.to_vec(),
@@ -685,7 +692,15 @@ mod tests {
         let deployer = vec![1u8; 20];
         let (mut contract, _) = Vm::deploy(&valid_wasm(), &deployer, 0, 1_000_000).unwrap();
         let caller = vec![2u8; 20];
-        let receipt = Vm::call(&mut contract, b"do_something", &caller, 0, 1_000_000).unwrap();
+        let receipt = Vm::call(
+            &mut contract,
+            &[9u8; 20],
+            b"do_something",
+            &caller,
+            0,
+            1_000_000,
+        )
+        .unwrap();
         assert!(receipt.success);
         assert!(receipt.gas_used > 0);
         assert_eq!(receipt.logs.len(), 1);
@@ -697,7 +712,7 @@ mod tests {
         let deployer = vec![1u8; 20];
         let (mut contract, _) = Vm::deploy(&valid_wasm(), &deployer, 0, 1_000_000).unwrap();
         let caller = vec![2u8; 20];
-        let result = Vm::call(&mut contract, b"do_something", &caller, 0, 100);
+        let result = Vm::call(&mut contract, &[9u8; 20], b"do_something", &caller, 0, 100);
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), VmError::OutOfGas { .. }));
     }
@@ -736,7 +751,8 @@ mod tests {
         )"#;
         let (mut contract, _) = Vm::deploy(module, &deployer, 0, 1_000_000).unwrap();
         let caller = vec![2u8; 20];
-        let receipt = Vm::call(&mut contract, b"ignored", &caller, 0, 1_000_000).unwrap();
+        let receipt =
+            Vm::call(&mut contract, &[9u8; 20], b"ignored", &caller, 0, 1_000_000).unwrap();
         assert_eq!(receipt.return_data, 5i32.to_le_bytes().to_vec());
         assert_eq!(
             contract.storage.get(b"key".as_slice()).cloned().unwrap(),
@@ -790,7 +806,10 @@ mod tests {
         )"#;
         let (mut contract, _) = Vm::deploy(loop_contract, &deployer, 0, 1_000_000).unwrap();
         let caller = vec![2u8; 20];
-        let err = Vm::call(&mut contract, b"", &caller, 0, 200).unwrap_err();
-        assert!(matches!(err, VmError::Execution(_) | VmError::OutOfGas { .. }));
+        let err = Vm::call(&mut contract, &[9u8; 20], b"", &caller, 0, 200).unwrap_err();
+        assert!(matches!(
+            err,
+            VmError::Execution(_) | VmError::OutOfGas { .. }
+        ));
     }
 }

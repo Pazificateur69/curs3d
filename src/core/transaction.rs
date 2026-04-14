@@ -80,10 +80,12 @@ impl Transaction {
             | TransactionKind::Stake
             | TransactionKind::Unstake
             | TransactionKind::Coinbase => crate::vm::gas::GAS_BASE_TX,
-            TransactionKind::DeployContract => crate::vm::gas::GAS_BASE_TX
-                .saturating_add(crate::vm::gas::GAS_DEPLOY),
-            TransactionKind::CallContract => crate::vm::gas::GAS_BASE_TX
-                .saturating_add(crate::vm::gas::GAS_CALL),
+            TransactionKind::DeployContract => {
+                crate::vm::gas::GAS_BASE_TX.saturating_add(crate::vm::gas::GAS_DEPLOY)
+            }
+            TransactionKind::CallContract => {
+                crate::vm::gas::GAS_BASE_TX.saturating_add(crate::vm::gas::GAS_CALL)
+            }
         };
 
         kind_gas.saturating_add(payload_bytes.saturating_mul(crate::vm::gas::GAS_PER_BYTE))
@@ -131,6 +133,7 @@ impl Transaction {
             .map(|effective| effective.saturating_sub(base_fee_per_gas))
     }
 
+    #[allow(dead_code)]
     pub fn with_fee_caps(mut self, max_fee_per_gas: u64, max_priority_fee_per_gas: u64) -> Self {
         self.fee = max_fee_per_gas;
         self.max_fee_per_gas = max_fee_per_gas;
@@ -284,6 +287,7 @@ impl Transaction {
         self.kind == TransactionKind::Unstake
     }
 
+    #[allow(dead_code)]
     pub fn deploy_contract(
         chain_id: &str,
         sender_public_key: Vec<u8>,
@@ -310,6 +314,7 @@ impl Transaction {
         }
     }
 
+    #[allow(dead_code, clippy::too_many_arguments)]
     pub fn call_contract(
         chain_id: &str,
         sender_public_key: Vec<u8>,
@@ -348,6 +353,7 @@ impl Transaction {
         self.kind == TransactionKind::CallContract
     }
 
+    #[allow(dead_code)]
     pub fn unstake(
         chain_id: &str,
         sender_public_key: Vec<u8>,

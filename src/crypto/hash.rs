@@ -65,7 +65,7 @@ pub fn merkle_proof(hashes: &[Vec<u8>], index: usize) -> Vec<Vec<u8>> {
     let mut current_index = index;
 
     while current_level.len() > 1 {
-        let sibling_index = if current_index % 2 == 0 {
+        let sibling_index = if current_index.is_multiple_of(2) {
             (current_index + 1).min(current_level.len() - 1)
         } else {
             current_index - 1
@@ -89,12 +89,7 @@ pub fn merkle_proof(hashes: &[Vec<u8>], index: usize) -> Vec<Vec<u8>> {
     proof
 }
 
-pub fn verify_merkle_proof(
-    leaf_hash: &[u8],
-    proof: &[Vec<u8>],
-    index: usize,
-    root: &[u8],
-) -> bool {
+pub fn verify_merkle_proof(leaf_hash: &[u8], proof: &[Vec<u8>], index: usize, root: &[u8]) -> bool {
     if root.is_empty() {
         return false;
     }
@@ -103,7 +98,7 @@ pub fn verify_merkle_proof(
 
     for sibling in proof {
         let mut combined = Vec::with_capacity(current.len() + sibling.len());
-        if current_index % 2 == 0 {
+        if current_index.is_multiple_of(2) {
             combined.extend_from_slice(&current);
             combined.extend_from_slice(sibling);
         } else {

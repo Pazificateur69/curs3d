@@ -61,10 +61,16 @@ impl EquivocationEvidence {
             return false;
         }
 
-        let sig_a_ok =
-            dilithium::verify(&self.block_hash_a, &self.signature_a, &self.validator_public_key);
-        let sig_b_ok =
-            dilithium::verify(&self.block_hash_b, &self.signature_b, &self.validator_public_key);
+        let sig_a_ok = dilithium::verify(
+            &self.block_hash_a,
+            &self.signature_a,
+            &self.validator_public_key,
+        );
+        let sig_b_ok = dilithium::verify(
+            &self.block_hash_b,
+            &self.signature_b,
+            &self.validator_public_key,
+        );
 
         sig_a_ok && sig_b_ok
     }
@@ -142,6 +148,12 @@ pub struct FinalityTracker {
     pub finalized_hash: Vec<u8>,
 }
 
+impl Default for FinalityTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FinalityTracker {
     pub fn new() -> Self {
         FinalityTracker {
@@ -194,10 +206,7 @@ impl FinalityTracker {
         let block_height = vote.block_height;
 
         {
-            let votes = self
-                .votes
-                .entry(block_hash.clone())
-                .or_insert_with(Vec::new);
+            let votes = self.votes.entry(block_hash.clone()).or_default();
             if votes
                 .iter()
                 .any(|v| v.voter_public_key == vote.voter_public_key)
@@ -230,8 +239,11 @@ impl FinalityTracker {
             self.finalized_hash = block_hash.clone();
 
             // Prune old votes for blocks at or below finalized height
-            self.votes
-                .retain(|_, v| v.first().map(|f| f.block_height > block_height).unwrap_or(false));
+            self.votes.retain(|_, v| {
+                v.first()
+                    .map(|f| f.block_height > block_height)
+                    .unwrap_or(false)
+            });
 
             Some(FinalizedBlock {
                 hash: block_hash,
@@ -263,6 +275,7 @@ pub struct ProofOfStake {
 }
 
 impl ProofOfStake {
+    #[allow(dead_code)]
     pub fn new(minimum_stake: u64, current_height: u64) -> Self {
         ProofOfStake {
             minimum_stake,
@@ -400,9 +413,7 @@ impl ProofOfStake {
             .saturating_mul(EQUIVOCATION_SLASH_PERCENT)
             / 100;
         account.staked_balance = account.staked_balance.saturating_sub(penalty);
-        account.jailed_until_height = self
-            .current_height
-            .saturating_add(jail_duration_blocks);
+        account.jailed_until_height = self.current_height.saturating_add(jail_duration_blocks);
 
         self.slashed_validators.insert(address);
 
@@ -411,6 +422,7 @@ impl ProofOfStake {
 
     /// Legacy slash method (percentage-based, no proof required)
     #[deprecated(note = "Use slash_with_evidence for provable slashing")]
+    #[allow(dead_code)]
     pub fn slash(
         &self,
         accounts: &mut HashMap<Vec<u8>, AccountState>,

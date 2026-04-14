@@ -3,7 +3,6 @@ use sled::Db;
 use std::collections::HashMap;
 use std::path::Path;
 
-
 use crate::consensus::{EpochSnapshot, EquivocationEvidence};
 use crate::core::block::Block;
 use crate::core::chain::{
@@ -195,6 +194,7 @@ impl Storage {
         Ok(Storage { db })
     }
 
+    #[allow(dead_code)]
     pub fn put_block(&self, block: &Block) -> Result<(), StorageError> {
         let tree = self.db.open_tree(BLOCKS_TREE)?;
         let key = block.header.height.to_be_bytes();
@@ -209,6 +209,7 @@ impl Storage {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn get_block(&self, height: u64) -> Result<Option<Block>, StorageError> {
         let tree = self.db.open_tree(BLOCKS_TREE)?;
         let key = height.to_be_bytes();
@@ -280,6 +281,7 @@ impl Storage {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn get_account(&self, address: &[u8]) -> Result<Option<AccountState>, StorageError> {
         let tree = self.db.open_tree(STATE_TREE)?;
         match tree.get(address)? {
@@ -351,6 +353,7 @@ impl Storage {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn get_all_pending_transactions(&self) -> Result<Vec<Transaction>, StorageError> {
         let tree = self.db.open_tree(PENDING_TREE)?;
         let mut txs = Vec::new();
@@ -391,8 +394,8 @@ impl Storage {
         let mut entries: Vec<(&Vec<u8>, &ContractState)> = contracts.iter().collect();
         entries.sort_by(|(a, _), (b, _)| a.cmp(b));
         for (address, contract) in entries {
-            let value = bincode::serialize(contract)
-                .map_err(|e| StorageError::Serialize(e.to_string()))?;
+            let value =
+                bincode::serialize(contract).map_err(|e| StorageError::Serialize(e.to_string()))?;
             tree.insert(address, value)?;
         }
         Ok(())
@@ -404,8 +407,8 @@ impl Storage {
         let mut contracts = Vec::new();
         for entry in tree.iter() {
             let (key, value) = entry?;
-            let contract: ContractState = bincode::deserialize(&value)
-                .map_err(|e| StorageError::Serialize(e.to_string()))?;
+            let contract: ContractState =
+                bincode::deserialize(&value).map_err(|e| StorageError::Serialize(e.to_string()))?;
             contracts.push((key.to_vec(), contract));
         }
         Ok(contracts)
@@ -433,8 +436,8 @@ impl Storage {
         let mut receipts = Vec::new();
         for entry in tree.iter() {
             let (key, value) = entry?;
-            let receipt: Receipt = bincode::deserialize(&value)
-                .map_err(|e| StorageError::Serialize(e.to_string()))?;
+            let receipt: Receipt =
+                bincode::deserialize(&value).map_err(|e| StorageError::Serialize(e.to_string()))?;
             receipts.push((key.to_vec(), receipt));
         }
         Ok(receipts)
@@ -477,15 +480,17 @@ impl Storage {
         let mut evidence_list = Vec::new();
         for entry in tree.iter() {
             let (_key, value) = entry?;
-            let evidence: EquivocationEvidence = bincode::deserialize(&value)
-                .map_err(|e| StorageError::Serialize(e.to_string()))?;
+            let evidence: EquivocationEvidence =
+                bincode::deserialize(&value).map_err(|e| StorageError::Serialize(e.to_string()))?;
             evidence_list.push(evidence);
         }
         Ok(evidence_list)
     }
 
     /// Get set of slashed validator addresses from stored evidence
-    pub fn get_slashed_addresses(&self) -> Result<std::collections::HashSet<Vec<u8>>, StorageError> {
+    pub fn get_slashed_addresses(
+        &self,
+    ) -> Result<std::collections::HashSet<Vec<u8>>, StorageError> {
         let tree = self.db.open_tree(EVIDENCE_TREE)?;
         let mut addresses = std::collections::HashSet::new();
         for entry in tree.iter() {
@@ -497,8 +502,8 @@ impl Storage {
                 continue;
             }
 
-            let legacy: LegacyEquivocationEvidenceV1 = bincode::deserialize(&value)
-                .map_err(|e| StorageError::Serialize(e.to_string()))?;
+            let legacy: LegacyEquivocationEvidenceV1 =
+                bincode::deserialize(&value).map_err(|e| StorageError::Serialize(e.to_string()))?;
             let _ = (
                 legacy.height,
                 legacy.block_hash_a,
@@ -556,10 +561,16 @@ impl Storage {
 
     // ─── Epoch Snapshot Persistence ─────────────────────────────────
 
-    pub fn put_epoch_snapshot(&self, epoch: u64, snapshot: &EpochSnapshot) -> Result<(), StorageError> {
+    #[allow(dead_code)]
+    pub fn put_epoch_snapshot(
+        &self,
+        epoch: u64,
+        snapshot: &EpochSnapshot,
+    ) -> Result<(), StorageError> {
         let tree = self.db.open_tree(EPOCH_TREE)?;
         let key = epoch.to_be_bytes();
-        let value = bincode::serialize(snapshot).map_err(|e| StorageError::Serialize(e.to_string()))?;
+        let value =
+            bincode::serialize(snapshot).map_err(|e| StorageError::Serialize(e.to_string()))?;
         tree.insert(key, value)?;
         Ok(())
     }
@@ -574,13 +585,14 @@ impl Storage {
         entries.sort_by_key(|(epoch, _)| **epoch);
         for (epoch, snapshot) in entries {
             let key = epoch.to_be_bytes();
-            let value = bincode::serialize(snapshot)
-                .map_err(|e| StorageError::Serialize(e.to_string()))?;
+            let value =
+                bincode::serialize(snapshot).map_err(|e| StorageError::Serialize(e.to_string()))?;
             tree.insert(key, value)?;
         }
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn get_epoch_snapshot(&self, epoch: u64) -> Result<Option<EpochSnapshot>, StorageError> {
         let tree = self.db.open_tree(EPOCH_TREE)?;
         let key = epoch.to_be_bytes();
@@ -594,16 +606,19 @@ impl Storage {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_all_epoch_snapshots(&self) -> Result<Vec<(u64, EpochSnapshot)>, StorageError> {
         let tree = self.db.open_tree(EPOCH_TREE)?;
         let mut snapshots = Vec::new();
         for entry in tree.iter() {
             let (key, value) = entry?;
-            let epoch_bytes: [u8; 8] = key.as_ref().try_into()
+            let epoch_bytes: [u8; 8] = key
+                .as_ref()
+                .try_into()
                 .map_err(|_| StorageError::Serialize("invalid epoch key".to_string()))?;
             let epoch = u64::from_be_bytes(epoch_bytes);
-            let snapshot: EpochSnapshot = bincode::deserialize(&value)
-                .map_err(|e| StorageError::Serialize(e.to_string()))?;
+            let snapshot: EpochSnapshot =
+                bincode::deserialize(&value).map_err(|e| StorageError::Serialize(e.to_string()))?;
             snapshots.push((epoch, snapshot));
         }
         Ok(snapshots)
@@ -611,14 +626,20 @@ impl Storage {
 
     // ─── State Sync Snapshot Persistence ────────────────────────────
 
-    pub fn put_snapshot_manifest(&self, height: u64, manifest: &SnapshotManifest) -> Result<(), StorageError> {
+    pub fn put_snapshot_manifest(
+        &self,
+        height: u64,
+        manifest: &SnapshotManifest,
+    ) -> Result<(), StorageError> {
         let tree = self.db.open_tree(SNAPSHOT_MANIFEST_TREE)?;
         let key = height.to_be_bytes();
-        let value = bincode::serialize(manifest).map_err(|e| StorageError::Serialize(e.to_string()))?;
+        let value =
+            bincode::serialize(manifest).map_err(|e| StorageError::Serialize(e.to_string()))?;
         tree.insert(key, value)?;
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn get_latest_snapshot_manifest(&self) -> Result<Option<SnapshotManifest>, StorageError> {
         let tree = self.db.open_tree(SNAPSHOT_MANIFEST_TREE)?;
         match tree.last()? {
@@ -635,7 +656,8 @@ impl Storage {
         let tree = self.db.open_tree(SNAPSHOT_CHUNK_TREE)?;
         let mut key = height.to_be_bytes().to_vec();
         key.extend_from_slice(&(chunk.index as u64).to_be_bytes());
-        let value = bincode::serialize(chunk).map_err(|e| StorageError::Serialize(e.to_string()))?;
+        let value =
+            bincode::serialize(chunk).map_err(|e| StorageError::Serialize(e.to_string()))?;
         tree.insert(key, value)?;
         Ok(())
     }
@@ -646,15 +668,20 @@ impl Storage {
         let mut chunks = Vec::new();
         for entry in tree.scan_prefix(prefix) {
             let (_key, value) = entry?;
-            let chunk: StateChunk = bincode::deserialize(&value)
-                .map_err(|e| StorageError::Serialize(e.to_string()))?;
+            let chunk: StateChunk =
+                bincode::deserialize(&value).map_err(|e| StorageError::Serialize(e.to_string()))?;
             chunks.push(chunk);
         }
         chunks.sort_by_key(|chunk| chunk.index);
         Ok(chunks)
     }
 
-    pub fn get_snapshot_chunk(&self, height: u64, index: usize) -> Result<Option<StateChunk>, StorageError> {
+    #[allow(dead_code)]
+    pub fn get_snapshot_chunk(
+        &self,
+        height: u64,
+        index: usize,
+    ) -> Result<Option<StateChunk>, StorageError> {
         let tree = self.db.open_tree(SNAPSHOT_CHUNK_TREE)?;
         let mut key = height.to_be_bytes().to_vec();
         key.extend_from_slice(&(index as u64).to_be_bytes());
@@ -745,7 +772,9 @@ mod tests {
             vec![1; crate::crypto::hash::ADDRESS_LEN],
             50,
         );
-        storage.replace_pending_transactions(&[tx.clone()]).unwrap();
+        storage
+            .replace_pending_transactions(std::slice::from_ref(&tx))
+            .unwrap();
 
         let pending = storage.get_all_pending_transactions().unwrap();
         assert_eq!(pending.len(), 1);
@@ -837,5 +866,4 @@ mod tests {
         assert_eq!(loaded_chunk.data, vec![1, 2, 3, 4]);
         assert_eq!(loaded_chunk.proof.len(), 1);
     }
-
 }
