@@ -1,10 +1,11 @@
 use futures::StreamExt;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{
-    Multiaddr, PeerId, Swarm, SwarmBuilder, gossipsub, mdns, noise, swarm::SwarmEvent, tcp, yamux,
+    Multiaddr, PeerId, Swarm, SwarmBuilder, gossipsub, identity, mdns, noise, swarm::SwarmEvent,
+    tcp, yamux,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, mpsc};
@@ -21,6 +22,132 @@ const SYNC_TIMEOUT_SECS: u64 = 15;
 const MAX_SYNC_RETRIES: u32 = 3;
 const MAX_SEEN_BLOCKS: usize = 1000;
 const SYNC_BATCH_SIZE: u64 = 50;
+
+// ─── P2P Rate Limiting ──────────────────────────────────────────────
+
+const PEER_RATE_LIMIT_WINDOW_SECS: u64 = 10;
+const PEER_MAX_MESSAGES_PER_WINDOW: usize = 500;
+const PEER_BAN_DURATION_SECS: u64 = 300;
+const PEER_MAX_TRACKED: usize = 2000;
+const PEER_CLEANUP_INTERVAL_SECS: u64 = 60;
+
+struct PeerRateState {
+    message_timestamps: VecDeque<Instant>,
+    banned_until: Option<Instant>,
+    total_violations: u32,
+}
+
+impl PeerRateState {
+    fn new() -> Self {
+        Self {
+            message_timestamps: VecDeque::new(),
+            banned_until: None,
+            total_violations: 0,
+        }
+    }
+}
+
+struct PeerRateLimiter {
+    peers: HashMap<PeerId, PeerRateState>,
+}
+
+impl PeerRateLimiter {
+    fn new() -> Self {
+        Self {
+            peers: HashMap::new(),
+        }
+    }
+
+    /// Check if a message from this peer should be allowed.
+    /// Returns `true` if allowed, `false` if rate-limited or banned.
+    fn check(&mut self, peer_id: &PeerId) -> bool {
+        let now = Instant::now();
+        let window = Duration::from_secs(PEER_RATE_LIMIT_WINDOW_SECS);
+
+        let state = self
+            .peers
+            .entry(*peer_id)
+            .or_insert_with(PeerRateState::new);
+
+        // Check if peer is banned
+        if let Some(ban_until) = state.banned_until {
+            if now < ban_until {
+                return false;
+            }
+            // Ban expired — clear it
+            state.banned_until = None;
+        }
+
+        // Evict timestamps outside the window
+        while state
+            .message_timestamps
+            .front()
+            .is_some_and(|ts| now.duration_since(*ts) > window)
+        {
+            state.message_timestamps.pop_front();
+        }
+
+        // Check rate limit
+        if state.message_timestamps.len() >= PEER_MAX_MESSAGES_PER_WINDOW {
+            state.total_violations += 1;
+            // Ban on first violation
+            let ban_multiplier = state.total_violations as u64;
+            state.banned_until =
+                Some(now + Duration::from_secs(PEER_BAN_DURATION_SECS * ban_multiplier));
+            warn!(
+                "P2P rate limit: banning peer {} for {}s (violation #{})",
+                peer_id,
+                PEER_BAN_DURATION_SECS * ban_multiplier,
+                state.total_violations,
+            );
+            return false;
+        }
+
+        state.message_timestamps.push_back(now);
+        true
+    }
+
+    /// Returns `true` if the peer is currently banned.
+    fn is_banned(&self, peer_id: &PeerId) -> bool {
+        self.peers.get(peer_id).is_some_and(|state| {
+            state
+                .banned_until
+                .is_some_and(|ban_until| Instant::now() < ban_until)
+        })
+    }
+
+    /// Remove stale entries (peers with no recent activity and no active ban).
+    fn cleanup(&mut self) {
+        let now = Instant::now();
+        let window = Duration::from_secs(PEER_RATE_LIMIT_WINDOW_SECS * 6);
+        self.peers.retain(|_, state| {
+            // Keep if banned
+            if state.banned_until.is_some_and(|t| now < t) {
+                return true;
+            }
+            // Keep if recent activity
+            state
+                .message_timestamps
+                .back()
+                .is_some_and(|ts| now.duration_since(*ts) < window)
+        });
+
+        // Hard cap to prevent unbounded growth
+        if self.peers.len() > PEER_MAX_TRACKED {
+            let excess = self.peers.len() - PEER_MAX_TRACKED;
+            let keys_to_remove: Vec<PeerId> = self
+                .peers
+                .iter()
+                .filter(|(_, state)| state.banned_until.is_none())
+                .take(excess)
+                .map(|(k, _)| *k)
+                .collect();
+            for key in keys_to_remove {
+                self.peers.remove(&key);
+            }
+        }
+    }
+}
 
 // ─── Network Messages ────────────────────────────────────────────────
 
@@ -112,10 +239,12 @@ impl NetworkNode {
         port: u16,
         bootnodes: &[String],
         topic_name: &str,
+        identity_keypair: identity::Keypair,
+        public_addrs: &[Multiaddr],
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let topic = gossipsub::IdentTopic::new(topic_name);
 
-        let mut swarm = SwarmBuilder::with_new_identity()
+        let mut swarm = SwarmBuilder::with_existing_identity(identity_keypair)
             .with_tokio()
             .with_tcp(
                 tcp::Config::default(),
@@ -149,6 +278,9 @@ impl NetworkNode {
 
         let listen_addr: Multiaddr = format!("/ip4/0.0.0.0/tcp/{}", port).parse()?;
         swarm.listen_on(listen_addr)?;
+        for addr in public_addrs {
+            swarm.add_external_address(addr.clone());
+        }
 
         for bootnode in bootnodes {
             match bootnode.parse::<Multiaddr>() {
@@ -219,8 +351,14 @@ impl NetworkNode {
         chain: Arc<Mutex<Blockchain>>,
         mut outbound_rx: mpsc::Receiver<NetworkMessage>,
         validator_key: Option<KeyPair>,
+        event_tx: Option<tokio::sync::broadcast::Sender<String>>,
     ) {
         let mut discovered_peers: HashSet<PeerId> = HashSet::new();
+
+        // P2P rate limiter
+        let mut rate_limiter = PeerRateLimiter::new();
+        let mut rate_limiter_cleanup_timer =
+            tokio::time::interval(Duration::from_secs(PEER_CLEANUP_INTERVAL_SECS));
 
         // Sync state
         let mut sync_requested = false;
@@ -331,6 +469,19 @@ impl NetworkNode {
                                     Ok(()) => {
                                         info!("Produced block #{} ({})", block_height, &block_hash[..16]);
 
+                                        // Emit WebSocket event
+                                        if let Some(etx) = &event_tx {
+                                            let _ = etx.send(serde_json::json!({
+                                                "type": "new_block",
+                                                "data": {
+                                                    "height": block_height,
+                                                    "hash": &block_hash,
+                                                    "tx_count": block.transactions.len(),
+                                                    "timestamp": block.header.timestamp,
+                                                }
+                                            }).to_string());
+                                        }
+
                                         // Broadcast block
                                         let msg = NetworkMessage::NewBlock(serialized);
                                         if let Err(e) = self.broadcast(&msg) {
@@ -408,12 +559,23 @@ impl NetworkNode {
                     let _ = self.broadcast(&msg);
                 }
 
+                // Rate limiter cleanup
+                _ = rate_limiter_cleanup_timer.tick() => {
+                    rate_limiter.cleanup();
+                }
+
                 // Network events
                 event = self.swarm.select_next_some() => {
                     match event {
                         SwarmEvent::Behaviour(CursBehaviourEvent::Gossipsub(
                             gossipsub::Event::Message { message, .. }
                         )) => {
+                            // P2P rate limiting: check the propagation source
+                            if let Some(source_peer) = message.source
+                                && !rate_limiter.check(&source_peer)
+                            {
+                                continue;
+                            }
                             if let Ok(net_msg) = serde_json::from_slice::<NetworkMessage>(&message.data) {
                                 match net_msg {
                                     NetworkMessage::NewBlock(data) => {
@@ -423,10 +585,11 @@ impl NetworkNode {
                                             &mut seen_block_hashes,
                                             &validator_key,
                                             self,
+                                            &event_tx,
                                         ).await;
                                     }
                                     NetworkMessage::NewTransaction(data) => {
-                                        Self::handle_new_transaction(&chain, &data).await;
+                                        Self::handle_new_transaction(&chain, &data, &event_tx).await;
                                     }
                                     NetworkMessage::RequestBlocks {
                                         from_height,
@@ -722,6 +885,11 @@ impl NetworkNode {
                             mdns::Event::Discovered(peers)
                         )) => {
                             for (peer_id, _addr) in peers {
+                                // Skip banned peers
+                                if rate_limiter.is_banned(&peer_id) {
+                                    warn!("Ignoring banned peer {}", peer_id);
+                                    continue;
+                                }
                                 if discovered_peers.insert(peer_id) {
                                     info!("Discovered peer: {}", peer_id);
                                     self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
@@ -740,6 +908,9 @@ impl NetworkNode {
                         SwarmEvent::NewListenAddr { address, .. } => {
                             info!("Listening on {}", address);
                         }
+                        SwarmEvent::ExternalAddrConfirmed { address } => {
+                            info!("Confirmed public address {}", address);
+                        }
                         _ => {}
                     }
                 }
@@ -755,6 +926,7 @@ impl NetworkNode {
         seen_hashes: &mut HashSet<Vec<u8>>,
         validator_key: &Option<KeyPair>,
         node: &mut Self,
+        event_tx: &Option<tokio::sync::broadcast::Sender<String>>,
     ) {
         // Dedup: hash the raw data
         let data_hash = crate::crypto::hash::sha3_hash(data);
@@ -783,6 +955,22 @@ impl NetworkNode {
         match chain_lock.add_block(block.clone()) {
             Ok(()) => {
                 info!("Accepted block #{} from network", block_height);
+
+                // Emit WebSocket event
+                if let Some(etx) = &event_tx {
+                    let _ = etx.send(
+                        serde_json::json!({
+                            "type": "new_block",
+                            "data": {
+                                "height": block_height,
+                                "hash": hex::encode(&block_hash),
+                                "tx_count": block.transactions.len(),
+                                "timestamp": block.header.timestamp,
+                            }
+                        })
+                        .to_string(),
+                    );
+                }
 
                 // Cast finality vote if we're a validator
                 if let Some(kp) = &validator_key {
@@ -853,12 +1041,34 @@ impl NetworkNode {
         }
     }
 
-    async fn handle_new_transaction(chain: &Arc<Mutex<Blockchain>>, data: &[u8]) {
+    async fn handle_new_transaction(
+        chain: &Arc<Mutex<Blockchain>>,
+        data: &[u8],
+        event_tx: &Option<tokio::sync::broadcast::Sender<String>>,
+    ) {
         match bincode::deserialize::<crate::core::transaction::Transaction>(data) {
             Ok(tx) => {
+                let tx_hash = hex::encode(crate::crypto::hash::sha3_hash(
+                    &bincode::serialize(&tx).unwrap_or_default(),
+                ));
+                let kind = format!("{:?}", tx.kind);
                 let mut chain_lock = chain.lock().await;
                 match chain_lock.add_transaction(tx) {
-                    Ok(()) => info!("Accepted transaction from network"),
+                    Ok(()) => {
+                        info!("Accepted transaction from network");
+                        if let Some(etx) = &event_tx {
+                            let _ = etx.send(
+                                serde_json::json!({
+                                    "type": "new_transaction",
+                                    "data": {
+                                        "hash": tx_hash,
+                                        "kind": kind,
+                                    }
+                                })
+                                .to_string(),
+                            );
+                        }
+                    }
                     Err(e) => warn!("Rejected transaction: {}", e),
                 }
             }
@@ -972,5 +1182,97 @@ impl NetworkNode {
             *sync_deadline = None;
             *sync_retries = 0;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_peer_id(n: u8) -> PeerId {
+        let mut bytes = [0u8; 32];
+        bytes[0] = n;
+        let key = identity::Keypair::ed25519_from_bytes(bytes).unwrap();
+        key.public().to_peer_id()
+    }
+
+    #[test]
+    fn test_rate_limiter_allows_normal_traffic() {
+        let mut limiter = PeerRateLimiter::new();
+        let peer = test_peer_id(1);
+        // Should allow messages under the limit
+        for _ in 0..100 {
+            assert!(limiter.check(&peer));
+        }
+    }
+
+    #[test]
+    fn test_rate_limiter_blocks_flood() {
+        let mut limiter = PeerRateLimiter::new();
+        let peer = test_peer_id(2);
+        // Fill up to the limit
+        for _ in 0..PEER_MAX_MESSAGES_PER_WINDOW {
+            assert!(limiter.check(&peer));
+        }
+        // Next message should be rejected and peer banned
+        assert!(!limiter.check(&peer));
+        assert!(limiter.is_banned(&peer));
+    }
+
+    #[test]
+    fn test_rate_limiter_does_not_affect_other_peers() {
+        let mut limiter = PeerRateLimiter::new();
+        let peer_a = test_peer_id(3);
+        let peer_b = test_peer_id(4);
+        // Exhaust peer_a
+        for _ in 0..PEER_MAX_MESSAGES_PER_WINDOW {
+            limiter.check(&peer_a);
+        }
+        assert!(!limiter.check(&peer_a));
+        // peer_b should still be allowed
+        assert!(limiter.check(&peer_b));
+        assert!(!limiter.is_banned(&peer_b));
+    }
+
+    #[test]
+    fn test_rate_limiter_cleanup_removes_stale() {
+        let mut limiter = PeerRateLimiter::new();
+        let peer = test_peer_id(5);
+        limiter.check(&peer);
+        // After cleanup, peer with no ban and stale timestamps gets removed
+        // (can't easily test time-based cleanup in unit test, but test the method doesn't panic)
+        limiter.cleanup();
+        // Peer should still work after cleanup
+        assert!(limiter.check(&peer));
+    }
+
+    #[test]
+    fn test_rate_limiter_escalating_bans() {
+        let mut limiter = PeerRateLimiter::new();
+        let peer = test_peer_id(6);
+        // First violation
+        for _ in 0..PEER_MAX_MESSAGES_PER_WINDOW {
+            limiter.check(&peer);
+        }
+        assert!(!limiter.check(&peer));
+        let state = limiter.peers.get(&peer).unwrap();
+        assert_eq!(state.total_violations, 1);
+
+        // Clear ban manually to test escalation
+        limiter.peers.get_mut(&peer).unwrap().banned_until = None;
+        limiter
+            .peers
+            .get_mut(&peer)
+            .unwrap()
+            .message_timestamps
+            .clear();
+
+        // Second violation
+        for _ in 0..PEER_MAX_MESSAGES_PER_WINDOW {
+            limiter.check(&peer);
+        }
+        assert!(!limiter.check(&peer));
+        let state = limiter.peers.get(&peer).unwrap();
+        assert_eq!(state.total_violations, 2);
     }
 }

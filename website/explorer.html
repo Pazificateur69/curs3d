@@ -3,509 +3,389 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Block Explorer - CURS3D</title>
-    <meta name="description" content="CURS3D Block Explorer. Browse blocks, look up accounts, search transactions, and monitor the quantum-resistant blockchain in real time.">
+    <title>CURS3D Explorer</title>
+    <meta name="description" content="Live explorer for CURS3D. Inspect chain status, recent blocks, accounts and transactions through the node HTTP API.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-    <!-- Particle Canvas -->
-    <canvas id="particles"></canvas>
-
-    <!-- Glow Orbs -->
-    <div class="orb orb-1"></div>
-    <div class="orb orb-2"></div>
-    <div class="orb orb-3"></div>
-
-    <!-- Navigation -->
-    <nav id="nav">
-        <div class="nav-container">
-            <a href="index.html" class="logo">
-                <span class="logo-diamond"></span>
-                CURS3D
-            </a>
-            <div class="nav-links" id="navLinks">
-                <a href="docs.html">Documentation</a>
-                <a href="examples.html">Tutorials</a>
+<div class="site-shell">
+    <nav class="site-nav" id="nav">
+        <div class="container nav-inner">
+            <a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a>
+            <div class="nav-links">
+                <a href="docs.html">Docs</a>
+                <a href="examples.html">Examples</a>
                 <a href="whitepaper.html">Whitepaper</a>
-                <a href="explorer.html" class="active">Explorer</a>
-                <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener" class="btn-nav">
-                    GitHub
-                    <span class="btn-nav-arrow">&rarr;</span>
-                </a>
+                <a class="active" href="explorer.html">Explorer</a>
+                <a class="nav-cta" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
             </div>
-            <button class="hamburger" id="hamburger" aria-label="Toggle menu">
-                <span></span>
-                <span></span>
-                <span></span>
+            <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
+                <span></span><span></span><span></span>
             </button>
+        </div>
+        <div class="mobile-menu" id="mobileMenu">
+            <a href="docs.html">Docs</a>
+            <a href="examples.html">Examples</a>
+            <a href="whitepaper.html">Whitepaper</a>
+            <a href="explorer.html">Explorer</a>
+            <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
         </div>
     </nav>
 
-    <!-- Mobile Menu -->
-    <div class="mobile-menu" id="mobileMenu">
-        <a href="docs.html">Documentation</a>
-        <a href="examples.html">Tutorials</a>
-        <a href="whitepaper.html">Whitepaper</a>
-        <a href="explorer.html">Explorer</a>
-        <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub &rarr;</a>
-    </div>
-
-    <!-- Page Hero -->
-    <section class="page-hero">
-        <span class="section-tag">Block Explorer</span>
-        <h1>Real-time blockchain <span class="gradient-text animated-gradient">dashboard</span></h1>
-        <p>Browse blocks, look up accounts, search transactions, and monitor the quantum-resistant network in real time.</p>
-    </section>
-
-    <!-- Explorer Layout -->
-    <div class="explorer-layout">
-
-        <!-- Config Bar -->
-        <div class="config-bar">
-            <label for="apiEndpoint">API Endpoint</label>
-            <input type="text" id="apiEndpoint" value="http://localhost:8080" spellcheck="false">
-            <button id="connectBtn" type="button">Connect</button>
-            <span class="status-dot" id="statusDot"></span>
-        </div>
-
-        <!-- Offline Banner -->
-        <div class="offline-banner" id="offlineBanner">
-            Node offline &mdash; unable to reach the API endpoint. Make sure a CURS3D node is running.
-        </div>
-
-        <!-- Status Dashboard -->
-        <div class="explorer-stat-grid" id="statusGrid">
-            <div class="explorer-stat">
-                <span class="stat-label">Chain Height</span>
-                <span class="stat-value" id="statHeight">&mdash;</span>
+    <main>
+        <section class="page-hero">
+            <div class="container">
+                <span class="section-tag">Explorer</span>
+                <h1>Inspect the network in <span class="gradient-text">real time</span>.</h1>
+                <p class="lede">Point the explorer at a live CURS3D node HTTP API to monitor chain status, recent blocks, validator activity and account or transaction state.</p>
             </div>
-            <div class="explorer-stat">
-                <span class="stat-label">Finalized Height</span>
-                <span class="stat-value" id="statFinalized">&mdash;</span>
-            </div>
-            <div class="explorer-stat">
-                <span class="stat-label">Pending Txs</span>
-                <span class="stat-value" id="statPending">&mdash;</span>
-            </div>
-            <div class="explorer-stat">
-                <span class="stat-label">Active Validators</span>
-                <span class="stat-value" id="statValidators">&mdash;</span>
-            </div>
-            <div class="explorer-stat">
-                <span class="stat-label">Chain Name</span>
-                <span class="stat-value" id="statChainName">&mdash;</span>
-            </div>
-            <div class="explorer-stat">
-                <span class="stat-label">Epoch</span>
-                <span class="stat-value" id="statEpoch">&mdash;</span>
-            </div>
-        </div>
+        </section>
 
-        <!-- Two-Column Grid -->
-        <div class="explorer-grid">
-
-            <!-- Left Column: Recent Blocks -->
-            <div class="explorer-panel">
-                <div class="panel-header">Recent Blocks</div>
-                <div class="panel-body">
-                    <table class="blocks-table" id="blocksTable">
-                        <thead>
-                            <tr>
-                                <th>Height</th>
-                                <th>Hash</th>
-                                <th>Time</th>
-                                <th>Validator</th>
-                                <th>Txs</th>
-                            </tr>
-                        </thead>
-                        <tbody id="blocksBody">
-                            <tr><td colspan="5">Waiting for data&hellip;</td></tr>
-                        </tbody>
-                    </table>
+        <section class="section" style="padding-top: 1rem;">
+            <div class="container explorer-shell">
+                <div class="status-banner">
+                    The explorer is API-driven. If the node is offline or private, the dashboard will stay empty until a reachable endpoint is configured.
                 </div>
-            </div>
 
-            <!-- Right Sidebar -->
-            <div>
+                <div class="config-bar">
+                    <label for="apiEndpoint">API endpoint</label>
+                    <input type="text" id="apiEndpoint" value="http://127.0.0.1:8080" spellcheck="false">
+                    <button type="button" id="connectBtn">Connect</button>
+                    <span class="status-dot" id="statusDot" aria-hidden="true"></span>
+                </div>
 
-                <!-- Account Lookup -->
-                <div class="explorer-panel">
-                    <div class="panel-header">Account Lookup</div>
-                    <div class="panel-body">
-                        <div class="lookup-input">
-                            <input type="text" id="accountAddr" placeholder="CUR-prefixed or raw hex address">
-                            <button id="lookupBtn" type="button">Look Up</button>
+                <div class="offline-banner" id="offlineBanner">
+                    The configured node is not reachable right now. Make sure a CURS3D node is running and the HTTP API is exposed.
+                </div>
+
+                <div class="explorer-stat-grid" id="statusGrid">
+                    <div class="explorer-stat"><span class="stat-label">Chain height</span><span class="stat-value" id="statHeight">--</span></div>
+                    <div class="explorer-stat"><span class="stat-label">Finalized height</span><span class="stat-value" id="statFinalized">--</span></div>
+                    <div class="explorer-stat"><span class="stat-label">Pending txs</span><span class="stat-value" id="statPending">--</span></div>
+                    <div class="explorer-stat"><span class="stat-label">Active validators</span><span class="stat-value" id="statValidators">--</span></div>
+                    <div class="explorer-stat"><span class="stat-label">Chain name</span><span class="stat-value" id="statChainName">--</span></div>
+                    <div class="explorer-stat"><span class="stat-label">Epoch</span><span class="stat-value" id="statEpoch">--</span></div>
+                </div>
+
+                <div class="explorer-grid">
+                    <div class="explorer-panel">
+                        <div class="panel-header">Recent blocks</div>
+                        <div class="panel-body">
+                            <div class="table-wrap">
+                                <table class="blocks-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Height</th>
+                                            <th>Hash</th>
+                                            <th>Time</th>
+                                            <th>Validator</th>
+                                            <th>Txs</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="blocksBody">
+                                        <tr><td colspan="5">Waiting for data...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                        <div class="account-result" id="accountResult"></div>
                     </div>
-                </div>
 
-                <!-- Transaction Search -->
-                <div class="explorer-panel">
-                    <div class="panel-header">Transaction Search</div>
-                    <div class="panel-body">
-                        <div class="lookup-input">
-                            <input type="text" id="txHash" placeholder="Transaction hash">
-                            <button id="txSearchBtn" type="button">Search</button>
+                    <div class="content-stack">
+                        <div class="explorer-panel">
+                            <div class="panel-header">Account lookup</div>
+                            <div class="panel-body">
+                                <div class="lookup-input">
+                                    <input type="text" id="accountAddr" placeholder="CUR address or raw hex">
+                                    <button type="button" id="lookupBtn">Look up</button>
+                                </div>
+                                <div class="account-result" id="accountResult"></div>
+                            </div>
                         </div>
-                        <div class="account-result" id="txResult"></div>
-                    </div>
-                </div>
 
-                <!-- Live Feed -->
-                <div class="explorer-panel">
-                    <div class="panel-header">Live Feed</div>
-                    <div class="panel-body">
-                        <div class="live-feed" id="liveFeed">
-                            <div>[--:--:--] Waiting for connection&hellip;</div>
+                        <div class="explorer-panel">
+                            <div class="panel-header">Transaction lookup</div>
+                            <div class="panel-body">
+                                <div class="lookup-input">
+                                    <input type="text" id="txHash" placeholder="Transaction hash">
+                                    <button type="button" id="txSearchBtn">Search</button>
+                                </div>
+                                <div class="account-result" id="txResult"></div>
+                            </div>
+                        </div>
+
+                        <div class="explorer-panel">
+                            <div class="panel-header">Live feed</div>
+                            <div class="panel-body">
+                                <div class="live-feed" id="liveFeed"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
-
             </div>
-        </div>
+        </section>
+    </main>
 
-    </div>
-
-    <!-- Footer -->
-    <footer>
-        <div class="footer-container">
-            <div class="footer-top">
-                <div class="footer-brand">
-                    <span class="logo">
-                        <span class="logo-diamond"></span>
-                        CURS3D
-                    </span>
-                    <p>Quantum-resistant blockchain infrastructure with WASM smart contracts. Built from scratch in Rust. MIT License.</p>
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-inner">
+                <div>
+                    <a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a>
+                    <p style="margin-top: 0.9rem;">Explorer UI for the live CURS3D HTTP API surface.</p>
                 </div>
-                <div class="footer-links-group">
-                    <span class="footer-heading">Protocol</span>
-                    <a href="index.html#features">Features</a>
-                    <a href="index.html#smart-contracts">Smart Contracts</a>
-                    <a href="index.html#technology">Tech Stack</a>
-                    <a href="whitepaper.html">Whitepaper</a>
+                <div>
+                    <h4>Inspect</h4>
+                    <div class="footer-links">
+                        <a href="docs.html">Docs</a>
+                        <a href="whitepaper.html">Whitepaper</a>
+                    </div>
                 </div>
-                <div class="footer-links-group">
-                    <span class="footer-heading">Developers</span>
-                    <a href="docs.html">Documentation</a>
-                    <a href="examples.html">Tutorials</a>
-                    <a href="explorer.html">Block Explorer</a>
-                    <a href="docs.html#rest-api">API Reference</a>
+                <div>
+                    <h4>Run</h4>
+                    <div class="footer-links">
+                        <a href="examples.html">Examples</a>
+                        <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
+                    </div>
                 </div>
-                <div class="footer-links-group">
-                    <span class="footer-heading">Community</span>
-                    <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
-                    <a href="https://github.com/Pazificateur69/curs3d/issues" target="_blank" rel="noopener">Issues</a>
-                    <a href="https://github.com/Pazificateur69/curs3d/pulls" target="_blank" rel="noopener">Pull Requests</a>
+                <div>
+                    <h4>Note</h4>
+                    <div class="footer-links">
+                        <a href="docs.html#api-surface">API reference</a>
+                    </div>
                 </div>
             </div>
-            <div class="footer-bottom">
-                <p>&copy; 2026 CURS3D Protocol. MIT License. Built by <a href="https://github.com/Pazificateur69" target="_blank" rel="noopener">Pazificateur69</a>.</p>
-            </div>
+            <div class="footer-bottom">© <span data-year></span> CURS3D. Explorer values are sourced directly from the node HTTP API.</div>
         </div>
     </footer>
+</div>
 
-    <script src="script.js"></script>
-    <script>
-    (function() {
-        'use strict';
+<script src="script.js"></script>
+<script>
+(function () {
+    "use strict";
 
-        // ─── DOM References ──────────────────────
-        var endpointInput = document.getElementById('apiEndpoint');
-        var connectBtn    = document.getElementById('connectBtn');
-        var statusDot     = document.getElementById('statusDot');
-        var offlineBanner = document.getElementById('offlineBanner');
-        var blocksBody    = document.getElementById('blocksBody');
-        var accountAddr   = document.getElementById('accountAddr');
-        var accountResult = document.getElementById('accountResult');
-        var lookupBtn     = document.getElementById('lookupBtn');
-        var txHashInput   = document.getElementById('txHash');
-        var txResult      = document.getElementById('txResult');
-        var txSearchBtn   = document.getElementById('txSearchBtn');
-        var liveFeed      = document.getElementById('liveFeed');
+    var endpointInput = document.getElementById("apiEndpoint");
+    var connectBtn = document.getElementById("connectBtn");
+    var statusDot = document.getElementById("statusDot");
+    var offlineBanner = document.getElementById("offlineBanner");
+    var blocksBody = document.getElementById("blocksBody");
+    var accountAddr = document.getElementById("accountAddr");
+    var accountResult = document.getElementById("accountResult");
+    var lookupBtn = document.getElementById("lookupBtn");
+    var txHashInput = document.getElementById("txHash");
+    var txResult = document.getElementById("txResult");
+    var txSearchBtn = document.getElementById("txSearchBtn");
+    var liveFeed = document.getElementById("liveFeed");
 
-        // Stat elements
-        var elHeight     = document.getElementById('statHeight');
-        var elFinalized  = document.getElementById('statFinalized');
-        var elPending    = document.getElementById('statPending');
-        var elValidators = document.getElementById('statValidators');
-        var elChainName  = document.getElementById('statChainName');
-        var elEpoch      = document.getElementById('statEpoch');
+    var elHeight = document.getElementById("statHeight");
+    var elFinalized = document.getElementById("statFinalized");
+    var elPending = document.getElementById("statPending");
+    var elValidators = document.getElementById("statValidators");
+    var elChainName = document.getElementById("statChainName");
+    var elEpoch = document.getElementById("statEpoch");
 
-        // ─── State ───────────────────────────────
-        var nodeOnline   = false;
-        var expandedRow  = null;
-        var pollTimer    = null;
+    var nodeOnline = false;
+    var pollTimer = null;
+    var expandedRow = null;
 
-        // ─── Helpers ─────────────────────────────
-        function getApi() {
-            return endpointInput.value.replace(/\/+$/, '');
+    function getApi() {
+        return endpointInput.value.replace(/\/+$/, "");
+    }
+
+    function formatHash(value) {
+        if (!value) return "--";
+        return value.length > 18 ? value.slice(0, 12) + "..." + value.slice(-6) : value;
+    }
+
+    function formatTimestamp(unixSeconds) {
+        if (!unixSeconds) return "--";
+        var diff = Math.floor(Date.now() / 1000 - unixSeconds);
+        if (diff < 60) return diff + "s ago";
+        if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+        if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+        return Math.floor(diff / 86400) + "d ago";
+    }
+
+    function formatUnits(value) {
+        if (value == null) return "--";
+        return String(value) + " microtokens";
+    }
+
+    function addFeedLine(message) {
+        var line = document.createElement("div");
+        line.textContent = "[" + new Date().toLocaleTimeString("en-GB") + "] " + message;
+        liveFeed.appendChild(line);
+        liveFeed.scrollTop = liveFeed.scrollHeight;
+        while (liveFeed.children.length > 160) {
+            liveFeed.removeChild(liveFeed.firstChild);
+        }
+    }
+
+    async function apiFetch(path) {
+        var response = await fetch(getApi() + path);
+        if (!response.ok) {
+            throw new Error("HTTP " + response.status);
+        }
+        var json = await response.json();
+        if (json && json.ok === true && json.data !== undefined) {
+            return json.data;
+        }
+        if (json && json.ok === false) {
+            throw new Error(json.error || "Unknown API error");
+        }
+        return json;
+    }
+
+    function setOnline(online) {
+        nodeOnline = online;
+        statusDot.classList.toggle("online", online);
+        offlineBanner.style.display = online ? "none" : "";
+    }
+
+    async function refreshStatus() {
+        try {
+            var data = await apiFetch("/api/status");
+            setOnline(true);
+            elHeight.textContent = data.height != null ? data.height : "--";
+            elFinalized.textContent = data.finalized_height != null ? data.finalized_height : "--";
+            elPending.textContent = data.pending_transactions != null ? data.pending_transactions : 0;
+            elValidators.textContent = data.active_validators != null ? data.active_validators : "--";
+            elChainName.textContent = data.chain_name || "CURS3D";
+            elEpoch.textContent = data.epoch != null ? data.epoch : "--";
+        } catch (error) {
+            setOnline(false);
+        }
+    }
+
+    async function refreshBlocks() {
+        if (!nodeOnline) {
+            return;
         }
 
-        function truncHash(h) {
-            if (!h) return '';
-            if (h.length <= 19) return h;
-            return h.slice(0, 16) + '...';
-        }
+        try {
+            var data = await apiFetch("/api/blocks?from=0&limit=20");
+            var blocks = Array.isArray(data) ? data : [];
+            blocksBody.innerHTML = "";
 
-        function timeAgo(ts) {
-            if (!ts) return '';
-            var diff = Math.floor(Date.now() / 1000 - ts);
-            if (diff < 0) return 'just now';
-            if (diff < 60) return diff + 's ago';
-            if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
-            if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
-            return Math.floor(diff / 86400) + 'd ago';
-        }
-
-        function nowTs() {
-            return new Date().toTimeString().slice(0, 8);
-        }
-
-        function normalizeAddr(addr) {
-            if (!addr) return addr;
-            // Accept both CUR-prefixed and raw hex
-            if (addr.toUpperCase().startsWith('CUR')) {
-                return addr;
+            if (blocks.length === 0) {
+                blocksBody.innerHTML = "<tr><td colspan='5'>No blocks yet.</td></tr>";
+                return;
             }
-            // Raw hex -- return as-is, API should handle both
-            return addr;
-        }
 
-        async function apiFetch(path) {
-            var resp = await fetch(getApi() + path);
-            if (!resp.ok) throw new Error('HTTP ' + resp.status);
-            var json = await resp.json();
-            // Unwrap envelope: {"ok": true, "data": {...}}
-            if (json && json.ok === true && json.data !== undefined) {
-                return json.data;
-            }
-            if (json && json.ok === false) {
-                throw new Error(json.error || 'Unknown API error');
-            }
-            return json;
-        }
+            blocks.forEach(function (block) {
+                var row = document.createElement("tr");
+                row.innerHTML =
+                    "<td>" + (block.height != null ? block.height : "--") + "</td>" +
+                    "<td class='hash-cell'>" + formatHash(block.hash) + "</td>" +
+                    "<td>" + formatTimestamp(block.timestamp) + "</td>" +
+                    "<td class='hash-cell'>" + formatHash(block.validator) + "</td>" +
+                    "<td>" + (block.tx_count != null ? block.tx_count : 0) + "</td>";
 
-        // ─── Online / Offline ────────────────────
-        function setOnline(online) {
-            nodeOnline = online;
-            if (online) {
-                statusDot.classList.add('online');
-                offlineBanner.style.display = 'none';
-            } else {
-                statusDot.classList.remove('online');
-                offlineBanner.style.display = '';
-            }
-        }
+                var detailsRow = document.createElement("tr");
+                detailsRow.style.display = "none";
+                var detailsCell = document.createElement("td");
+                detailsCell.colSpan = 5;
+                detailsCell.className = "hash-cell";
+                detailsCell.textContent = block.transactions && block.transactions.length
+                    ? block.transactions.map(function (tx) {
+                        return typeof tx === "string" ? tx : (tx.hash || JSON.stringify(tx));
+                    }).join("\n")
+                    : "No expanded transaction payload in this summary response.";
+                detailsCell.style.whiteSpace = "pre-wrap";
+                detailsRow.appendChild(detailsCell);
 
-        // ─── Feed ────────────────────────────────
-        function addFeedLine(msg) {
-            var div = document.createElement('div');
-            div.textContent = '[' + nowTs() + '] ' + msg;
-            liveFeed.appendChild(div);
-            liveFeed.scrollTop = liveFeed.scrollHeight;
-            // Cap at 200 lines
-            while (liveFeed.children.length > 200) {
-                liveFeed.removeChild(liveFeed.firstChild);
-            }
-        }
-
-        // ─── Status Dashboard ────────────────────
-        async function refreshStatus() {
-            try {
-                var data = await apiFetch('/api/status');
-                setOnline(true);
-                elHeight.textContent     = data.height != null ? data.height : '--';
-                elFinalized.textContent  = data.finalized_height != null ? data.finalized_height : '--';
-                elPending.textContent    = data.pending_transactions != null ? data.pending_transactions : '0';
-                elValidators.textContent = data.active_validators != null ? data.active_validators : '--';
-                elChainName.textContent  = data.chain_name || 'CURS3D';
-                elEpoch.textContent      = data.epoch != null ? data.epoch : '--';
-                addFeedLine('Status polled: height=' + (data.height || '--') + ' finalized=' + (data.finalized_height || '--'));
-            } catch (e) {
-                setOnline(false);
-            }
-        }
-
-        // ─── Recent Blocks ───────────────────────
-        async function refreshBlocks() {
-            if (!nodeOnline) return;
-            try {
-                var raw = await apiFetch('/api/blocks?from=0&limit=20');
-                var blocks = Array.isArray(raw) ? raw : (raw.blocks || []);
-                if (!blocks.length) return;
-
-                blocksBody.innerHTML = '';
-
-                blocks.forEach(function(block) {
-                    // Main row
-                    var tr = document.createElement('tr');
-                    var tdHeight = document.createElement('td');
-                    tdHeight.textContent = block.height != null ? block.height : '';
-                    var tdHash = document.createElement('td');
-                    tdHash.className = 'hash-cell';
-                    tdHash.textContent = truncHash(block.hash);
-                    var tdTime = document.createElement('td');
-                    tdTime.textContent = timeAgo(block.timestamp);
-                    var tdValidator = document.createElement('td');
-                    tdValidator.className = 'hash-cell';
-                    tdValidator.textContent = truncHash(block.validator);
-                    var tdTxs = document.createElement('td');
-                    tdTxs.textContent = block.tx_count != null ? block.tx_count : '0';
-
-                    tr.appendChild(tdHeight);
-                    tr.appendChild(tdHash);
-                    tr.appendChild(tdTime);
-                    tr.appendChild(tdValidator);
-                    tr.appendChild(tdTxs);
-
-                    // Expandable detail row
-                    var expandTr = document.createElement('tr');
-                    expandTr.style.display = 'none';
-                    var expandTd = document.createElement('td');
-                    expandTd.setAttribute('colspan', '5');
-                    expandTd.className = 'hash-cell';
-
-                    // Click to toggle expand
-                    tr.addEventListener('click', (function(etr) {
-                        return function() {
-                            if (expandedRow === etr) {
-                                etr.style.display = 'none';
-                                expandedRow = null;
-                            } else {
-                                if (expandedRow) expandedRow.style.display = 'none';
-                                etr.style.display = '';
-                                expandedRow = etr;
-                                // Fetch block transactions if we haven't yet
-                                if (!etr.dataset.loaded) {
-                                    loadBlockTxs(block, expandTd, etr);
-                                }
-                            }
-                        };
-                    })(expandTr));
-
-                    expandTr.appendChild(expandTd);
-                    blocksBody.appendChild(tr);
-                    blocksBody.appendChild(expandTr);
+                row.addEventListener("click", function () {
+                    if (expandedRow && expandedRow !== detailsRow) {
+                        expandedRow.style.display = "none";
+                    }
+                    var shouldOpen = detailsRow.style.display === "none";
+                    detailsRow.style.display = shouldOpen ? "" : "none";
+                    expandedRow = shouldOpen ? detailsRow : null;
                 });
 
-                addFeedLine('Loaded ' + blocks.length + ' blocks (latest: #' + blocks[0].height + ')');
-            } catch (e) {
-                // ignore
-            }
+                blocksBody.appendChild(row);
+                blocksBody.appendChild(detailsRow);
+            });
+        } catch (error) {
+            addFeedLine("Block refresh failed: " + error.message);
         }
+    }
 
-        function loadBlockTxs(block, td, expandTr) {
-            var txs = block.transactions || [];
-            expandTr.dataset.loaded = '1';
-            if (txs.length === 0 && (block.tx_count === 0 || block.tx_count == null)) {
-                td.textContent = 'No transactions in this block.';
-                return;
-            }
-            if (txs.length > 0) {
-                td.textContent = txs.map(function(tx) {
-                    var h = typeof tx === 'string' ? tx : (tx.hash || tx.id || JSON.stringify(tx));
-                    return truncHash(h);
-                }).join('\n');
-                td.style.whiteSpace = 'pre-wrap';
-            } else {
-                td.textContent = block.tx_count + ' transaction(s) -- expand block via API for details.';
-            }
+    async function lookupAccount() {
+        var value = accountAddr.value.trim();
+        if (!value) {
+            accountResult.textContent = "Enter an account address.";
+            return;
         }
-
-        // ─── Account Lookup ──────────────────────
-        async function lookupAccount() {
-            var addr = normalizeAddr(accountAddr.value.trim());
-            if (!addr) {
-                accountResult.textContent = 'Enter an address.';
-                return;
-            }
-            accountResult.textContent = 'Loading...';
-            try {
-                var data = await apiFetch('/api/account/' + encodeURIComponent(addr));
-                accountResult.innerHTML = '';
-                var lines = [
-                    'Address: ' + (data.address || addr),
-                    'Balance: ' + (data.balance != null ? data.balance : 0) + ' CUR',
-                    'Nonce: ' + (data.nonce != null ? data.nonce : 0),
-                    'Staked: ' + (data.staked_balance != null ? data.staked_balance : 0) + ' CUR'
-                ];
-                accountResult.textContent = lines.join('\n');
-                accountResult.style.whiteSpace = 'pre-wrap';
-                addFeedLine('Account lookup: ' + truncHash(addr));
-            } catch (e) {
-                accountResult.textContent = 'Error: ' + e.message;
-            }
+        accountResult.textContent = "Loading...";
+        try {
+            var data = await apiFetch("/api/account/" + encodeURIComponent(value));
+            accountResult.textContent =
+                "Address: " + (data.address || value) + "\n" +
+                "Balance: " + formatUnits(data.balance) + "\n" +
+                "Nonce: " + (data.nonce != null ? data.nonce : 0) + "\n" +
+                "Staked: " + formatUnits(data.staked_balance);
+            addFeedLine("Account lookup: " + formatHash(value));
+        } catch (error) {
+            accountResult.textContent = "Error: " + error.message;
         }
+    }
 
-        // ─── Transaction Search ──────────────────
-        async function searchTx() {
-            var hash = txHashInput.value.trim();
-            if (!hash) {
-                txResult.textContent = 'Enter a transaction hash.';
-                return;
-            }
-            txResult.textContent = 'Loading...';
-            try {
-                var data = await apiFetch('/api/tx/' + encodeURIComponent(hash));
-                var lines = [
-                    'Hash:   ' + (data.hash || hash),
-                    'Kind:   ' + (data.kind || '--'),
-                    'From:   ' + (data.from || '--'),
-                    'To:     ' + (data.to || '--'),
-                    'Amount: ' + (data.amount != null ? data.amount : 0) + ' CUR',
-                    'Fee:    ' + (data.fee != null ? data.fee : 0),
-                    'Nonce:  ' + (data.nonce != null ? data.nonce : '--'),
-                    'Time:   ' + (data.timestamp ? timeAgo(data.timestamp) : '--')
-                ];
-                txResult.textContent = lines.join('\n');
-                txResult.style.whiteSpace = 'pre-wrap';
-                addFeedLine('Tx lookup: ' + truncHash(hash));
-            } catch (e) {
-                txResult.textContent = 'Error: ' + e.message;
-            }
+    async function lookupTransaction() {
+        var value = txHashInput.value.trim();
+        if (!value) {
+            txResult.textContent = "Enter a transaction hash.";
+            return;
         }
+        txResult.textContent = "Loading...";
+        try {
+            var data = await apiFetch("/api/tx/" + encodeURIComponent(value));
+            txResult.textContent =
+                "Hash: " + (data.hash || value) + "\n" +
+                "Kind: " + (data.kind || "--") + "\n" +
+                "From: " + (data.from || "--") + "\n" +
+                "To: " + (data.to || "--") + "\n" +
+                "Amount: " + formatUnits(data.amount) + "\n" +
+                "Fee: " + formatUnits(data.fee) + "\n" +
+                "Nonce: " + (data.nonce != null ? data.nonce : "--") + "\n" +
+                "Time: " + formatTimestamp(data.timestamp);
+            addFeedLine("Transaction lookup: " + formatHash(value));
+        } catch (error) {
+            txResult.textContent = "Error: " + error.message;
+        }
+    }
 
-        // ─── Event Bindings ──────────────────────
-        lookupBtn.addEventListener('click', lookupAccount);
-        txSearchBtn.addEventListener('click', searchTx);
+    async function tick() {
+        await refreshStatus();
+        await refreshBlocks();
+    }
 
-        accountAddr.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') lookupAccount();
-        });
-
-        txHashInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') searchTx();
-        });
-
-        connectBtn.addEventListener('click', function() {
-            // Reset and reconnect
+    function startPolling() {
+        if (pollTimer) {
             clearInterval(pollTimer);
-            setOnline(false);
-            addFeedLine('Connecting to ' + getApi() + '...');
-            startPolling();
-        });
-
-        // ─── Polling Loop ────────────────────────
-        async function tick() {
-            await refreshStatus();
-            await refreshBlocks();
         }
+        tick();
+        pollTimer = setInterval(tick, 5000);
+    }
 
-        function startPolling() {
-            tick();
-            pollTimer = setInterval(tick, 5000);
-        }
-
-        // ─── Init ────────────────────────────────
-        addFeedLine('Explorer initialized. Connecting to ' + getApi() + '...');
+    connectBtn.addEventListener("click", function () {
+        addFeedLine("Connecting to " + getApi());
         startPolling();
+    });
+    lookupBtn.addEventListener("click", lookupAccount);
+    txSearchBtn.addEventListener("click", lookupTransaction);
+    accountAddr.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") lookupAccount();
+    });
+    txHashInput.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") lookupTransaction();
+    });
 
-    })();
-    </script>
+    addFeedLine("Explorer ready.");
+    startPolling();
+})();
+</script>
 </body>
 </html>

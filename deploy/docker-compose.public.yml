@@ -1,0 +1,39 @@
+services:
+  curs3d-node:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: curs3d-public-node
+    restart: unless-stopped
+    env_file:
+      - ./env/node.env
+    command:
+      - "node"
+      - "--port"
+      - "4337"
+      - "--data-dir"
+      - "/var/lib/curs3d"
+      - "--validator-wallet"
+      - "/run/curs3d/validator.json"
+      - "--validator-password-file"
+      - "/run/curs3d/validator.password"
+      - "--rpc-addr"
+      - "0.0.0.0:9545"
+      - "--genesis-config"
+      - "/etc/curs3d/genesis.public-testnet.json"
+      - "--public-addr"
+      - "${CURS3D_PUBLIC_ADDR}"
+    ports:
+      - "4337:4337"
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9545:9545"
+    volumes:
+      - ./genesis.public-testnet.json:/etc/curs3d/genesis.public-testnet.json:ro
+      - ./secrets:/run/curs3d:ro
+      - ./node-data:/var/lib/curs3d
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

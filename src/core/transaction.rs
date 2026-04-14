@@ -11,6 +11,14 @@ pub enum TransactionKind {
     Coinbase,
     DeployContract,
     CallContract,
+    // CUR-20 token operations (added at end for bincode compat)
+    DeployToken,
+    TokenTransfer,
+    TokenApprove,
+    TokenTransferFrom,
+    // Governance operations
+    SubmitProposal,
+    GovernanceVote,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -73,6 +81,11 @@ impl Transaction {
             TransactionKind::Stake | TransactionKind::Unstake | TransactionKind::Coinbase => 0,
             TransactionKind::DeployContract => self.to.len().saturating_add(self.data.len()),
             TransactionKind::CallContract => self.data.len(),
+            TransactionKind::DeployToken
+            | TransactionKind::TokenTransfer
+            | TransactionKind::TokenApprove
+            | TransactionKind::TokenTransferFrom => self.data.len(),
+            TransactionKind::SubmitProposal | TransactionKind::GovernanceVote => self.data.len(),
         } as u64;
 
         let kind_gas = match self.kind {
@@ -85,6 +98,13 @@ impl Transaction {
             }
             TransactionKind::CallContract => {
                 crate::vm::gas::GAS_BASE_TX.saturating_add(crate::vm::gas::GAS_CALL)
+            }
+            TransactionKind::DeployToken => crate::vm::gas::GAS_BASE_TX,
+            TransactionKind::TokenTransfer
+            | TransactionKind::TokenApprove
+            | TransactionKind::TokenTransferFrom => crate::vm::gas::GAS_BASE_TX,
+            TransactionKind::SubmitProposal | TransactionKind::GovernanceVote => {
+                crate::vm::gas::GAS_BASE_TX
             }
         };
 

@@ -1,11 +1,12 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use bytes::Bytes;
+use futures::{SinkExt, StreamExt};
 use http_body_util::Full;
 use hyper::body::Incoming;
 use hyper::header::{AUTHORIZATION, CONTENT_LENGTH};
@@ -13,9 +14,10 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
-use serde::Serialize;
-use tokio::net::TcpListener;
+use serde::{Deserialize, Serialize};
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Mutex, Semaphore, broadcast, mpsc};
+use tokio_tungstenite::tungstenite::Message as WsMessage;
 
 use crate::core::block::Block;
 use crate::core::chain::Blockchain;
@@ -24,6 +26,7 @@ use crate::core::state_proof::{AccountProof, StorageProof};
 use crate::core::transaction::{Transaction, TransactionKind};
 use crate::crypto::hash;
 use crate::network::NetworkMessage;
+use crate::wallet;
 
 const MAX_API_BODY_BYTES: usize = 1024 * 1024;
 const MAX_HTTP_CONNECTIONS: usize = 128;
@@ -37,7 +40,7 @@ const FAUCET_COOLDOWN_SECS: u64 = 3600;
 static API_START_TIME: OnceLock<Instant> = OnceLock::new();
 
 type RateLimiterMap = Arc<Mutex<HashMap<IpAddr, Vec<Instant>>>>;
-type FaucetCooldownMap = Arc<Mutex<HashMap<Vec<u8>, Instant>>>;
+type FaucetCooldownMap = Arc<Mutex<HashMap<String, u64>>>;
 
 struct RequestContext {
     peer_ip: IpAddr,
@@ -298,6 +301,12 @@ fn tx_to_api(tx: &Transaction) -> ApiTransaction {
             TransactionKind::Coinbase => "coinbase".to_string(),
             TransactionKind::DeployContract => "deploy_contract".to_string(),
             TransactionKind::CallContract => "call_contract".to_string(),
+            TransactionKind::DeployToken => "deploy_token".to_string(),
+            TransactionKind::TokenTransfer => "token_transfer".to_string(),
+            TransactionKind::TokenApprove => "token_approve".to_string(),
+            TransactionKind::TokenTransferFrom => "token_transfer_from".to_string(),
+            TransactionKind::SubmitProposal => "submit_proposal".to_string(),
+            TransactionKind::GovernanceVote => "governance_vote".to_string(),
         },
         from: hex::encode(&tx.from),
         to: hex::encode(&tx.to),
@@ -408,6 +417,62 @@ fn enforce_api_auth(req: &Request<Incoming>) -> Option<Response<Full<Bytes>>> {
             StatusCode::UNAUTHORIZED,
             "missing or invalid API bearer token",
         )),
+    }
+}
+
+fn faucet_password() -> Option<String> {
+    if let Ok(path) = std::env::var("CURS3D_FAUCET_PASSWORD_FILE")
+        && !path.trim().is_empty()
+    {
+        return std::fs::read_to_string(path)
+            .ok()
+            .map(|secret| secret.trim().to_string())
+            .filter(|secret| !secret.is_empty());
+    }
+
+    std::env::var("CURS3D_FAUCET_PASSWORD")
+        .ok()
+        .filter(|value| !value.is_empty())
+}
+
+fn faucet_wallet_configured() -> Option<(String, String, u64)> {
+    let wallet_path = std::env::var("CURS3D_FAUCET_WALLET")
+        .ok()
+        .filter(|value| !value.is_empty())?;
+    let password = faucet_password()?;
+    let fee = std::env::var("CURS3D_FAUCET_FEE")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(1_000);
+    Some((wallet_path, password, fee))
+}
+
+fn faucet_cooldown_store_path() -> String {
+    std::env::var("CURS3D_FAUCET_COOLDOWN_FILE")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "faucet_cooldowns.json".to_string())
+}
+
+fn current_unix_timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default()
+}
+
+fn load_faucet_cooldowns() -> HashMap<String, u64> {
+    let path = faucet_cooldown_store_path();
+    let Ok(data) = std::fs::read(path) else {
+        return HashMap::new();
+    };
+    serde_json::from_slice(&data).unwrap_or_default()
+}
+
+fn persist_faucet_cooldowns(cooldowns: &HashMap<String, u64>) {
+    let path = faucet_cooldown_store_path();
+    if let Ok(data) = serde_json::to_vec_pretty(cooldowns) {
+        let _ = std::fs::write(path, data);
     }
 }
 
@@ -767,19 +832,76 @@ async fn handle_request(
             Ok(json_ok(validators))
         }
 
-        // GET /api/faucet/:address
-        (Method::GET, ["api", "faucet", addr_hex]) => {
-            let addr_clean = addr_hex.strip_prefix("CUR").unwrap_or(addr_hex);
+        // POST /api/faucet/request
+        (Method::POST, ["api", "faucet", "request"]) => {
+            if let Some(content_length) = req
+                .headers()
+                .get(CONTENT_LENGTH)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<usize>().ok())
+                && content_length > MAX_API_BODY_BYTES
+            {
+                return Ok(json_err(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "request body too large",
+                ));
+            }
+
+            let body_bytes = match http_body_util::BodyExt::collect(req.into_body()).await {
+                Ok(collected) => collected.to_bytes(),
+                Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "failed to read body")),
+            };
+            if body_bytes.len() > MAX_API_BODY_BYTES {
+                return Ok(json_err(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "request body too large",
+                ));
+            }
+
+            let payload: serde_json::Value = match serde_json::from_slice(&body_bytes) {
+                Ok(value) => value,
+                Err(_) => {
+                    return Ok(json_err(
+                        StatusCode::BAD_REQUEST,
+                        "invalid faucet request JSON",
+                    ));
+                }
+            };
+            let Some(address_str) = payload.get("address").and_then(|value| value.as_str()) else {
+                return Ok(json_err(
+                    StatusCode::BAD_REQUEST,
+                    "missing faucet request address",
+                ));
+            };
+            let addr_clean = address_str.strip_prefix("CUR").unwrap_or(address_str);
             let address = match hex::decode(addr_clean) {
                 Ok(a) if a.len() == hash::ADDRESS_LEN => a,
                 _ => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid address")),
             };
+            let address_key = hex::encode(&address);
+            let Some((wallet_path, password, fee)) = faucet_wallet_configured() else {
+                return Ok(json_err(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "faucet disabled: configure CURS3D_FAUCET_WALLET and password",
+                ));
+            };
+            let faucet_wallet = match wallet::Wallet::load_auto(&wallet_path, &password) {
+                Ok(wallet) => wallet,
+                Err(_) => {
+                    return Ok(json_err(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "faucet unavailable: failed to load configured faucet wallet",
+                    ));
+                }
+            };
+            let faucet_address =
+                hash::address_bytes_from_public_key(&faucet_wallet.keypair.public_key);
 
             // Check faucet cooldown
             {
                 let cooldowns = faucet_cooldowns.lock().await;
-                if let Some(last_request) = cooldowns.get(&address) {
-                    let elapsed = last_request.elapsed().as_secs();
+                if let Some(last_request) = cooldowns.get(&address_key) {
+                    let elapsed = current_unix_timestamp().saturating_sub(*last_request);
                     if elapsed < FAUCET_COOLDOWN_SECS {
                         let remaining = FAUCET_COOLDOWN_SECS - elapsed;
                         return Ok(json_err(
@@ -790,24 +912,52 @@ async fn handle_request(
                 }
             }
 
-            // Credit the account
-            let new_balance = {
+            let tx = {
                 let mut chain = chain.lock().await;
-                let account = chain.accounts.entry(address.clone()).or_default();
-                account.balance = account.balance.saturating_add(FAUCET_AMOUNT);
-                account.balance
+                let faucet_account = chain.get_account(&faucet_address);
+                let total_needed = FAUCET_AMOUNT.saturating_add(fee);
+                if faucet_account.balance < total_needed {
+                    return Ok(json_err(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "faucet depleted: refill the configured faucet wallet",
+                    ));
+                }
+
+                let mut tx = Transaction::new(
+                    chain.chain_id(),
+                    faucet_wallet.keypair.public_key.clone(),
+                    address.clone(),
+                    FAUCET_AMOUNT,
+                    fee,
+                    faucet_account.nonce,
+                );
+                tx.sign(&faucet_wallet.keypair);
+                if let Err(err) = chain.add_transaction(tx.clone()) {
+                    return Ok(json_err(
+                        StatusCode::BAD_REQUEST,
+                        &format!("faucet transfer rejected: {}", err),
+                    ));
+                }
+                tx
+            };
+
+            if let Ok(data) = bincode::serialize(&tx) {
+                let _ = outbound_tx.try_send(NetworkMessage::NewTransaction(data));
             };
 
             // Record cooldown
             {
                 let mut cooldowns = faucet_cooldowns.lock().await;
-                cooldowns.insert(address.clone(), Instant::now());
+                cooldowns.insert(address_key, current_unix_timestamp());
+                persist_faucet_cooldowns(&cooldowns);
             }
 
             Ok(json_ok(serde_json::json!({
                 "address": hex::encode(&address),
                 "amount": FAUCET_AMOUNT,
-                "new_balance": new_balance,
+                "tx_hash": tx.hash_hex(),
+                "from": faucet_wallet.address,
+                "fee": fee,
                 "next_available_secs": FAUCET_COOLDOWN_SECS
             })))
         }
@@ -912,8 +1062,224 @@ async fn handle_request(
             }
         }
 
+        // ─── CUR-20 Token Endpoints ─────────────────────────────────
+
+        // GET /api/tokens — list all tokens
+        (Method::GET, ["api", "tokens"]) => {
+            let chain = chain.lock().await;
+            let tokens: Vec<serde_json::Value> = chain
+                .token_registry
+                .list_tokens()
+                .iter()
+                .map(|t| {
+                    serde_json::json!({
+                        "address": format!("CUR{}", hex::encode(&t.contract_address)),
+                        "name": t.name,
+                        "symbol": t.symbol,
+                        "decimals": t.decimals,
+                        "total_supply": t.total_supply,
+                        "creator": format!("CUR{}", hex::encode(&t.creator)),
+                        "created_at_height": t.created_at_height,
+                    })
+                })
+                .collect();
+            Ok(json_ok(tokens))
+        }
+
+        // GET /api/token/<address> — token info
+        (Method::GET, ["api", "token", address]) => {
+            let addr = match parse_address(address) {
+                Some(a) => a,
+                None => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid token address")),
+            };
+            let chain = chain.lock().await;
+            match chain.token_registry.get_token(&addr) {
+                Some(token) => Ok(json_ok(serde_json::json!({
+                    "address": format!("CUR{}", hex::encode(&token.contract_address)),
+                    "name": token.name,
+                    "symbol": token.symbol,
+                    "decimals": token.decimals,
+                    "total_supply": token.total_supply,
+                    "creator": format!("CUR{}", hex::encode(&token.creator)),
+                    "created_at_height": token.created_at_height,
+                }))),
+                None => Ok(json_err(StatusCode::NOT_FOUND, "token not found")),
+            }
+        }
+
+        // GET /api/token/<address>/balance/<owner> — token balance
+        (Method::GET, ["api", "token", token_addr, "balance", owner_addr]) => {
+            let token = match parse_address(token_addr) {
+                Some(a) => a,
+                None => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid token address")),
+            };
+            let owner = match parse_address(owner_addr) {
+                Some(a) => a,
+                None => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid owner address")),
+            };
+            let chain = chain.lock().await;
+            let balance = chain.token_registry.balance_of(&token, &owner);
+            Ok(json_ok(serde_json::json!({ "balance": balance })))
+        }
+
+        // ─── Governance Endpoints ───────────────────────────────────
+
+        // GET /api/governance/proposals — list all proposals
+        (Method::GET, ["api", "governance", "proposals"]) => {
+            let chain = chain.lock().await;
+            let proposals: Vec<serde_json::Value> = chain
+                .governance
+                .list_proposals()
+                .iter()
+                .map(|p| {
+                    serde_json::json!({
+                        "id": hex::encode(&p.id),
+                        "proposer": format!("CUR{}", hex::encode(&p.proposer)),
+                        "kind": format!("{:?}", p.kind),
+                        "status": format!("{:?}", p.status),
+                        "created_at_height": p.created_at_height,
+                        "voting_deadline_height": p.voting_deadline_height,
+                        "execution_height": p.execution_height,
+                        "votes_for": p.votes_for,
+                        "votes_against": p.votes_against,
+                        "voter_count": p.voters.len(),
+                    })
+                })
+                .collect();
+            Ok(json_ok(proposals))
+        }
+
+        // GET /api/governance/proposal/<id> — proposal details
+        (Method::GET, ["api", "governance", "proposal", id_hex]) => {
+            let id = match hex::decode(id_hex) {
+                Ok(bytes) => bytes,
+                Err(_) => {
+                    return Ok(json_err(StatusCode::BAD_REQUEST, "invalid proposal id hex"));
+                }
+            };
+            let chain = chain.lock().await;
+            match chain.governance.get_proposal(&id) {
+                Some(p) => Ok(json_ok(serde_json::json!({
+                    "id": hex::encode(&p.id),
+                    "proposer": format!("CUR{}", hex::encode(&p.proposer)),
+                    "kind": format!("{:?}", p.kind),
+                    "status": format!("{:?}", p.status),
+                    "created_at_height": p.created_at_height,
+                    "voting_deadline_height": p.voting_deadline_height,
+                    "execution_height": p.execution_height,
+                    "votes_for": p.votes_for,
+                    "votes_against": p.votes_against,
+                    "voter_count": p.voters.len(),
+                }))),
+                None => Ok(json_err(StatusCode::NOT_FOUND, "proposal not found")),
+            }
+        }
+
         _ => Ok(json_err(StatusCode::NOT_FOUND, "endpoint not found")),
     }
+}
+
+// ─── WebSocket Support ──────────────────────────────────────────────
+
+const WS_MAX_CONNECTIONS: usize = 64;
+
+#[derive(Debug, Deserialize)]
+struct WsSubscribeRequest {
+    #[serde(default)]
+    events: Vec<String>,
+}
+
+fn parse_address(addr_hex: &str) -> Option<Vec<u8>> {
+    let clean = addr_hex.strip_prefix("CUR").unwrap_or(addr_hex);
+    hex::decode(clean)
+        .ok()
+        .filter(|a| a.len() == hash::ADDRESS_LEN)
+}
+
+fn is_websocket_upgrade(buf: &[u8]) -> bool {
+    if let Ok(text) = std::str::from_utf8(buf) {
+        let lower = text.to_ascii_lowercase();
+        lower.contains("upgrade: websocket") || lower.contains("get /ws")
+    } else {
+        false
+    }
+}
+
+async fn handle_ws_connection(stream: TcpStream, mut event_rx: broadcast::Receiver<String>) {
+    let ws = match tokio_tungstenite::accept_async(stream).await {
+        Ok(ws) => ws,
+        Err(e) => {
+            tracing::warn!("WebSocket handshake failed: {}", e);
+            return;
+        }
+    };
+
+    tracing::info!("WebSocket client connected");
+
+    let (mut ws_tx, mut ws_rx) = ws.split();
+    let mut subscribed_events: HashSet<String> = HashSet::new();
+    // Subscribe to all events by default
+    subscribed_events.insert("new_block".to_string());
+    subscribed_events.insert("new_transaction".to_string());
+    subscribed_events.insert("finality".to_string());
+
+    loop {
+        tokio::select! {
+            msg = ws_rx.next() => {
+                match msg {
+                    Some(Ok(WsMessage::Text(text))) => {
+                        // Parse subscription request
+                        if let Ok(sub) = serde_json::from_str::<WsSubscribeRequest>(&text) {
+                            subscribed_events.clear();
+                            for event in sub.events {
+                                subscribed_events.insert(event);
+                            }
+                            let ack = serde_json::json!({
+                                "type": "subscribed",
+                                "data": { "events": subscribed_events.iter().collect::<Vec<_>>() }
+                            });
+                            if ws_tx.send(WsMessage::Text(ack.to_string())).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                    Some(Ok(WsMessage::Ping(data))) => {
+                        if ws_tx.send(WsMessage::Pong(data)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Some(Ok(WsMessage::Close(_))) | None => break,
+                    Some(Err(_)) => break,
+                    _ => {}
+                }
+            }
+            event = event_rx.recv() => {
+                match event {
+                    Ok(event_str) => {
+                        // Parse event type and check subscription
+                        if let Ok(event_json) = serde_json::from_str::<serde_json::Value>(&event_str) {
+                            let event_type = event_json
+                                .get("type")
+                                .and_then(|t| t.as_str())
+                                .unwrap_or("");
+
+                            if (subscribed_events.contains(event_type) || subscribed_events.is_empty())
+                                && ws_tx.send(WsMessage::Text(event_str)).await.is_err()
+                            {
+                                break;
+                            }
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        tracing::warn!("WebSocket client lagged by {} events", n);
+                    }
+                    Err(_) => break,
+                }
+            }
+        }
+    }
+
+    tracing::info!("WebSocket client disconnected");
 }
 
 // ─── HTTP Server ─────────────────────────────────────────────────────
@@ -927,14 +1293,43 @@ pub async fn serve_http(
     let _ = API_START_TIME.get_or_init(Instant::now);
     let listener = TcpListener::bind(addr).await?;
     let connection_limit = Arc::new(Semaphore::new(MAX_HTTP_CONNECTIONS));
+    let ws_connection_count = Arc::new(AtomicU64::new(0));
     let rate_limiter: RateLimiterMap = Arc::new(Mutex::new(HashMap::new()));
     let request_counter = Arc::new(AtomicU64::new(0));
-    let faucet_cooldowns: FaucetCooldownMap = Arc::new(Mutex::new(HashMap::new()));
+    let faucet_cooldowns: FaucetCooldownMap = Arc::new(Mutex::new(load_faucet_cooldowns()));
     tracing::info!("HTTP API listening on http://{}", addr);
+    tracing::info!("WebSocket available at ws://{}/ws", addr);
 
     loop {
         let (stream, peer_addr) = listener.accept().await?;
         let peer_ip = peer_addr.ip();
+
+        // Peek at the first bytes to detect WebSocket upgrade
+        let mut peek_buf = [0u8; 512];
+        let n = match stream.peek(&mut peek_buf).await {
+            Ok(n) => n,
+            Err(_) => continue,
+        };
+
+        if is_websocket_upgrade(&peek_buf[..n]) {
+            // WebSocket connection
+            let ws_count = Arc::clone(&ws_connection_count);
+            let current = ws_count.load(Ordering::Relaxed);
+            if current >= WS_MAX_CONNECTIONS as u64 {
+                tracing::warn!("WebSocket connection limit reached, rejecting {}", peer_ip);
+                continue;
+            }
+            ws_count.fetch_add(1, Ordering::Relaxed);
+
+            let event_rx = event_tx.subscribe();
+            tokio::spawn(async move {
+                handle_ws_connection(stream, event_rx).await;
+                ws_count.fetch_sub(1, Ordering::Relaxed);
+            });
+            continue;
+        }
+
+        // Regular HTTP connection
         let io = TokioIo::new(stream);
         let chain = Arc::clone(&chain);
         let event_tx = event_tx.clone();

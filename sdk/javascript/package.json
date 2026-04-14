@@ -1,0 +1,20 @@
+{
+  "name": "@curs3d/sdk",
+  "version": "0.1.0",
+  "description": "JavaScript/TypeScript SDK for the CURS3D quantum-resistant blockchain",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test tests/"
+  },
+  "keywords": ["blockchain", "quantum-resistant", "curs3d", "web3"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Pazificateur69/curs3d"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

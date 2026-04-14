@@ -2,11 +2,21 @@
 *.exe
 *.pdb
 wallet.json
+*.password
+*.log
+*.local
+*.tmp
+.env
+.env.*
 build.bat
 build_output.txt
 env_lib.txt
 .DS_Store
 Thumbs.db
+curs3d_data/
+node*_data/
+faucet_cooldowns.json
+bootnode.addrs
 
 # Internal project notes
 CLAUDE.md

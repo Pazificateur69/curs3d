@@ -13,7 +13,9 @@ use crate::core::state_proof::{AccountProof, StorageProof};
 use crate::core::transaction::{Transaction, TransactionKind};
 use crate::crypto::dilithium::KeyPair;
 use crate::crypto::hash;
+use crate::governance::GovernanceState;
 use crate::storage::{Storage, StorageError};
+use crate::token::TokenRegistry;
 use crate::vm::state::ContractState;
 use crate::vm::{Vm, VmError};
 use thiserror::Error;
@@ -264,6 +266,8 @@ pub struct Blockchain {
     pub receipts: HashMap<Vec<u8>, Receipt>,
     pub receipt_locations: HashMap<Vec<u8>, ReceiptLocation>,
     pub log_index: Vec<IndexedLogEntry>,
+    pub token_registry: TokenRegistry,
+    pub governance: GovernanceState,
     storage: Option<Storage>,
 }
 
@@ -271,6 +275,8 @@ struct BlockExecution {
     accounts: HashMap<Vec<u8>, AccountState>,
     contracts: HashMap<Vec<u8>, ContractState>,
     receipts: HashMap<Vec<u8>, Receipt>,
+    token_registry: TokenRegistry,
+    governance: GovernanceState,
 }
 
 impl Default for Blockchain {
@@ -322,6 +328,8 @@ impl Blockchain {
             receipts: HashMap::new(),
             receipt_locations: HashMap::new(),
             log_index: Vec::new(),
+            token_registry: TokenRegistry::new(),
+            governance: GovernanceState::new(),
             storage: None,
         })
     }
@@ -408,6 +416,13 @@ impl Blockchain {
                 finalized_height,
             );
 
+            let stored_token_registry = storage
+                .get_meta::<TokenRegistry>(crate::storage::TOKEN_REGISTRY_KEY)?
+                .unwrap_or_default();
+            let stored_governance = storage
+                .get_meta::<GovernanceState>(crate::storage::GOVERNANCE_STATE_KEY)?
+                .unwrap_or_default();
+
             let mut chain = Blockchain {
                 blocks,
                 accounts: HashMap::new(),
@@ -429,6 +444,8 @@ impl Blockchain {
                 receipts: HashMap::new(),
                 receipt_locations: HashMap::new(),
                 log_index: Vec::new(),
+                token_registry: stored_token_registry,
+                governance: stored_governance,
                 storage: Some(storage),
             };
 
@@ -563,6 +580,18 @@ impl Blockchain {
         )
     }
 
+    fn active_validator_total_stake(
+        &self,
+        accounts: &HashMap<Vec<u8>, AccountState>,
+        height: u64,
+    ) -> u64 {
+        ProofOfStake::with_slashed(self.minimum_stake, self.slashed_validators.clone(), height)
+            .active_validators(accounts)
+            .into_iter()
+            .map(|validator| validator.stake)
+            .sum()
+    }
+
     /// Compute and store an EpochSnapshot for the given epoch using the provided pre-epoch state.
     pub fn create_epoch_snapshot_from_accounts(
         &mut self,
@@ -602,7 +631,7 @@ impl Blockchain {
             .get(snapshot_height as usize)
             .map(|block| block.hash.clone())
             .ok_or_else(|| ChainError::SnapshotError("snapshot height missing".to_string()))?;
-        let (snapshot_accounts, snapshot_contracts, snapshot_receipts) =
+        let (snapshot_accounts, snapshot_contracts, snapshot_receipts, _, _) =
             self.replay_state_to_canonical_height(snapshot_height)?;
         let mut accounts: Vec<(Vec<u8>, AccountState)> = snapshot_accounts
             .iter()
@@ -934,6 +963,8 @@ impl Blockchain {
         let mut projected_accounts = self.accounts.clone();
         let mut projected_contracts = self.contracts.clone();
         let mut projected_receipts = HashMap::new();
+        let mut projected_token_registry = self.token_registry.clone();
+        let mut projected_governance = self.governance.clone();
         let mut seen_hashes = HashSet::new();
 
         for (index, pending) in self.pending_transactions.iter().enumerate() {
@@ -948,6 +979,8 @@ impl Blockchain {
                 &mut projected_accounts,
                 &mut projected_contracts,
                 &mut projected_receipts,
+                &mut projected_token_registry,
+                &mut projected_governance,
                 pending,
                 self.height() + 1,
                 self.unstake_delay_blocks,
@@ -961,6 +994,8 @@ impl Blockchain {
             &mut projected_accounts,
             &mut projected_contracts,
             &mut projected_receipts,
+            &mut projected_token_registry,
+            &mut projected_governance,
             tx,
             self.height() + 1,
             self.unstake_delay_blocks,
@@ -1165,6 +1200,8 @@ impl Blockchain {
         let mut projected_accounts = self.accounts.clone();
         let mut projected_contracts = self.contracts.clone();
         let mut projected_receipts = HashMap::new();
+        let mut projected_token_registry = self.token_registry.clone();
+        let mut projected_governance = self.governance.clone();
         let mut seen_hashes = HashSet::new();
         for (index, pending) in self.pending_transactions.iter().enumerate() {
             if replacement_index == Some(index) {
@@ -1178,6 +1215,8 @@ impl Blockchain {
                 &mut projected_accounts,
                 &mut projected_contracts,
                 &mut projected_receipts,
+                &mut projected_token_registry,
+                &mut projected_governance,
                 pending,
                 self.height() + 1,
                 self.unstake_delay_blocks,
@@ -1191,6 +1230,8 @@ impl Blockchain {
             &mut projected_accounts,
             &mut projected_contracts,
             &mut projected_receipts,
+            &mut projected_token_registry,
+            &mut projected_governance,
             &tx,
             self.height() + 1,
             self.unstake_delay_blocks,
@@ -1239,6 +1280,8 @@ impl Blockchain {
         let mut projected_accounts = self.accounts.clone();
         let mut projected_contracts = self.contracts.clone();
         let mut projected_receipts = HashMap::new();
+        let mut projected_token_registry = self.token_registry.clone();
+        let mut projected_governance = self.governance.clone();
         Self::apply_unstake_unlocks(&mut projected_accounts, height);
         let mut block_txs = Vec::new();
         let mut total_priority_fees = 0u64;
@@ -1255,6 +1298,8 @@ impl Blockchain {
                 &mut projected_accounts,
                 &mut projected_contracts,
                 &mut projected_receipts,
+                &mut projected_token_registry,
+                &mut projected_governance,
                 pending,
                 height,
                 self.unstake_delay_blocks,
@@ -1305,8 +1350,14 @@ impl Blockchain {
             }
         }
         let prev = self.latest_block();
-        let execution =
-            self.validate_block_against_state(&block, prev, &self.accounts, &self.contracts)?;
+        let execution = self.validate_block_against_state(
+            &block,
+            prev,
+            &self.accounts,
+            &self.contracts,
+            &self.token_registry,
+            &self.governance,
+        )?;
 
         // Insert into block tree for fork tracking
         let proposer_address =
@@ -1322,6 +1373,8 @@ impl Blockchain {
         self.accounts = execution.accounts;
         self.contracts = execution.contracts;
         self.receipts.extend(execution.receipts);
+        self.token_registry = execution.token_registry;
+        self.governance = execution.governance;
         self.blocks.push(block.clone());
         self.rebuild_receipt_indexes();
         self.remove_block_transactions_from_mempool(&block);
@@ -1442,7 +1495,9 @@ impl Blockchain {
             }
         }
 
-        replay.accounts == self.accounts && replay.contracts == self.contracts
+        replay.accounts == self.accounts
+            && replay.contracts == self.contracts
+            && replay.token_registry == self.token_registry
     }
 
     /// Attempt to add a block that may fork from the current canonical chain.
@@ -1461,12 +1516,15 @@ impl Blockchain {
             .get(&block.header.prev_hash)
             .ok_or(BlockTreeError::OrphanBlock)?
             .clone();
-        let (parent_accounts, parent_contracts, _) = self.replay_state_to_tip(&parent.hash)?;
+        let (parent_accounts, parent_contracts, _, parent_token_registry, parent_governance) =
+            self.replay_state_to_tip(&parent.hash)?;
         let execution = self.validate_block_against_state(
             &block,
             &parent,
             &parent_accounts,
             &parent_contracts,
+            &parent_token_registry,
+            &parent_governance,
         )?;
 
         // Get proposer stake for weight calculation
@@ -1560,6 +1618,8 @@ impl Blockchain {
                 crate::storage::SCHEMA_VERSION_KEY,
                 &crate::storage::CURRENT_SCHEMA_VERSION,
             )?;
+            storage.put_meta(crate::storage::TOKEN_REGISTRY_KEY, &self.token_registry)?;
+            storage.put_meta(crate::storage::GOVERNANCE_STATE_KEY, &self.governance)?;
             storage.replace_blocks(&self.blocks)?;
             storage.replace_accounts(&self.accounts)?;
             storage.replace_contracts(&self.contracts)?;
@@ -1877,6 +1937,8 @@ impl Blockchain {
         parent: &Block,
         parent_accounts: &HashMap<Vec<u8>, AccountState>,
         parent_contracts: &HashMap<Vec<u8>, ContractState>,
+        parent_token_registry: &TokenRegistry,
+        parent_governance: &GovernanceState,
     ) -> Result<BlockExecution, ChainError> {
         if block.header.height != parent.header.height + 1 {
             return Err(ChainError::InvalidHeight {
@@ -1941,6 +2003,8 @@ impl Blockchain {
         let mut projected_accounts = parent_accounts.clone();
         let mut projected_contracts = parent_contracts.clone();
         let mut projected_receipts = HashMap::new();
+        let mut projected_token_registry = parent_token_registry.clone();
+        let mut projected_governance = parent_governance.clone();
         Self::apply_unstake_unlocks(&mut projected_accounts, block.header.height);
         let mut tx_hashes = HashSet::new();
         let mut priority_fees = 0u64;
@@ -1975,6 +2039,8 @@ impl Blockchain {
                 &mut projected_accounts,
                 &mut projected_contracts,
                 &mut projected_receipts,
+                &mut projected_token_registry,
+                &mut projected_governance,
                 tx,
                 block.header.height,
                 self.unstake_delay_blocks,
@@ -1994,6 +2060,14 @@ impl Blockchain {
                 ));
             }
         }
+
+        let total_active_stake =
+            self.active_validator_total_stake(&projected_accounts, block.header.height);
+        let _ = projected_governance.process_block(
+            block.header.height,
+            total_active_stake,
+            self.epoch_length,
+        );
         if block.header.gas_used != total_gas_used {
             return Err(ChainError::InvalidTransactionFormat(
                 "block gas accounting mismatch",
@@ -2019,6 +2093,8 @@ impl Blockchain {
             accounts: projected_accounts,
             contracts: projected_contracts,
             receipts: projected_receipts,
+            token_registry: projected_token_registry,
+            governance: projected_governance,
         })
     }
 
@@ -2031,6 +2107,8 @@ impl Blockchain {
             HashMap<Vec<u8>, AccountState>,
             HashMap<Vec<u8>, ContractState>,
             HashMap<Vec<u8>, Receipt>,
+            TokenRegistry,
+            GovernanceState,
         ),
         ChainError,
     > {
@@ -2060,20 +2138,30 @@ impl Blockchain {
         let mut accounts = Self::accounts_from_genesis(&self.genesis_config)?;
         let mut contracts = HashMap::new();
         let mut receipts = HashMap::new();
+        let mut token_registry = TokenRegistry::new();
+        let mut governance = GovernanceState::new();
         let mut previous = lineage
             .first()
             .cloned()
             .expect("lineage always includes genesis");
         for block in lineage.iter().skip(1) {
-            let execution =
-                self.validate_block_against_state(block, &previous, &accounts, &contracts)?;
+            let execution = self.validate_block_against_state(
+                block,
+                &previous,
+                &accounts,
+                &contracts,
+                &token_registry,
+                &governance,
+            )?;
             accounts = execution.accounts;
             contracts = execution.contracts;
             receipts.extend(execution.receipts);
+            token_registry = execution.token_registry;
+            governance = execution.governance;
             previous = block.clone();
         }
 
-        Ok((accounts, contracts, receipts))
+        Ok((accounts, contracts, receipts, token_registry, governance))
     }
 
     #[allow(clippy::type_complexity)]
@@ -2085,6 +2173,8 @@ impl Blockchain {
             HashMap<Vec<u8>, AccountState>,
             HashMap<Vec<u8>, ContractState>,
             HashMap<Vec<u8>, Receipt>,
+            TokenRegistry,
+            GovernanceState,
         ),
         ChainError,
     > {
@@ -2113,11 +2203,141 @@ impl Blockchain {
             .saturating_mul(gas_used)
     }
 
+    fn apply_token_or_governance_tx(
+        token_registry: &mut TokenRegistry,
+        governance: &mut GovernanceState,
+        accounts: &HashMap<Vec<u8>, AccountState>,
+        minimum_stake: u64,
+        epoch_length: u64,
+        tx: &Transaction,
+        current_height: u64,
+    ) -> Result<(), ChainError> {
+        match tx.kind {
+            TransactionKind::DeployToken => {
+                let params: crate::token::DeployTokenParams = serde_json::from_slice(&tx.data)
+                    .map_err(|_| {
+                        ChainError::InvalidTransactionFormat("invalid DeployToken JSON in data")
+                    })?;
+                token_registry
+                    .deploy_token(&tx.from, tx.nonce.wrapping_sub(1), &params, current_height)
+                    .map_err(|e| {
+                        ChainError::InvalidTransactionFormat(Box::leak(
+                            format!("token error: {}", e).into_boxed_str(),
+                        ))
+                    })?;
+            }
+            TransactionKind::TokenTransfer => {
+                let params: crate::token::TokenTransferParams = serde_json::from_slice(&tx.data)
+                    .map_err(|_| {
+                        ChainError::InvalidTransactionFormat("invalid TokenTransfer JSON in data")
+                    })?;
+                token_registry
+                    .transfer(
+                        &params.token_address,
+                        &tx.from,
+                        &params.recipient,
+                        params.amount,
+                    )
+                    .map_err(|e| {
+                        ChainError::InvalidTransactionFormat(Box::leak(
+                            format!("token error: {}", e).into_boxed_str(),
+                        ))
+                    })?;
+            }
+            TransactionKind::TokenApprove => {
+                let params: crate::token::TokenApproveParams = serde_json::from_slice(&tx.data)
+                    .map_err(|_| {
+                        ChainError::InvalidTransactionFormat("invalid TokenApprove JSON in data")
+                    })?;
+                token_registry
+                    .approve(
+                        &params.token_address,
+                        &tx.from,
+                        &params.spender,
+                        params.amount,
+                    )
+                    .map_err(|e| {
+                        ChainError::InvalidTransactionFormat(Box::leak(
+                            format!("token error: {}", e).into_boxed_str(),
+                        ))
+                    })?;
+            }
+            TransactionKind::TokenTransferFrom => {
+                let params: crate::token::TokenTransferFromParams =
+                    serde_json::from_slice(&tx.data).map_err(|_| {
+                        ChainError::InvalidTransactionFormat(
+                            "invalid TokenTransferFrom JSON in data",
+                        )
+                    })?;
+                token_registry
+                    .transfer_from(
+                        &params.token_address,
+                        &tx.from,
+                        &params.from,
+                        &params.recipient,
+                        params.amount,
+                    )
+                    .map_err(|e| {
+                        ChainError::InvalidTransactionFormat(Box::leak(
+                            format!("token error: {}", e).into_boxed_str(),
+                        ))
+                    })?;
+            }
+            TransactionKind::SubmitProposal => {
+                let params: crate::governance::SubmitProposalParams =
+                    serde_json::from_slice(&tx.data).map_err(|_| {
+                        ChainError::InvalidTransactionFormat("invalid SubmitProposal JSON in data")
+                    })?;
+                // Verify sender is a validator
+                let sender_account = accounts.get(&tx.from);
+                let is_validator = sender_account.is_some_and(|a| a.staked_balance >= minimum_stake);
+                if !is_validator {
+                    return Err(ChainError::UnauthorizedValidator);
+                }
+                governance
+                    .submit_proposal(&tx.from, &params, current_height, epoch_length)
+                    .map_err(|e| {
+                        ChainError::InvalidTransactionFormat(Box::leak(
+                            format!("governance error: {}", e).into_boxed_str(),
+                        ))
+                    })?;
+            }
+            TransactionKind::GovernanceVote => {
+                let params: crate::governance::GovernanceVoteParams =
+                    serde_json::from_slice(&tx.data).map_err(|_| {
+                        ChainError::InvalidTransactionFormat("invalid GovernanceVote JSON in data")
+                    })?;
+                // Get voter stake
+                let voter_stake = accounts.get(&tx.from).map(|a| a.staked_balance).unwrap_or(0);
+                if voter_stake < minimum_stake {
+                    return Err(ChainError::UnauthorizedValidator);
+                }
+                governance
+                    .vote(
+                        &tx.from,
+                        &params.proposal_id,
+                        &params.vote,
+                        voter_stake,
+                        current_height,
+                    )
+                    .map_err(|e| {
+                        ChainError::InvalidTransactionFormat(Box::leak(
+                            format!("governance error: {}", e).into_boxed_str(),
+                        ))
+                    })?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn apply_user_transaction(
         accounts: &mut HashMap<Vec<u8>, AccountState>,
         contracts: &mut HashMap<Vec<u8>, ContractState>,
         receipts: &mut HashMap<Vec<u8>, Receipt>,
+        token_registry: &mut TokenRegistry,
+        governance: &mut GovernanceState,
         tx: &Transaction,
         current_height: u64,
         unstake_delay_blocks: u64,
@@ -2235,6 +2455,23 @@ impl Blockchain {
                 }
                 maybe_receipt = Some(receipt);
                 call_gas_used
+            }
+            TransactionKind::DeployToken
+            | TransactionKind::TokenTransfer
+            | TransactionKind::TokenApprove
+            | TransactionKind::TokenTransferFrom
+            | TransactionKind::SubmitProposal
+            | TransactionKind::GovernanceVote => {
+                Self::apply_token_or_governance_tx(
+                    token_registry,
+                    governance,
+                    accounts,
+                    minimum_stake,
+                    epoch_length,
+                    tx,
+                    current_height,
+                )?;
+                crate::vm::gas::GAS_BASE_TX
             }
         };
 
@@ -2381,6 +2618,102 @@ impl Blockchain {
                 if tx.gas_limit == 0 {
                     return Err(ChainError::InvalidTransactionFormat(
                         "call contract must specify gas_limit",
+                    ));
+                }
+                Ok(())
+            }
+            TransactionKind::DeployToken => {
+                if tx.chain_id.is_empty() {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "missing transaction chain id",
+                    ));
+                }
+                if tx.from.len() != hash::ADDRESS_LEN {
+                    return Err(ChainError::InvalidSender);
+                }
+                if tx.data.is_empty() {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "deploy token must include token parameters in data",
+                    ));
+                }
+                Ok(())
+            }
+            TransactionKind::TokenTransfer => {
+                if tx.chain_id.is_empty() {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "missing transaction chain id",
+                    ));
+                }
+                if tx.from.len() != hash::ADDRESS_LEN {
+                    return Err(ChainError::InvalidSender);
+                }
+                if tx.data.is_empty() {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "token transfer must include transfer parameters in data",
+                    ));
+                }
+                Ok(())
+            }
+            TransactionKind::TokenApprove => {
+                if tx.chain_id.is_empty() {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "missing transaction chain id",
+                    ));
+                }
+                if tx.from.len() != hash::ADDRESS_LEN {
+                    return Err(ChainError::InvalidSender);
+                }
+                if tx.data.is_empty() {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "token approve must include approve parameters in data",
+                    ));
+                }
+                Ok(())
+            }
+            TransactionKind::TokenTransferFrom => {
+                if tx.chain_id.is_empty() {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "missing transaction chain id",
+                    ));
+                }
+                if tx.from.len() != hash::ADDRESS_LEN {
+                    return Err(ChainError::InvalidSender);
+                }
+                if tx.data.is_empty() {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "token transferFrom must include parameters in data",
+                    ));
+                }
+                Ok(())
+            }
+            TransactionKind::SubmitProposal => {
+                if tx.chain_id.is_empty() {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "missing transaction chain id",
+                    ));
+                }
+                if tx.from.len() != hash::ADDRESS_LEN {
+                    return Err(ChainError::InvalidSender);
+                }
+                if tx.data.is_empty() {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "submit proposal must include proposal parameters in data",
+                    ));
+                }
+                Ok(())
+            }
+            TransactionKind::GovernanceVote => {
+                if tx.chain_id.is_empty() {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "missing transaction chain id",
+                    ));
+                }
+                if tx.from.len() != hash::ADDRESS_LEN {
+                    return Err(ChainError::InvalidSender);
+                }
+                if tx.data.is_empty() {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "governance vote must include vote parameters in data",
                     ));
                 }
                 Ok(())
@@ -2585,6 +2918,8 @@ impl Blockchain {
         let mut accounts = Self::accounts_from_genesis(&self.genesis_config)?;
         let mut contracts = HashMap::new();
         let mut receipts = HashMap::new();
+        let mut token_registry = TokenRegistry::new();
+        let mut governance = GovernanceState::new();
         self.epoch_snapshots.clear();
         self.epoch_snapshots
             .insert(0, self.snapshot_for_accounts(0, &accounts));
@@ -2602,17 +2937,27 @@ impl Blockchain {
                     self.create_epoch_snapshot_from_accounts(epoch, &accounts);
                 }
             }
-            let execution =
-                self.validate_block_against_state(block, &previous, &accounts, &contracts)?;
+            let execution = self.validate_block_against_state(
+                block,
+                &previous,
+                &accounts,
+                &contracts,
+                &token_registry,
+                &governance,
+            )?;
             accounts = execution.accounts;
             contracts = execution.contracts;
             receipts.extend(execution.receipts);
+            token_registry = execution.token_registry;
+            governance = execution.governance;
             previous = block.clone();
         }
 
         self.accounts = accounts;
         self.contracts = contracts;
         self.receipts = receipts;
+        self.token_registry = token_registry;
+        self.governance = governance;
         self.rebuild_receipt_indexes();
         Ok(())
     }
@@ -3630,6 +3975,91 @@ mod tests {
             assert_eq!(restored.gas_used, receipt.gas_used);
             assert_eq!(restored.contract_address, receipt.contract_address);
         }
+    }
+
+    #[test]
+    fn test_restart_restores_token_registry_and_governance() {
+        let dir = tempfile::tempdir().unwrap();
+        let validator = KeyPair::generate();
+        let genesis = GenesisConfig {
+            chain_id: "curs3d-governance-token-test".to_string(),
+            chain_name: "curs3d-governance-token-test".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            unstake_delay_blocks: DEFAULT_UNSTAKE_DELAY_BLOCKS,
+            epoch_length: DEFAULT_EPOCH_LENGTH,
+            jail_duration_blocks: DEFAULT_JAIL_DURATION_BLOCKS,
+            allocations: vec![GenesisAllocation {
+                public_key: hex::encode(&validator.public_key),
+                balance: 1_000_000_000,
+                staked_balance: 5_000,
+            }],
+            ..Default::default()
+        };
+
+        let data_dir = dir.path().join("chain_db");
+        let data_dir_str = data_dir.to_str().unwrap();
+        let mut chain = Blockchain::with_storage(data_dir_str, Some(&genesis)).unwrap();
+
+        let mut deploy_token_tx = Transaction::new(
+            chain.chain_id(),
+            validator.public_key.clone(),
+            Vec::new(),
+            0,
+            100,
+            0,
+        );
+        deploy_token_tx.kind = TransactionKind::DeployToken;
+        deploy_token_tx.data = serde_json::to_vec(&crate::token::DeployTokenParams {
+            name: "Persisted Token".to_string(),
+            symbol: "PST".to_string(),
+            decimals: 6,
+            total_supply: 1_000_000,
+        })
+        .unwrap();
+        deploy_token_tx.sign(&validator);
+        chain.add_transaction(deploy_token_tx).unwrap();
+
+        let mut proposal_tx = Transaction::new(
+            chain.chain_id(),
+            validator.public_key.clone(),
+            Vec::new(),
+            0,
+            100,
+            1,
+        );
+        proposal_tx.kind = TransactionKind::SubmitProposal;
+        proposal_tx.data = serde_json::to_vec(&crate::governance::SubmitProposalParams {
+            kind: crate::governance::ProposalKind::ParameterChange {
+                parameter: "block_gas_limit".to_string(),
+                new_value: 20_000_000,
+            },
+        })
+        .unwrap();
+        proposal_tx.sign(&validator);
+        chain.add_transaction(proposal_tx).unwrap();
+
+        let block = chain.create_block(&validator).unwrap();
+        chain.add_block(block).unwrap();
+
+        let expected_registry = chain.token_registry.clone();
+        let expected_governance_ids: Vec<Vec<u8>> =
+            chain.governance.list_proposals().iter().map(|p| p.id.clone()).collect();
+
+        assert_eq!(expected_registry.tokens.len(), 1);
+        assert_eq!(expected_governance_ids.len(), 1);
+
+        drop(chain);
+
+        let restarted = Blockchain::with_storage(data_dir_str, Some(&genesis)).unwrap();
+        assert_eq!(restarted.token_registry, expected_registry);
+        let restarted_ids: Vec<Vec<u8>> = restarted
+            .governance
+            .list_proposals()
+            .iter()
+            .map(|p| p.id.clone())
+            .collect();
+        assert_eq!(restarted_ids, expected_governance_ids);
     }
 
     #[test]

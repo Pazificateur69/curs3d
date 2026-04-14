@@ -1,0 +1,42 @@
+[package]
+name = "curs3d-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.curs3d]
+path = ".."
+
+[[bin]]
+name = "fuzz_transaction_deser"
+path = "fuzz_targets/fuzz_transaction_deser.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_block_deser"
+path = "fuzz_targets/fuzz_block_deser.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_rpc_parsing"
+path = "fuzz_targets/fuzz_rpc_parsing.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_network_message"
+path = "fuzz_targets/fuzz_network_message.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_merkle_proof"
+path = "fuzz_targets/fuzz_merkle_proof.rs"
+doc = false
+
+[workspace]
+members = ["."]

@@ -17,6 +17,11 @@ pub fn address_bytes_from_public_key(public_key: &[u8]) -> Vec<u8> {
     hash[..ADDRESS_LEN].to_vec()
 }
 
+pub fn address_bytes_from_data(data: &[u8]) -> Vec<u8> {
+    let hash = sha3_hash(data);
+    hash[..ADDRESS_LEN].to_vec()
+}
+
 pub fn address_string_from_public_key(public_key: &[u8]) -> String {
     format!(
         "CUR{}",

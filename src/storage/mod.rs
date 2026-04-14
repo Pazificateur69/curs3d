@@ -26,6 +26,8 @@ const SNAPSHOT_CHUNK_TREE: &str = "snapshot_chunks";
 const HEIGHT_KEY: &[u8] = b"chain_height";
 pub const SCHEMA_VERSION_KEY: &[u8] = b"schema_version";
 pub const CURRENT_SCHEMA_VERSION: u64 = 4;
+pub const TOKEN_REGISTRY_KEY: &[u8] = b"token_registry";
+pub const GOVERNANCE_STATE_KEY: &[u8] = b"governance_state";
 
 // ─── State Sync Snapshot Types ──────────────────────────────────────
 

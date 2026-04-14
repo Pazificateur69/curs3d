@@ -6,7 +6,7 @@
   <a href="https://github.com/Pazificateur69/curs3d/actions"><img src="https://github.com/Pazificateur69/curs3d/workflows/CI/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-2024_edition-orange.svg" alt="Rust 2024"></a>
-  <img src="https://img.shields.io/badge/tests-80%20passing-brightgreen.svg" alt="80 tests">
+  <img src="https://img.shields.io/badge/tests-cargo%20test-brightgreen.svg" alt="cargo test">
   <img src="https://img.shields.io/badge/clippy-0%20warnings-brightgreen.svg" alt="0 clippy warnings">
   <img src="https://img.shields.io/badge/quantum-resistant-blueviolet.svg" alt="Quantum Resistant">
   <br>
@@ -42,11 +42,29 @@ git clone https://github.com/Pazificateur69/curs3d.git
 cd curs3d
 cargo build --release
 
+# Create password files for non-interactive deploys
+printf '%s\n' 'change-this-validator-password' > validator.password
+
 # Create an encrypted wallet (CRYSTALS-Dilithium 5 keypair)
-./target/release/curs3d wallet --output validator.json
+./target/release/curs3d wallet --output validator.json --password-file validator.password
+
+# Generate a real public testnet genesis from the wallet you will operate
+./target/release/curs3d genesis \
+  --output genesis.public-testnet.json \
+  --validator-wallet validator.json \
+  --validator-password-file validator.password
+
+# Publish a stable bootnode address for your VPS
+./target/release/curs3d bootnode-address \
+  --data-dir curs3d_data \
+  --public-addr /dns4/node.example.com/tcp/4337
 
 # Run a validator node
-./target/release/curs3d node --validator-wallet validator.json
+./target/release/curs3d node \
+  --validator-wallet validator.json \
+  --validator-password-file validator.password \
+  --genesis-config genesis.public-testnet.json \
+  --public-addr /dns4/node.example.com/tcp/4337
 
 # The node exposes:
 #   P2P:      0.0.0.0:4337  (Gossipsub + mDNS)
@@ -65,6 +83,15 @@ curl localhost:8080/api/status  # Query the chain
 docker compose down             # Stop
 ```
 
+### Public VPS
+
+Use the deployment assets in [`deploy/`](deploy/):
+
+- [`deploy/DEPLOY_VPS.md`](deploy/DEPLOY_VPS.md)
+- [`deploy/docker-compose.public.yml`](deploy/docker-compose.public.yml)
+- [`deploy/systemd/curs3d.service`](deploy/systemd/curs3d.service)
+- [`deploy/nginx/curs3d.conf`](deploy/nginx/curs3d.conf)
+
 ## What's Built (Current State)
 
 CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technically substantial. Here's what exists in the codebase today, all tested:
@@ -72,7 +99,7 @@ CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technicall
 - **BFT PoS consensus** with epoch-frozen validator sets and 2/3 finality threshold
 - **WASM smart contracts** with Wasmer 5, Cranelift backend, 11 host functions, instruction-level fuel metering
 - **EIP-1559 fee market** with dynamic base fee, separate max/priority fees, gas refunds, mempool pressure management
-- **6 transaction types**: Transfer, Stake, Unstake, Coinbase, DeployContract, CallContract
+- **12 transaction types**: native transfers/staking, WASM contracts, CUR-20 token ops, governance
 - **Fork choice tree** with heaviest-chain rule, automatic reorg, finality boundary, non-canonical pruning
 - **Provable slashing** with cryptographic EquivocationEvidence (dual Dilithium signatures)
 - **State sync** with Merkle-verified snapshot chunks, manifest protocol, finalized checkpoints
@@ -84,7 +111,7 @@ CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technicall
 - **Block explorer** web UI with live dashboard
 - **Docker** multi-stage build + docker-compose
 - **CI/CD** pipeline (check, test, clippy 0 warnings, fmt)
-- **80 tests** across 9 modules, all passing
+- **Repository test suite** exercised through `cargo test`
 
 ### What Remains for Mainnet
 
@@ -176,7 +203,7 @@ CURS3D runs WebAssembly contracts via Wasmer 5 with Cranelift. The VM injects fu
 ## Testing
 
 ```bash
-cargo test           # 80 tests, all passing
+cargo test
 cargo clippy         # 0 warnings (CI enforces -D warnings)
 cargo fmt --check    # Enforced formatting
 ```

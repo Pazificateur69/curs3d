@@ -1,0 +1,40 @@
+[Unit]
+Description=CURS3D public bootstrap node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=curs3d
+Group=curs3d
+WorkingDirectory=/opt/curs3d
+Environment=CURS3D_API_ALLOW_ORIGIN=https://explorer.example.com
+Environment=CURS3D_API_TOKEN=replace-with-long-random-token
+Environment=CURS3D_RPC_TOKEN=replace-with-long-random-token
+Environment=CURS3D_FAUCET_WALLET=/etc/curs3d/faucet.json
+Environment=CURS3D_FAUCET_PASSWORD_FILE=/etc/curs3d/faucet.password
+Environment=CURS3D_FAUCET_FEE=1000
+Environment=CURS3D_FAUCET_COOLDOWN_FILE=/var/lib/curs3d/faucet_cooldowns.json
+ExecStart=/usr/local/bin/curs3d node --port 4337 --data-dir /var/lib/curs3d --validator-wallet /etc/curs3d/validator.json --validator-password-file /etc/curs3d/validator.password --rpc-addr 127.0.0.1:9545 --genesis-config /etc/curs3d/genesis.public-testnet.json --public-addr /dns4/node.example.com/tcp/4337
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=curs3d
+
+# Security hardening
+ProtectSystem=full
+ProtectHome=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+ReadOnlyPaths=/etc/curs3d
+ReadWritePaths=/var/lib/curs3d
+
+# Watchdog
+WatchdogSec=120
+
+[Install]
+WantedBy=multi-user.target

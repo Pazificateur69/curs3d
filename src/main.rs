@@ -2,23 +2,31 @@ mod api;
 mod consensus;
 mod core;
 mod crypto;
+mod governance;
 mod network;
 mod rpc;
 mod storage;
+mod token;
 mod vm;
 mod wallet;
 
 use std::sync::Arc;
+use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use clap::{Parser, Subcommand};
+use libp2p::{Multiaddr, identity};
 use tokio::sync::Mutex;
 use tracing::info;
 
-use crate::core::chain::{AccountState, Blockchain, DEFAULT_MIN_STAKE, GenesisConfig};
+use crate::core::chain::{
+    AccountState, Blockchain, DEFAULT_BLOCK_REWARD, DEFAULT_EPOCH_LENGTH, DEFAULT_MIN_STAKE,
+    GenesisAllocation, GenesisConfig,
+};
 use crate::rpc::{RpcRequest, RpcResponse};
 
 const DEFAULT_DATA_DIR: &str = "curs3d_data";
 const DEFAULT_RPC_ADDR: &str = "127.0.0.1:9545";
+const MICROTOKENS_PER_CUR: u64 = 1_000_000;
 
 #[derive(Parser)]
 #[command(name = "curs3d")]
@@ -38,8 +46,12 @@ enum Commands {
         data_dir: String,
         #[arg(long)]
         validator_wallet: Option<String>,
+        #[arg(long)]
+        validator_password_file: Option<String>,
         #[arg(long = "bootnode")]
         bootnodes: Vec<String>,
+        #[arg(long = "public-addr")]
+        public_addrs: Vec<String>,
         #[arg(long, default_value = DEFAULT_RPC_ADDR)]
         rpc_addr: String,
         #[arg(long)]
@@ -48,14 +60,22 @@ enum Commands {
     Wallet {
         #[arg(short, long, default_value = "wallet.json")]
         output: String,
+        #[arg(long)]
+        password_file: Option<String>,
     },
     Info {
         #[arg(short, long, default_value = "wallet.json")]
         wallet: String,
+        #[arg(long)]
+        password_file: Option<String>,
+        #[arg(long)]
+        json: bool,
     },
     Send {
         #[arg(short, long, default_value = "wallet.json")]
         wallet: String,
+        #[arg(long)]
+        password_file: Option<String>,
         #[arg(short, long)]
         to: String,
         #[arg(short, long)]
@@ -76,6 +96,8 @@ enum Commands {
     Stake {
         #[arg(short, long, default_value = "wallet.json")]
         wallet: String,
+        #[arg(long)]
+        password_file: Option<String>,
         #[arg(short, long)]
         amount: u64,
         #[arg(short, long, default_value_t = 1000)]
@@ -84,6 +106,40 @@ enum Commands {
         data_dir: String,
         #[arg(long, default_value = DEFAULT_RPC_ADDR)]
         rpc_addr: String,
+    },
+    Genesis {
+        #[arg(long, default_value = "deploy/genesis.public-testnet.json")]
+        output: String,
+        #[arg(long, default_value = "curs3d-public-testnet")]
+        chain_id: String,
+        #[arg(long, default_value = "CURS3D Public Testnet")]
+        chain_name: String,
+        #[arg(long)]
+        validator_wallet: String,
+        #[arg(long)]
+        validator_password_file: Option<String>,
+        #[arg(long, default_value_t = 1_500_000)]
+        validator_balance_cur: u64,
+        #[arg(long, default_value_t = 50_000)]
+        validator_stake_cur: u64,
+        #[arg(long)]
+        faucet_wallet: Option<String>,
+        #[arg(long)]
+        faucet_password_file: Option<String>,
+        #[arg(long, default_value_t = 2_000_000)]
+        faucet_balance_cur: u64,
+        #[arg(long, default_value_t = DEFAULT_BLOCK_REWARD / MICROTOKENS_PER_CUR)]
+        block_reward_cur: u64,
+        #[arg(long, default_value_t = DEFAULT_MIN_STAKE / MICROTOKENS_PER_CUR)]
+        minimum_stake_cur: u64,
+        #[arg(long, default_value_t = DEFAULT_EPOCH_LENGTH)]
+        epoch_length: u64,
+    },
+    BootnodeAddress {
+        #[arg(short, long, default_value = DEFAULT_DATA_DIR)]
+        data_dir: String,
+        #[arg(long = "public-addr")]
+        public_addrs: Vec<String>,
     },
 }
 
@@ -97,7 +153,9 @@ async fn main() {
             port,
             data_dir,
             validator_wallet,
+            validator_password_file,
             bootnodes,
+            public_addrs,
             rpc_addr,
             genesis_config,
         } => {
@@ -105,42 +163,112 @@ async fn main() {
                 port,
                 &data_dir,
                 validator_wallet.as_deref(),
+                validator_password_file.as_deref(),
                 &bootnodes,
+                &public_addrs,
                 &rpc_addr,
                 genesis_config.as_deref(),
             )
             .await
         }
-        Commands::Wallet { output } => create_wallet(&output),
-        Commands::Info { wallet: path } => show_wallet_info(&path),
+        Commands::Wallet {
+            output,
+            password_file,
+        } => create_wallet(&output, password_file.as_deref()),
+        Commands::Info {
+            wallet: path,
+            password_file,
+            json,
+        } => show_wallet_info(&path, password_file.as_deref(), json),
         Commands::Send {
             wallet: path,
+            password_file,
             to,
             amount,
             fee,
             data_dir,
             rpc_addr,
-        } => send_tokens(&path, &to, amount, fee, &data_dir, &rpc_addr).await,
+        } => {
+            send_tokens(
+                &path,
+                password_file.as_deref(),
+                &to,
+                amount,
+                fee,
+                &data_dir,
+                &rpc_addr,
+            )
+            .await
+        }
         Commands::Status { data_dir, rpc_addr } => {
             show_status(&data_dir, rpc_addr.as_deref()).await
         }
         Commands::Stake {
             wallet: path,
+            password_file,
             amount,
             fee,
             data_dir,
             rpc_addr,
-        } => stake_tokens(&path, amount, fee, &data_dir, &rpc_addr).await,
+        } => {
+            stake_tokens(
+                &path,
+                password_file.as_deref(),
+                amount,
+                fee,
+                &data_dir,
+                &rpc_addr,
+            )
+            .await
+        }
+        Commands::Genesis {
+            output,
+            chain_id,
+            chain_name,
+            validator_wallet,
+            validator_password_file,
+            validator_balance_cur,
+            validator_stake_cur,
+            faucet_wallet,
+            faucet_password_file,
+            faucet_balance_cur,
+            block_reward_cur,
+            minimum_stake_cur,
+            epoch_length,
+        } => generate_genesis(
+            &output,
+            &chain_id,
+            &chain_name,
+            &validator_wallet,
+            validator_password_file.as_deref(),
+            validator_balance_cur,
+            validator_stake_cur,
+            faucet_wallet.as_deref(),
+            faucet_password_file.as_deref(),
+            faucet_balance_cur,
+            block_reward_cur,
+            minimum_stake_cur,
+            epoch_length,
+        ),
+        Commands::BootnodeAddress {
+            data_dir,
+            public_addrs,
+        } => show_bootnode_addresses(&data_dir, &public_addrs),
     }
 }
 
-fn create_wallet(path: &str) {
+fn create_wallet(path: &str, password_file: Option<&str>) {
     if wallet::Wallet::exists(path) {
         println!("Wallet already exists at {}", path);
         return;
     }
 
-    let password = prompt_password_create();
+    let password = resolve_password(
+        password_file,
+        "CURS3D_WALLET_PASSWORD_FILE",
+        "CURS3D_WALLET_PASSWORD",
+        Some(("Create wallet password: ", true)),
+    );
 
     let w = wallet::Wallet::new();
     match w.save_encrypted(path, &password) {
@@ -157,26 +285,48 @@ fn create_wallet(path: &str) {
     }
 }
 
-fn show_wallet_info(path: &str) {
-    let password = prompt_password("Enter wallet password: ");
+fn show_wallet_info(path: &str, password_file: Option<&str>, json: bool) {
+    let password = resolve_password(
+        password_file,
+        "CURS3D_WALLET_PASSWORD_FILE",
+        "CURS3D_WALLET_PASSWORD",
+        Some(("Enter wallet password: ", false)),
+    );
     match wallet::Wallet::load_auto(path, &password) {
         Ok(w) => {
-            println!("=== CURS3D Wallet ===");
-            println!("Address:    {}", w.address);
-            println!("Public Key: {}...", &w.keypair.public_key_hex()[..32]);
-            println!("Algorithm:  CRYSTALS-Dilithium (Level 5)");
-            println!("Encryption: AES-256-GCM + Argon2");
+            if json {
+                let payload = serde_json::json!({
+                    "address": w.address,
+                    "public_key": w.keypair.public_key_hex(),
+                    "algorithm": "CRYSTALS-Dilithium (Level 5)",
+                    "encryption": "AES-256-GCM + Argon2"
+                });
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&payload)
+                        .expect("wallet info json must serialize")
+                );
+            } else {
+                println!("=== CURS3D Wallet ===");
+                println!("Address:    {}", w.address);
+                println!("Public Key: {}", w.keypair.public_key_hex());
+                println!("Algorithm:  CRYSTALS-Dilithium (Level 5)");
+                println!("Encryption: AES-256-GCM + Argon2");
+            }
         }
         Err(wallet::WalletError::WrongPassword) => eprintln!("Error: Wrong password."),
         Err(e) => eprintln!("Failed to load wallet: {}", e),
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_node(
     port: u16,
     data_dir: &str,
     validator_wallet: Option<&str>,
+    validator_password_file: Option<&str>,
     bootnodes: &[String],
+    public_addrs: &[String],
     rpc_addr: &str,
     genesis_config_path: Option<&str>,
 ) {
@@ -194,6 +344,10 @@ async fn run_node(
 
     println!("Starting CURS3D node on port {}...", port);
     println!("Data directory: {}", data_dir);
+    if let Err(err) = fs::create_dir_all(data_dir) {
+        eprintln!("Failed to create data directory: {}", err);
+        return;
+    }
 
     let genesis_config = match load_genesis_config(genesis_config_path) {
         Ok(config) => config,
@@ -230,7 +384,12 @@ async fn run_node(
     let chain = Arc::new(Mutex::new(chain));
 
     let validator_key = if let Some(wallet_path) = validator_wallet {
-        let password = prompt_password("Enter validator wallet password: ");
+        let password = resolve_password(
+            validator_password_file,
+            "CURS3D_VALIDATOR_PASSWORD_FILE",
+            "CURS3D_VALIDATOR_PASSWORD",
+            Some(("Enter validator wallet password: ", false)),
+        );
         match wallet::Wallet::load_auto(wallet_path, &password) {
             Ok(w) => {
                 println!("Validator wallet loaded: {}", w.address);
@@ -276,7 +435,35 @@ async fn run_node(
         }
     });
 
-    match network::NetworkNode::new(port, bootnodes, &network_topic).await {
+    let p2p_identity = match load_or_create_p2p_identity(data_dir) {
+        Ok(keypair) => keypair,
+        Err(err) => {
+            eprintln!("Failed to load P2P identity: {}", err);
+            return;
+        }
+    };
+    let public_multiaddrs = match parse_multiaddrs(public_addrs) {
+        Ok(addrs) => addrs,
+        Err(err) => {
+            eprintln!("Invalid public address: {}", err);
+            return;
+        }
+    };
+    let bootnode_addresses = build_bootnode_addresses(&p2p_identity, &public_multiaddrs);
+    if let Err(err) = persist_bootnode_addresses(data_dir, &bootnode_addresses) {
+        eprintln!("Failed to persist bootnode addresses: {}", err);
+        return;
+    }
+
+    match network::NetworkNode::new(
+        port,
+        bootnodes,
+        &network_topic,
+        p2p_identity,
+        &public_multiaddrs,
+    )
+    .await
+    {
         Ok(mut node) => {
             let (active_validators, pending_txs, chain_id, chain_name, genesis_hash) = {
                 let chain_lock = chain.lock().await;
@@ -302,6 +489,16 @@ async fn run_node(
             println!("Active validators: {}", active_validators);
             println!("Pending txs: {}", pending_txs);
             println!("Bootnodes: {}", bootnodes.len());
+            if bootnode_addresses.is_empty() {
+                println!(
+                    "Bootnode publish addresses: none configured (use --public-addr to publish WAN bootstrap addresses)"
+                );
+            } else {
+                println!("Bootnode publish addresses:");
+                for address in &bootnode_addresses {
+                    println!("  {}", address);
+                }
+            }
             if let Some(ref keypair) = validator_key {
                 let stake = {
                     let chain_lock = chain.lock().await;
@@ -320,7 +517,7 @@ async fn run_node(
             println!("Press Ctrl+C to stop the node.");
 
             tokio::select! {
-                _ = node.run_with_chain(chain, outbound_rx, validator_key) => {}
+                _ = node.run_with_chain(chain, outbound_rx, validator_key, Some(event_tx.clone())) => {}
                 rpc_result = rpc_task => {
                     match rpc_result {
                         Ok(Ok(())) => {}
@@ -354,13 +551,19 @@ async fn run_node(
 
 async fn send_tokens(
     wallet_path: &str,
+    password_file: Option<&str>,
     to: &str,
     amount: u64,
     fee: u64,
     data_dir: &str,
     rpc_addr: &str,
 ) {
-    let password = prompt_password("Enter wallet password: ");
+    let password = resolve_password(
+        password_file,
+        "CURS3D_WALLET_PASSWORD_FILE",
+        "CURS3D_WALLET_PASSWORD",
+        Some(("Enter wallet password: ", false)),
+    );
     let w = match wallet::Wallet::load_auto(wallet_path, &password) {
         Ok(w) => w,
         Err(wallet::WalletError::WrongPassword) => {
@@ -506,8 +709,20 @@ async fn show_status(data_dir: &str, rpc_addr: Option<&str>) {
     );
 }
 
-async fn stake_tokens(wallet_path: &str, amount: u64, fee: u64, data_dir: &str, rpc_addr: &str) {
-    let password = prompt_password("Enter wallet password: ");
+async fn stake_tokens(
+    wallet_path: &str,
+    password_file: Option<&str>,
+    amount: u64,
+    fee: u64,
+    data_dir: &str,
+    rpc_addr: &str,
+) {
+    let password = resolve_password(
+        password_file,
+        "CURS3D_WALLET_PASSWORD_FILE",
+        "CURS3D_WALLET_PASSWORD",
+        Some(("Enter wallet password: ", false)),
+    );
     let w = match wallet::Wallet::load_auto(wallet_path, &password) {
         Ok(w) => w,
         Err(wallet::WalletError::WrongPassword) => {
@@ -631,6 +846,169 @@ async fn resolve_chain_id(data_dir: &str, rpc_addr: &str) -> Result<String, Stri
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn generate_genesis(
+    output: &str,
+    chain_id: &str,
+    chain_name: &str,
+    validator_wallet: &str,
+    validator_password_file: Option<&str>,
+    validator_balance_cur: u64,
+    validator_stake_cur: u64,
+    faucet_wallet: Option<&str>,
+    faucet_password_file: Option<&str>,
+    faucet_balance_cur: u64,
+    block_reward_cur: u64,
+    minimum_stake_cur: u64,
+    epoch_length: u64,
+) {
+    let validator_password = resolve_password(
+        validator_password_file,
+        "CURS3D_VALIDATOR_PASSWORD_FILE",
+        "CURS3D_VALIDATOR_PASSWORD",
+        Some(("Enter validator wallet password: ", false)),
+    );
+    let validator = match wallet::Wallet::load_auto(validator_wallet, &validator_password) {
+        Ok(wallet) => wallet,
+        Err(err) => {
+            eprintln!("Failed to load validator wallet: {}", err);
+            return;
+        }
+    };
+
+    let mut allocations = BTreeMap::<String, (u64, u64)>::new();
+    allocations.insert(
+        validator.keypair.public_key_hex(),
+        (
+            validator_balance_cur.saturating_mul(MICROTOKENS_PER_CUR),
+            validator_stake_cur.saturating_mul(MICROTOKENS_PER_CUR),
+        ),
+    );
+
+    let faucet_summary = if let Some(path) = faucet_wallet {
+        let faucet_password = resolve_password(
+            faucet_password_file,
+            "CURS3D_FAUCET_PASSWORD_FILE",
+            "CURS3D_FAUCET_PASSWORD",
+            Some(("Enter faucet wallet password: ", false)),
+        );
+        let faucet = match wallet::Wallet::load_auto(path, &faucet_password) {
+            Ok(wallet) => wallet,
+            Err(err) => {
+                eprintln!("Failed to load faucet wallet: {}", err);
+                return;
+            }
+        };
+        let entry = allocations
+            .entry(faucet.keypair.public_key_hex())
+            .or_insert((0, 0));
+        entry.0 = entry
+            .0
+            .saturating_add(faucet_balance_cur.saturating_mul(MICROTOKENS_PER_CUR));
+        Some((faucet.address, path.to_string()))
+    } else {
+        None
+    };
+
+    let mut genesis = GenesisConfig {
+        chain_id: chain_id.to_string(),
+        chain_name: chain_name.to_string(),
+        block_reward: block_reward_cur.saturating_mul(MICROTOKENS_PER_CUR),
+        minimum_stake: minimum_stake_cur.saturating_mul(MICROTOKENS_PER_CUR),
+        epoch_length,
+        ..GenesisConfig::default()
+    };
+    genesis.allocations = allocations
+        .into_iter()
+        .map(
+            |(public_key, (balance, staked_balance))| GenesisAllocation {
+                public_key,
+                balance,
+                staked_balance,
+            },
+        )
+        .collect();
+
+    let output_path = PathBuf::from(output);
+    if let Some(parent) = output_path.parent()
+        && let Err(err) = fs::create_dir_all(parent)
+    {
+        eprintln!("Failed to create genesis directory: {}", err);
+        return;
+    }
+    let raw = match serde_json::to_string_pretty(&genesis) {
+        Ok(raw) => raw,
+        Err(err) => {
+            eprintln!("Failed to serialize genesis config: {}", err);
+            return;
+        }
+    };
+    if let Err(err) = fs::write(&output_path, raw) {
+        eprintln!("Failed to write genesis config: {}", err);
+        return;
+    }
+
+    println!("=== CURS3D Public Testnet Genesis ===");
+    println!("Output:              {}", output_path.display());
+    println!("Chain ID:            {}", genesis.chain_id);
+    println!("Chain Name:          {}", genesis.chain_name);
+    println!("Validator Wallet:    {}", validator_wallet);
+    println!("Validator Address:   {}", validator.address);
+    println!("Validator Stake:     {} CURS3D", validator_stake_cur);
+    println!("Validator Balance:   {} CURS3D", validator_balance_cur);
+    if let Some((faucet_address, faucet_path)) = faucet_summary {
+        println!("Faucet Wallet:       {}", faucet_path);
+        println!("Faucet Address:      {}", faucet_address);
+        println!("Faucet Allocation:   {} CURS3D", faucet_balance_cur);
+    }
+    println!("Minimum Stake:       {} CURS3D", minimum_stake_cur);
+    println!("Block Reward:        {} CURS3D", block_reward_cur);
+    println!("Epoch Length:        {}", epoch_length);
+    println!();
+    println!(
+        "Next step: publish {} and start the bootstrap validator with this file.",
+        output_path.display()
+    );
+}
+
+fn show_bootnode_addresses(data_dir: &str, public_addrs: &[String]) {
+    if let Err(err) = fs::create_dir_all(data_dir) {
+        eprintln!("Failed to create data directory: {}", err);
+        return;
+    }
+    let identity = match load_or_create_p2p_identity(data_dir) {
+        Ok(identity) => identity,
+        Err(err) => {
+            eprintln!("Failed to load P2P identity: {}", err);
+            return;
+        }
+    };
+    let multiaddrs = match parse_multiaddrs(public_addrs) {
+        Ok(addrs) => addrs,
+        Err(err) => {
+            eprintln!("Invalid public address: {}", err);
+            return;
+        }
+    };
+    let addresses = build_bootnode_addresses(&identity, &multiaddrs);
+    if let Err(err) = persist_bootnode_addresses(data_dir, &addresses) {
+        eprintln!("Failed to persist bootnode addresses: {}", err);
+        return;
+    }
+
+    println!("=== CURS3D Bootnode Addresses ===");
+    println!("PeerId: {}", identity.public().to_peer_id());
+    if addresses.is_empty() {
+        println!(
+            "No public addresses supplied. Pass --public-addr /dns4/node.example.com/tcp/4337"
+        );
+        return;
+    }
+    for address in addresses {
+        println!("{}", address);
+    }
+}
+
 fn load_genesis_config(path: Option<&str>) -> Result<Option<GenesisConfig>, String> {
     let Some(path) = path else {
         return Ok(None);
@@ -658,6 +1036,105 @@ fn decode_address(value: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+fn parse_multiaddrs(values: &[String]) -> Result<Vec<Multiaddr>, String> {
+    values
+        .iter()
+        .map(|value| value.parse::<Multiaddr>().map_err(|err| err.to_string()))
+        .collect()
+}
+
+fn p2p_identity_path(data_dir: &str) -> PathBuf {
+    PathBuf::from(data_dir).join("p2p_identity.pb")
+}
+
+fn bootnode_addresses_path(data_dir: &str) -> PathBuf {
+    PathBuf::from(data_dir).join("bootnode.addrs")
+}
+
+fn load_or_create_p2p_identity(data_dir: &str) -> Result<identity::Keypair, String> {
+    let path = p2p_identity_path(data_dir);
+    if path.exists() {
+        let bytes = fs::read(&path).map_err(|err| err.to_string())?;
+        return identity::Keypair::from_protobuf_encoding(&bytes).map_err(|err| err.to_string());
+    }
+
+    let keypair = identity::Keypair::generate_ed25519();
+    let encoded = keypair
+        .to_protobuf_encoding()
+        .map_err(|err| err.to_string())?;
+    fs::write(&path, encoded).map_err(|err| err.to_string())?;
+    Ok(keypair)
+}
+
+fn build_bootnode_addresses(
+    keypair: &identity::Keypair,
+    public_addrs: &[Multiaddr],
+) -> Vec<String> {
+    let peer_id = keypair.public().to_peer_id();
+    public_addrs
+        .iter()
+        .map(|addr| format!("{}/p2p/{}", addr, peer_id))
+        .collect()
+}
+
+fn persist_bootnode_addresses(data_dir: &str, addresses: &[String]) -> Result<(), String> {
+    let path = bootnode_addresses_path(data_dir);
+    let contents = if addresses.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", addresses.join("\n"))
+    };
+    fs::write(path, contents).map_err(|err| err.to_string())
+}
+
+fn resolve_password(
+    explicit_file: Option<&str>,
+    env_file_var: &str,
+    env_value_var: &str,
+    prompt: Option<(&str, bool)>,
+) -> String {
+    if let Some(path) = explicit_file {
+        return read_password_file(path);
+    }
+
+    if let Ok(path) = std::env::var(env_file_var)
+        && !path.trim().is_empty()
+    {
+        return read_password_file(&path);
+    }
+
+    if let Ok(value) = std::env::var(env_value_var)
+        && !value.is_empty()
+    {
+        return value;
+    }
+
+    match prompt {
+        Some((message, true)) => prompt_password_create_with_prompt(message),
+        Some((message, false)) => prompt_password(message),
+        None => {
+            eprintln!(
+                "Missing password. Provide --password-file, {} or {}.",
+                env_file_var, env_value_var
+            );
+            std::process::exit(1);
+        }
+    }
+}
+
+fn read_password_file(path: &str) -> String {
+    let secret = fs::read_to_string(path).unwrap_or_else(|err| {
+        eprintln!("Failed to read password file {}: {}", path, err);
+        std::process::exit(1);
+    });
+    let trimmed = secret.trim().to_string();
+    if trimmed.is_empty() {
+        eprintln!("Password file {} is empty.", path);
+        std::process::exit(1);
+    }
+    trimmed
+}
+
 fn prompt_password(prompt: &str) -> String {
     rpassword::prompt_password(prompt).unwrap_or_else(|_| {
         eprintln!("Failed to read password");
@@ -665,8 +1142,8 @@ fn prompt_password(prompt: &str) -> String {
     })
 }
 
-fn prompt_password_create() -> String {
-    let pass1 = prompt_password("Create wallet password: ");
+fn prompt_password_create_with_prompt(prompt: &str) -> String {
+    let pass1 = prompt_password(prompt);
     let pass2 = prompt_password("Confirm password: ");
 
     if pass1 != pass2 {

@@ -3,612 +3,245 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CURS3D — Quantum-Resistant Layer 1 Blockchain</title>
-    <meta name="description" content="CURS3D is a post-quantum Layer 1 blockchain built from scratch in Rust. CRYSTALS-Dilithium 5 signatures, BFT PoS consensus, WASM smart contracts, EIP-1559 fee market, 79 passing tests. Open source, MIT License.">
+    <title>CURS3D | Quantum-Secure Layer 1</title>
+    <meta name="description" content="CURS3D is the quantum-secure Layer 1 for digital assets that need to last. Post-quantum signatures, PoS finality, WASM execution, token and governance primitives, and a long-horizon trust thesis.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-    <canvas id="particles"></canvas>
-    <div class="orb orb-1"></div>
-    <div class="orb orb-2"></div>
-    <div class="orb orb-3"></div>
-
-    <!-- Navigation -->
-    <nav id="nav">
-        <div class="nav-container">
-            <a href="#" class="logo">
-                <span class="logo-diamond"></span>
-                CURS3D
-            </a>
-            <div class="nav-links" id="navLinks">
-                <a href="docs.html">Documentation</a>
-                <a href="examples.html">Tutorials</a>
+<div class="site-shell">
+    <nav class="site-nav" id="nav">
+        <div class="container nav-inner">
+            <a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a>
+            <div class="nav-links">
+                <a href="docs.html">Docs</a>
+                <a href="examples.html">Examples</a>
                 <a href="whitepaper.html">Whitepaper</a>
                 <a href="explorer.html">Explorer</a>
-                <a href="#features">Features</a>
-                <a href="#technology">Tech Stack</a>
-                <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener" class="btn-nav">
-                    GitHub
-                    <span class="btn-nav-arrow">&rarr;</span>
-                </a>
+                <a class="nav-cta" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
             </div>
-            <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+            <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
                 <span></span><span></span><span></span>
             </button>
         </div>
+        <div class="mobile-menu" id="mobileMenu">
+            <a href="docs.html">Docs</a>
+            <a href="examples.html">Examples</a>
+            <a href="whitepaper.html">Whitepaper</a>
+            <a href="explorer.html">Explorer</a>
+            <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
+        </div>
     </nav>
 
-    <div class="mobile-menu" id="mobileMenu">
-        <a href="docs.html">Documentation</a>
-        <a href="examples.html">Tutorials</a>
-        <a href="whitepaper.html">Whitepaper</a>
-        <a href="explorer.html">Explorer</a>
-        <a href="#features">Features</a>
-        <a href="#technology">Tech Stack</a>
-        <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub &rarr;</a>
-    </div>
-
-    <!-- ═══════════ Hero ═══════════ -->
-    <section class="hero">
-        <div class="hero-content">
-            <div class="badge">
-                <span class="pulse-dot"></span>
-                DEVNET LIVE &mdash; OPEN SOURCE
-            </div>
-            <h1>
-                Blockchain infrastructure<br>
-                for the <span class="gradient-text animated-gradient">post-quantum</span> era.
-            </h1>
-            <p class="hero-sub">
-                A Layer 1 protocol written from scratch in Rust with NIST-standardized
-                post-quantum cryptography, BFT consensus, WASM smart contracts,
-                and an EIP-1559 fee market. Every line of code is original. Every claim is verifiable.
-            </p>
-            <div class="hero-buttons">
-                <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener" class="btn btn-primary">
-                    View Source Code
-                    <span class="btn-icon">&rarr;</span>
-                </a>
-                <a href="whitepaper.html" class="btn btn-secondary">
-                    Read the Whitepaper
-                </a>
-            </div>
-            <div class="terminal">
-                <div class="terminal-header">
-                    <span class="dot red"></span>
-                    <span class="dot yellow"></span>
-                    <span class="dot green"></span>
-                    <span class="terminal-title">terminal</span>
+    <main>
+        <section class="hero">
+            <div class="container hero-grid">
+                <div class="hero-copy reveal">
+                    <span class="eyebrow">Quantum-Secure Layer 1</span>
+                    <h1>The Layer 1 built for assets that <span class="gradient-text">need to last</span>.</h1>
+                    <p class="lede">CURS3D is a post-quantum blockchain built in Rust for long-duration digital assets, trust-critical on-chain systems, and teams that want a clearer long-horizon security posture from day one.</p>
+                    <div class="pill-row" style="margin: 1.25rem 0 1.5rem;">
+                        <span class="pill">Post-quantum signatures</span>
+                        <span class="pill">PoS + explicit finality</span>
+                        <span class="pill">WASM execution</span>
+                        <span class="pill">Token + governance primitives</span>
+                    </div>
+                    <div class="btn-row">
+                        <a class="btn btn-primary" href="whitepaper.html">Read the thesis</a>
+                        <a class="btn btn-secondary" href="docs.html">Open the docs</a>
+                        <a class="btn btn-tertiary" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">Inspect the code</a>
+                    </div>
                 </div>
-                <div class="terminal-body" id="terminalBody">
-                    <div class="terminal-line"><span class="prompt">$</span> <span class="cmd">cargo test -j1 2>&1 | tail -3</span></div>
-                    <div class="terminal-line"><span class="output success">test result: ok. 79 passed; 0 failed; 0 ignored</span></div>
-                    <div class="terminal-line"><span class="output"> </span></div>
-                    <div class="terminal-line"><span class="prompt">$</span> <span class="cmd">curs3d wallet --output validator.json</span></div>
-                    <div class="terminal-line"><span class="output success">=== CURS3D Wallet Created ===</span></div>
-                    <div class="terminal-line"><span class="output">Address: CUR7f3a1b...9c2d</span></div>
-                    <div class="terminal-line"><span class="output">Keys: CRYSTALS-Dilithium Level 5 (AES-256-GCM encrypted)</span></div>
-                    <div class="terminal-line"><span class="output"> </span></div>
-                    <div class="terminal-line"><span class="prompt">$</span> <span class="cmd">curs3d node --validator-wallet validator.json</span></div>
-                    <div class="terminal-line"><span class="output success">Chain ID:   curs3d-devnet</span></div>
-                    <div class="terminal-line"><span class="output">P2P:        0.0.0.0:4337 (Gossipsub + mDNS)</span></div>
-                    <div class="terminal-line"><span class="output">HTTP API:   http://127.0.0.1:8080</span></div>
-                    <div class="terminal-line"><span class="output">RPC:        127.0.0.1:9545</span></div>
-                    <div class="terminal-line"><span class="output success">Producing blocks every 10s. Press Ctrl+C to stop.</span></div>
-                    <div class="terminal-line"><span class="prompt">$</span> <span class="cursor">|</span></div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ═══════════ Stats ═══════════ -->
-    <section class="stats">
-        <div class="stats-container">
-            <div class="stat-item reveal">
-                <span class="stat-value gradient-text">Dilithium 5</span>
-                <span class="stat-label">NIST FIPS 204</span>
-            </div>
-            <div class="stat-divider"></div>
-            <div class="stat-item reveal">
-                <span class="stat-value gradient-text">SHA-3</span>
-                <span class="stat-label">Keccak-256</span>
-            </div>
-            <div class="stat-divider"></div>
-            <div class="stat-item reveal">
-                <span class="stat-value gradient-text">BFT 2/3</span>
-                <span class="stat-label">Finality threshold</span>
-            </div>
-            <div class="stat-divider"></div>
-            <div class="stat-item reveal">
-                <span class="stat-value gradient-text">WASM</span>
-                <span class="stat-label">Smart contracts</span>
-            </div>
-            <div class="stat-divider"></div>
-            <div class="stat-item reveal">
-                <span class="stat-value gradient-text">79/79</span>
-                <span class="stat-label">Tests passing</span>
-            </div>
-            <div class="stat-divider"></div>
-            <div class="stat-item reveal">
-                <span class="stat-value gradient-text">MIT</span>
-                <span class="stat-label">Open source</span>
-            </div>
-        </div>
-    </section>
-
-    <!-- ═══════════ Architecture ═══════════ -->
-    <section class="architecture-section" id="architecture">
-        <div class="section-container">
-            <div class="section-header reveal">
-                <span class="section-tag">Architecture</span>
-                <h2>A complete protocol stack,<br><span class="gradient-text">built from zero</span></h2>
-                <p class="section-sub">9 modules. No fork of Ethereum, Cosmos, or Substrate. Every component is purpose-built for post-quantum security.</p>
-            </div>
-            <div class="arch-stack">
-                <div class="arch-layer arch-layer-full reveal">
-                    <div class="arch-layer-label">Application Layer</div>
-                    <div class="arch-layer-value">REST API (hyper 1.x) + TCP RPC + CLI (clap 4)</div>
-                </div>
-                <div class="arch-layer reveal">
-                    <div class="arch-layer-label">Execution</div>
-                    <div class="arch-layer-value">Wasmer 5 WASM VM</div>
-                </div>
-                <div class="arch-layer reveal">
-                    <div class="arch-layer-label">Fee Market</div>
-                    <div class="arch-layer-value">EIP-1559 Dynamic</div>
-                </div>
-                <div class="arch-layer reveal">
-                    <div class="arch-layer-label">Smart Contracts</div>
-                    <div class="arch-layer-value">Deploy + Call + Gas</div>
-                </div>
-                <div class="arch-layer reveal">
-                    <div class="arch-layer-label">Consensus</div>
-                    <div class="arch-layer-value">BFT PoS + Epochs</div>
-                </div>
-                <div class="arch-layer reveal">
-                    <div class="arch-layer-label">Fork Choice</div>
-                    <div class="arch-layer-value">Heaviest Chain</div>
-                </div>
-                <div class="arch-layer reveal">
-                    <div class="arch-layer-label">Finality</div>
-                    <div class="arch-layer-value">2/3 Stake Votes</div>
-                </div>
-                <div class="arch-layer reveal">
-                    <div class="arch-layer-label">Networking</div>
-                    <div class="arch-layer-value">libp2p Gossipsub</div>
-                </div>
-                <div class="arch-layer reveal">
-                    <div class="arch-layer-label">State Sync</div>
-                    <div class="arch-layer-value">Merkle Snapshots</div>
-                </div>
-                <div class="arch-layer reveal">
-                    <div class="arch-layer-label">Security</div>
-                    <div class="arch-layer-value">Slashing + Jail</div>
-                </div>
-                <div class="arch-layer arch-layer-full reveal">
-                    <div class="arch-layer-label">Cryptographic Foundation</div>
-                    <div class="arch-layer-value">CRYSTALS-Dilithium 5 + SHA-3 Keccak-256 + AES-256-GCM + Argon2</div>
-                </div>
-                <div class="arch-layer arch-layer-full reveal">
-                    <div class="arch-layer-label">Persistence</div>
-                    <div class="arch-layer-value">sled DB (blocks, accounts, contracts, receipts, epochs, snapshots) &mdash; Schema v4</div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ═══════════ Features ═══════════ -->
-    <section class="features" id="features">
-        <div class="section-container">
-            <div class="section-header reveal">
-                <span class="section-tag">Core Capabilities</span>
-                <h2>What's already <span class="gradient-text">built and tested</span></h2>
-                <p class="section-sub">Every feature listed below exists in the codebase today. No roadmap promises &mdash; this is what the code does right now.</p>
-            </div>
-            <div class="features-grid features-grid-4">
-                <div class="feature-card reveal">
-                    <div class="feature-icon-wrap"><span class="feature-icon-symbol">&loz;</span></div>
-                    <h3>Post-Quantum Signatures</h3>
-                    <p>CRYSTALS-Dilithium Level 5 (NIST FIPS 204) for block and transaction signatures. Future-proof against Shor's algorithm. Tested with 5 crypto unit tests.</p>
-                </div>
-                <div class="feature-card reveal">
-                    <div class="feature-icon-wrap"><span class="feature-icon-symbol">&#9671;</span></div>
-                    <h3>WASM Smart Contracts</h3>
-                    <p>Wasmer 5 with Cranelift backend. Per-instruction fuel metering via middleware injection. 11 host functions for storage, logs, and input. Tested with 8 VM unit tests.</p>
-                </div>
-                <div class="feature-card reveal">
-                    <div class="feature-icon-wrap"><span class="feature-icon-symbol">&equiv;</span></div>
-                    <h3>BFT Finality</h3>
-                    <p>Signed FinalityVotes accumulated per block. Finality triggers at 2/3 of total staked amount. Epoch-frozen validator sets prevent mid-epoch manipulation. 8 consensus tests.</p>
-                </div>
-                <div class="feature-card reveal">
-                    <div class="feature-icon-wrap"><span class="feature-icon-symbol">&#9670;</span></div>
-                    <h3>EIP-1559 Fee Market</h3>
-                    <p>Dynamic base_fee_per_gas adjusts each block toward 50% gas target. Separate max_fee and priority_fee. Base fee burned, priority fee to proposer. Gas refunds on unused allocation.</p>
-                </div>
-                <div class="feature-card reveal">
-                    <div class="feature-icon-wrap"><span class="feature-icon-symbol">&perp;</span></div>
-                    <h3>Fork Choice + Reorgs</h3>
-                    <p>BlockTree tracks all known blocks including forks. Heaviest-chain rule by cumulative proposer stake. Automatic reorg with finality boundary. Non-canonical pruning. 5 blocktree tests.</p>
-                </div>
-                <div class="feature-card reveal">
-                    <div class="feature-icon-wrap"><span class="feature-icon-symbol">&times;</span></div>
-                    <h3>Provable Slashing</h3>
-                    <p>EquivocationEvidence carries two signed block headers at the same height. Cryptographically verified before penalty. 33% stake slash + 64-block jail. Evidence persisted to disk.</p>
-                </div>
-                <div class="feature-card reveal">
-                    <div class="feature-icon-wrap"><span class="feature-icon-symbol">&#8644;</span></div>
-                    <h3>State Sync</h3>
-                    <p>Full snapshot with bincode-serialized state, chunked at 256KB. Each chunk Merkle-proved against manifest root. Snapshot preferably based on finalized height. Network protocol included.</p>
-                </div>
-                <div class="feature-card reveal">
-                    <div class="feature-icon-wrap"><span class="feature-icon-symbol">&#8593;</span></div>
-                    <h3>Protocol Governance</h3>
-                    <p>Protocol version in every block header. Upgrade activation at configured height. Network topic derived from chain_id + version. Incompatible peers automatically filtered.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ═══════════ Honest Status ═══════════ -->
-    <section class="status-section" id="status">
-        <div class="section-container">
-            <div class="section-header reveal">
-                <span class="section-tag">Current Status</span>
-                <h2>Where we are <span class="gradient-text">today</span></h2>
-                <p class="section-sub">Full transparency. Here's what's built and what remains before mainnet. No hand-waving.</p>
-            </div>
-            <div class="status-grid">
-                <div class="status-card reveal">
-                    <h3 style="color: var(--green2);">Implemented &amp; Tested</h3>
-                    <ul>
-                        <li><span class="status-check">&#10003;</span> BFT PoS consensus with 2/3 finality</li>
-                        <li><span class="status-check">&#10003;</span> CRYSTALS-Dilithium 5 + SHA-3</li>
-                        <li><span class="status-check">&#10003;</span> WASM VM with instruction metering</li>
-                        <li><span class="status-check">&#10003;</span> EIP-1559 dynamic fee market</li>
-                        <li><span class="status-check">&#10003;</span> Fork choice + finality boundary</li>
-                        <li><span class="status-check">&#10003;</span> Provable slashing with evidence</li>
-                        <li><span class="status-check">&#10003;</span> State sync with Merkle proofs</li>
-                        <li><span class="status-check">&#10003;</span> Epoch snapshots + validator rotation</li>
-                        <li><span class="status-check">&#10003;</span> Encrypted wallets (AES-256-GCM)</li>
-                        <li><span class="status-check">&#10003;</span> REST API + RPC + CLI</li>
-                        <li><span class="status-check">&#10003;</span> Persistent storage (sled, schema v4)</li>
-                        <li><span class="status-check">&#10003;</span> Protocol versioning + upgrades</li>
-                        <li><span class="status-check">&#10003;</span> Docker + CI/CD pipeline</li>
-                        <li><span class="status-check">&#10003;</span> 79 tests passing across 9 modules</li>
+                <aside class="hero-panel reveal">
+                    <span class="eyebrow gold">Built to Endure</span>
+                    <ul class="stack-list" style="margin-top: 1rem;">
+                        <li><span class="list-key">Category</span><span>Quantum-secure infrastructure for long-duration digital assets.</span></li>
+                        <li><span class="list-key">Positioning</span><span>Not another generic L1. A trust layer for issuers and systems that care about cryptographic durability.</span></li>
+                        <li><span class="list-key">Current state</span><span>Rust node, APIs, explorer, WASM execution, token and governance surfaces, operator path.</span></li>
+                        <li><span class="list-key">Brand promise</span><span>What you issue on CURS3D is built to endure.</span></li>
                     </ul>
+                </aside>
+            </div>
+            <div class="container metric-strip reveal">
+                <div class="metric"><strong>Post-Quantum</strong><span>Native signature posture</span></div>
+                <div class="metric"><strong>Rust Core</strong><span>Purpose-built node stack</span></div>
+                <div class="metric"><strong>PoS Finality</strong><span>Validator-driven settlement</span></div>
+                <div class="metric"><strong>WASM</strong><span>Programmable execution path</span></div>
+                <div class="metric"><strong>Open Source</strong><span>Readable, inspectable protocol</span></div>
+                <div class="metric"><strong>Long Horizon</strong><span>Security narrative with discipline</span></div>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="container spotlight">
+                <div class="content-section reveal">
+                    <div class="section-head">
+                        <span class="section-tag">Thesis</span>
+                        <h2>Why CURS3D exists</h2>
+                    </div>
+                    <div class="prose">
+                        <p class="muted-strong">Most chains optimize first for speed, fees and composability. CURS3D starts from a different question: what should issuers use when the value they create is supposed to remain credible over many years?</p>
+                        <p>Some assets are not disposable. Governance systems, tokenized value, registries, attestations and institutional-grade issuance flows need a clearer long-horizon trust posture. CURS3D exists to serve that category.</p>
+                        <div class="callout">CURS3D is the quantum-secure Layer 1 for digital assets that need to last.</div>
+                    </div>
                 </div>
-                <div class="status-card reveal">
-                    <h3 style="color: var(--orange);">Remaining for Mainnet</h3>
-                    <ul>
-                        <li><span class="status-pending">&#9675;</span> External security audit (consensus, VM, crypto)</li>
-                        <li><span class="status-pending">&#9675;</span> Peer scoring + anti-spam hardening</li>
-                        <li><span class="status-pending">&#9675;</span> State trie (MPT or Verkle tree)</li>
-                        <li><span class="status-pending">&#9675;</span> Indexed receipts + log filters</li>
-                        <li><span class="status-pending">&#9675;</span> Prometheus metrics + structured logs</li>
-                        <li><span class="status-pending">&#9675;</span> Epoch-based rewards + inactivity leak</li>
-                        <li><span class="status-pending">&#9675;</span> Fuzzing + long-run soak tests</li>
-                        <li><span class="status-pending">&#9675;</span> Contract SDK (Rust + AssemblyScript)</li>
-                        <li><span class="status-pending">&#9675;</span> Light client protocol</li>
-                        <li><span class="status-pending">&#9675;</span> Benchmarks (sync, mempool, VM)</li>
+                <div class="content-section reveal">
+                    <div class="section-head">
+                        <span class="section-tag">Signal</span>
+                        <h2>What the market should hear</h2>
+                    </div>
+                    <ul class="signal-list">
+                        <li>Post-quantum by design, not retrofitted later.</li>
+                        <li>Infrastructure for durable digital value, not generic L1 messaging.</li>
+                        <li>Brand, protocol, docs and operator path aligned around the same idea.</li>
+                        <li>Honest about current scope, explicit about what must still be hardened.</li>
                     </ul>
                 </div>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <!-- ═══════════ Smart Contracts ═══════════ -->
-    <section class="smart-contracts" id="smart-contracts">
-        <div class="section-container">
-            <div class="section-header reveal">
-                <span class="section-tag">Execution Layer</span>
-                <h2>WASM contracts with <span class="gradient-text">real gas metering</span></h2>
-                <p class="section-sub">Not simulated. The VM compiles WebAssembly with Cranelift, injects fuel counters via middleware, and charges per-instruction. Contracts with unmetered loops are rejected at deploy time.</p>
+        <section class="section">
+            <div class="container">
+                <div class="section-head reveal">
+                    <span class="section-tag">Protocol Pillars</span>
+                    <h2>A protocol stack designed around <span class="gradient-text">durable trust</span>.</h2>
+                    <p>CURS3D is not meant to win by claiming universal superiority. It wins if its architecture is more coherent for assets and systems that care about long-horizon security.</p>
+                </div>
+                <div class="split-grid four">
+                    <article class="card reveal">
+                        <h3>Cryptographic posture</h3>
+                        <p>CURS3D’s identity starts with a post-quantum signature posture and a future-proof trust narrative. The point is not panic. The point is preparation.</p>
+                    </article>
+                    <article class="card reveal">
+                        <h3>Consensus and finality</h3>
+                        <p>The chain is built around a stake-secured network with validator coordination, explicit finality and a public operator path that can mature into real network credibility.</p>
+                    </article>
+                    <article class="card reveal">
+                        <h3>Programmable execution</h3>
+                        <p>WASM execution makes CURS3D more than a payments chain. It provides room for applications, contracts and trust-critical on-chain workflows.</p>
+                    </article>
+                    <article class="card reveal">
+                        <h3>Token and governance surfaces</h3>
+                        <p>Token issuance and governance are part of the positioning: CURS3D wants to be a place where durable value and durable decision-making can coexist.</p>
+                    </article>
+                </div>
             </div>
-            <div class="sc-layout">
-                <div class="reveal">
-                    <h3 style="font-size:1.1rem;font-weight:700;margin-bottom:1rem;">Gas Schedule (from <code style="background:rgba(139,92,246,0.08);padding:0.15rem 0.4rem;border-radius:4px;font-size:0.82rem;color:var(--cyan2);border:1px solid rgba(139,92,246,0.1);">vm/gas.rs</code>)</h3>
-                    <table class="gas-table">
-                        <thead><tr><th>Operation</th><th>Gas</th></tr></thead>
-                        <tbody>
-                            <tr><td>Base Transaction</td><td>21,000</td></tr>
-                            <tr><td>Contract Deploy</td><td>32,000</td></tr>
-                            <tr><td>Contract Call</td><td>2,600</td></tr>
-                            <tr><td>Storage Read</td><td>200</td></tr>
-                            <tr><td>Storage Write</td><td>5,000</td></tr>
-                            <tr><td>Log Emit</td><td>375</td></tr>
-                            <tr><td>Per Byte</td><td>16</td></tr>
-                            <tr><td>Host Call Overhead</td><td>40</td></tr>
-                            <tr><td>WASM Loop Tick</td><td>50</td></tr>
-                        </tbody>
-                    </table>
-                    <h3 style="font-size:1.1rem;font-weight:700;margin:1.5rem 0 0.75rem;">6 Transaction Types</h3>
-                    <div class="tx-type-list">
-                        <span class="tx-type-pill">Transfer</span>
-                        <span class="tx-type-pill">Stake</span>
-                        <span class="tx-type-pill">Unstake</span>
-                        <span class="tx-type-pill">DeployContract</span>
-                        <span class="tx-type-pill">CallContract</span>
-                        <span class="tx-type-pill">Coinbase</span>
+        </section>
+
+        <section class="section">
+            <div class="container">
+                <div class="section-head reveal">
+                    <span class="section-tag">Where It Fits</span>
+                    <h2>First use cases should be <span class="gradient-text">narrow and credible</span>.</h2>
+                </div>
+                <div class="split-grid two">
+                    <article class="card reveal">
+                        <h3>Tokenized value with a premium security story</h3>
+                        <p>Projects that want a future-proof issuance narrative can use CURS3D as a differentiated trust layer instead of defaulting to generic chain positioning.</p>
+                    </article>
+                    <article class="card reveal">
+                        <h3>RWAs and regulated-adjacent systems</h3>
+                        <p>Teams dealing with long-lived value, compliance pressure or institutional trust can benefit from a chain designed around durability rather than retail speed alone.</p>
+                    </article>
+                    <article class="card reveal">
+                        <h3>Identity, attestations and registries</h3>
+                        <p>When the lifetime of the data outlives a typical speculative cycle, the infrastructure story matters more. CURS3D is built for that argument.</p>
+                    </article>
+                    <article class="card reveal">
+                        <h3>Infrastructure-first applications</h3>
+                        <p>Some builders need a chain with a stronger protocol identity, not just another EVM venue. CURS3D can become that substrate if it stays disciplined.</p>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="container spotlight">
+                <div class="content-section reveal">
+                    <div class="section-head">
+                        <span class="section-tag">Current Reality</span>
+                        <h2>What exists now</h2>
                     </div>
-                    <p style="color:var(--text3);font-size:0.82rem;margin-top:1rem;line-height:1.7;">Block gas limit: 10,000,000. Receipts include gas_used, effective_gas_price, priority_fee_paid, base_fee_burned, gas_refunded, logs[], and return_data.</p>
+                    <ul class="clean-list">
+                        <li>Rust-based node with build, test and release path.</li>
+                        <li>HTTP API, RPC, explorer and documentation surface.</li>
+                        <li>Validator flow, status endpoints, faucet path and operator-oriented deploy assets.</li>
+                        <li>Token and governance state integrated into the chain state model.</li>
+                        <li>Light-client direction, proofs and a public-facing protocol narrative.</li>
+                    </ul>
                 </div>
-                <div class="code-block reveal">
-                    <div class="code-header">
-                        <span class="code-filename">counter.wat</span>
-                        <button class="code-copy">Copy</button>
+                <div class="content-section reveal">
+                    <div class="section-head">
+                        <span class="section-tag">Before Mainnet</span>
+                        <h2>What still matters</h2>
                     </div>
-                    <pre class="code-body"><code><span class="cm">;; Counter contract — real CURS3D WASM</span>
-<span class="cm">;; Imports the host functions, increments</span>
-<span class="cm">;; a value in storage, emits a log event.</span>
-
-(<span class="kw">module</span>
-  (<span class="kw">import</span> <span class="str">"curs3d"</span> <span class="str">"storage_get"</span>
-    (<span class="kw">func</span> $get (<span class="kw">param</span> <span class="ty">i64</span>) (<span class="kw">result</span> <span class="ty">i64</span>)))
-  (<span class="kw">import</span> <span class="str">"curs3d"</span> <span class="str">"storage_set"</span>
-    (<span class="kw">func</span> $set (<span class="kw">param</span> <span class="ty">i64</span> <span class="ty">i64</span>)))
-  (<span class="kw">import</span> <span class="str">"curs3d"</span> <span class="str">"emit_log"</span>
-    (<span class="kw">func</span> $log (<span class="kw">param</span> <span class="ty">i64</span> <span class="ty">i64</span>)))
-  (<span class="kw">import</span> <span class="str">"curs3d"</span> <span class="str">"consume_gas"</span>
-    (<span class="kw">func</span> $gas (<span class="kw">param</span> <span class="ty">i64</span>)))
-
-  (<span class="kw">memory</span> (<span class="kw">export</span> <span class="str">"memory"</span>) <span class="num">1</span>)
-
-  (<span class="kw">func</span> (<span class="kw">export</span> <span class="str">"curs3d_call"</span>)
-        (<span class="kw">result</span> <span class="ty">i64</span>)
-    (<span class="kw">local</span> $v <span class="ty">i64</span>)
-    <span class="cm">;; read slot 0</span>
-    (<span class="kw">local.set</span> $v
-      (<span class="kw">call</span> $get (<span class="ty">i64</span>.const <span class="num">0</span>)))
-    <span class="cm">;; increment</span>
-    (<span class="kw">local.set</span> $v
-      (<span class="ty">i64</span>.add (<span class="kw">local.get</span> $v)
-              (<span class="ty">i64</span>.const <span class="num">1</span>)))
-    <span class="cm">;; write back</span>
-    (<span class="kw">call</span> $set
-      (<span class="ty">i64</span>.const <span class="num">0</span>) (<span class="kw">local.get</span> $v))
-    <span class="cm">;; emit event</span>
-    (<span class="kw">call</span> $log
-      (<span class="ty">i64</span>.const <span class="num">1</span>) (<span class="kw">local.get</span> $v))
-    (<span class="kw">local.get</span> $v))
-)</code></pre>
+                    <ul class="clean-list">
+                        <li>External security review and protocol hardening.</li>
+                        <li>Operational maturity for validators and public infrastructure.</li>
+                        <li>A narrow ecosystem wedge with real launch partners.</li>
+                        <li>Legal and token planning that matches the project’s ambition.</li>
+                        <li>Strict consistency between the site, docs, whitepaper and product claims.</li>
+                    </ul>
                 </div>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <!-- ═══════════ API ═══════════ -->
-    <section class="api-showcase" id="api">
-        <div class="section-container">
-            <div class="section-header reveal">
-                <span class="section-tag">Developer API</span>
-                <h2>11 endpoints. <span class="gradient-text">JSON in, JSON out.</span></h2>
-                <p class="section-sub">HTTP REST on port 8080 with configurable CORS, optional bearer token auth, 1MB body limit, and 128 max concurrent connections. TCP RPC on port 9545 for CLI.</p>
-            </div>
-            <div class="api-grid">
-                <div class="api-card reveal"><span class="api-method get">GET</span><span class="api-path">/api/status</span><span class="api-desc">Height, finalized, epoch, validators, protocol version</span></div>
-                <div class="api-card reveal"><span class="api-method get">GET</span><span class="api-path">/api/block/:height</span><span class="api-desc">Block with transactions, state root, merkle root</span></div>
-                <div class="api-card reveal"><span class="api-method get">GET</span><span class="api-path">/api/blocks?from&amp;limit</span><span class="api-desc">Paginated blocks (limit max 100)</span></div>
-                <div class="api-card reveal"><span class="api-method get">GET</span><span class="api-path">/api/account/:addr</span><span class="api-desc">Balance, nonce, staked balance</span></div>
-                <div class="api-card reveal"><span class="api-method get">GET</span><span class="api-path">/api/account/:addr/proof</span><span class="api-desc">Merkle proof with leaf index + state root</span></div>
-                <div class="api-card reveal"><span class="api-method get">GET</span><span class="api-path">/api/tx/:hash</span><span class="api-desc">Transaction by hash</span></div>
-                <div class="api-card reveal"><span class="api-method get">GET</span><span class="api-path">/api/pending</span><span class="api-desc">Mempool pending transactions</span></div>
-                <div class="api-card reveal"><span class="api-method get">GET</span><span class="api-path">/api/validators</span><span class="api-desc">Active validator set with stakes</span></div>
-                <div class="api-card reveal"><span class="api-method post">POST</span><span class="api-path">/api/tx/submit</span><span class="api-desc">Submit signed transaction</span></div>
-                <div class="api-card reveal"><span class="api-method post">POST</span><span class="api-path">/api/tx/estimate</span><span class="api-desc">Dry-run: gas, fees, replacement check</span></div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ═══════════ Technology ═══════════ -->
-    <section class="technology" id="technology">
-        <div class="section-container">
-            <div class="section-header reveal">
-                <span class="section-tag">Tech Stack</span>
-                <h2>The full stack, <span class="gradient-text">end to end</span></h2>
-            </div>
-            <div class="tech-layout">
-                <div class="tech-grid">
-                    <div class="tech-item reveal"><span class="tech-label">Language</span><span class="tech-value">Rust 2024</span></div>
-                    <div class="tech-item reveal"><span class="tech-label">VM</span><span class="tech-value">Wasmer 5</span></div>
-                    <div class="tech-item reveal"><span class="tech-label">Signatures</span><span class="tech-value">Dilithium 5</span></div>
-                    <div class="tech-item reveal"><span class="tech-label">Hashing</span><span class="tech-value">SHA-3 Keccak</span></div>
-                    <div class="tech-item reveal"><span class="tech-label">Consensus</span><span class="tech-value">BFT PoS</span></div>
-                    <div class="tech-item reveal"><span class="tech-label">Epochs</span><span class="tech-value">32 blocks</span></div>
-                    <div class="tech-item reveal"><span class="tech-label">Gas Limit</span><span class="tech-value">10,000,000</span></div>
-                    <div class="tech-item reveal"><span class="tech-label">P2P</span><span class="tech-value">libp2p 0.54</span></div>
-                    <div class="tech-item reveal"><span class="tech-label">Pub/Sub</span><span class="tech-value">Gossipsub</span></div>
-                    <div class="tech-item reveal"><span class="tech-label">Discovery</span><span class="tech-value">mDNS + Boot</span></div>
-                    <div class="tech-item reveal"><span class="tech-label">Storage</span><span class="tech-value">sled (v4)</span></div>
-                    <div class="tech-item reveal"><span class="tech-label">Wallet</span><span class="tech-value">AES-256-GCM</span></div>
-                    <div class="tech-item reveal"><span class="tech-label">KDF</span><span class="tech-value">Argon2</span></div>
-                    <div class="tech-item reveal"><span class="tech-label">HTTP</span><span class="tech-value">hyper 1.x</span></div>
-                    <div class="tech-item reveal"><span class="tech-label">Encoding</span><span class="tech-value">bincode + JSON</span></div>
-                    <div class="tech-item reveal"><span class="tech-label">Runtime</span><span class="tech-value">Tokio</span></div>
-                </div>
-                <div class="code-block reveal">
-                    <div class="code-header">
-                        <span class="code-filename">crypto/dilithium.rs</span>
-                        <button class="code-copy">Copy</button>
+        <section class="section">
+            <div class="container">
+                <div class="content-section reveal">
+                    <div class="section-head">
+                        <span class="section-tag">Next Step</span>
+                        <h2>Read the foundation material, then inspect the product.</h2>
                     </div>
-                    <pre class="code-body"><code><span class="kw">use</span> <span class="ty">pqcrypto_dilithium</span>::<span class="ty">dilithium5</span>::{
-    <span class="ty">DetachedSignature</span>, <span class="ty">PublicKey</span>,
-    <span class="ty">SecretKey</span>, detached_sign,
-    keypair, verify_detached_signature,
-};
-
-<span class="kw">pub struct</span> <span class="ty">KeyPair</span> {
-    <span class="kw">pub</span> public_key: <span class="ty">Vec</span>&lt;<span class="ty">u8</span>&gt;,
-    <span class="kw">pub</span> secret_key: <span class="ty">Vec</span>&lt;<span class="ty">u8</span>&gt;,
-}
-
-<span class="kw">impl</span> <span class="ty">KeyPair</span> {
-    <span class="kw">pub fn</span> <span class="fn">generate</span>() -&gt; <span class="ty">Self</span> {
-        <span class="kw">let</span> (pk, sk) = <span class="fn">keypair</span>();
-        <span class="ty">KeyPair</span> {
-            public_key: pk.<span class="fn">as_bytes</span>().<span class="fn">to_vec</span>(),
-            secret_key: sk.<span class="fn">as_bytes</span>().<span class="fn">to_vec</span>(),
-        }
-    }
-
-    <span class="kw">pub fn</span> <span class="fn">sign</span>(&amp;<span class="kw">self</span>, msg: &amp;[<span class="ty">u8</span>])
-    -&gt; <span class="ty">Signature</span> {
-        <span class="kw">let</span> sk = <span class="ty">SecretKey</span>::<span class="fn">from_bytes</span>(
-            &amp;<span class="kw">self</span>.secret_key
-        ).<span class="fn">expect</span>(<span class="str">"invalid key"</span>);
-        <span class="ty">Signature</span>(
-          <span class="fn">detached_sign</span>(msg, &amp;sk)
-            .<span class="fn">as_bytes</span>().<span class="fn">to_vec</span>()
-        )
-    }
-}</code></pre>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ═══════════ Tokenomics ═══════════ -->
-    <section class="tokenomics" id="tokenomics">
-        <div class="section-container">
-            <div class="section-header reveal">
-                <span class="section-tag">Economics</span>
-                <h2>Transparent, <span class="gradient-text">configurable</span> tokenomics</h2>
-                <p class="section-sub">All parameters are set in genesis.json and verifiable on-chain. 1 CUR = 1,000,000 microtokens.</p>
-            </div>
-            <div class="token-grid">
-                <div class="token-card reveal"><span class="token-number">50</span><span class="token-label">CUR per Block</span></div>
-                <div class="token-card reveal"><span class="token-number">1,000</span><span class="token-label">CUR Min Stake</span></div>
-                <div class="token-card reveal"><span class="token-number">33%</span><span class="token-label">Slash Penalty</span></div>
-                <div class="token-card reveal"><span class="token-number">10s</span><span class="token-label">Block Time</span></div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ═══════════ Roadmap ═══════════ -->
-    <section class="roadmap" id="roadmap">
-        <div class="section-container">
-            <div class="section-header reveal">
-                <span class="section-tag">Roadmap</span>
-                <h2>From prototype to <span class="gradient-text">mainnet</span></h2>
-            </div>
-            <div class="roadmap-track">
-                <div class="roadmap-line"></div>
-                <div class="roadmap-item reveal">
-                    <div class="roadmap-dot completed"></div>
-                    <div class="roadmap-content">
-                        <span class="roadmap-date">Q1-Q2 2026 &mdash; Complete</span>
-                        <h3>Core Protocol + Smart Contracts</h3>
-                        <p>Full L1 protocol with BFT consensus, WASM VM, EIP-1559 fees, state sync, epoch management, provable slashing, encrypted wallets, REST API, block explorer, Docker, CI/CD. 79 tests across 9 modules.</p>
-                    </div>
-                </div>
-                <div class="roadmap-item reveal">
-                    <div class="roadmap-dot active"></div>
-                    <div class="roadmap-content">
-                        <span class="roadmap-date">Q3 2026 &mdash; In Progress</span>
-                        <h3>Hardening + Developer Tools</h3>
-                        <p>Contract SDK (Rust + AssemblyScript). Public testnet with faucet. Indexed receipts and log filters. Observability stack (Prometheus, structured logs). Peer scoring and anti-spam.</p>
-                    </div>
-                </div>
-                <div class="roadmap-item reveal">
-                    <div class="roadmap-dot"></div>
-                    <div class="roadmap-content">
-                        <span class="roadmap-date">Q4 2026</span>
-                        <h3>Security Audit + Mainnet</h3>
-                        <p>External audit of consensus, VM, and cryptography. State trie upgrade (MPT or Verkle). Fuzzing and soak tests. Mainnet genesis with community validator onboarding.</p>
-                    </div>
-                </div>
-                <div class="roadmap-item reveal">
-                    <div class="roadmap-dot"></div>
-                    <div class="roadmap-content">
-                        <span class="roadmap-date">2027+</span>
-                        <h3>Ecosystem</h3>
-                        <p>Cross-chain bridges, on-chain governance, token standards (CUR-20, CUR-721), DeFi primitives, light client protocol, community grants.</p>
+                    <div class="btn-row">
+                        <a class="btn btn-primary" href="whitepaper.html">Whitepaper</a>
+                        <a class="btn btn-secondary" href="docs.html">Documentation</a>
+                        <a class="btn btn-secondary" href="examples.html">Examples</a>
+                        <a class="btn btn-tertiary" href="explorer.html">Explorer</a>
                     </div>
                 </div>
             </div>
-        </div>
-    </section>
+        </section>
+    </main>
 
-    <!-- ═══════════ Infrastructure ═══════════ -->
-    <section class="infrastructure" id="infrastructure">
-        <div class="section-container">
-            <div class="section-header reveal">
-                <span class="section-tag">Infrastructure</span>
-                <h2>Ship-ready <span class="gradient-text">from day one</span></h2>
-            </div>
-            <div class="infra-grid">
-                <div class="infra-card reveal">
-                    <h3><span class="infra-badge">Docker</span> Multi-Stage Build</h3>
-                    <p>docker-compose spins up a 2-node network in seconds. Minimal image. Reproducible builds. All ports exposed (P2P 4337, HTTP 8080, RPC 9545).</p>
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-inner">
+                <div>
+                    <a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a>
+                    <p style="margin-top: 0.9rem;">A post-quantum Layer 1 built for digital assets that need to last.</p>
                 </div>
-                <div class="infra-card reveal">
-                    <h3><span class="infra-badge">CI/CD</span> GitHub Actions</h3>
-                    <p>Every push runs: cargo check, cargo test (79/79), cargo clippy (zero warnings), cargo fmt --check. Merge blocked on failure.</p>
+                <div>
+                    <h4>Protocol</h4>
+                    <div class="footer-links">
+                        <a href="whitepaper.html">Whitepaper</a>
+                        <a href="docs.html">Documentation</a>
+                        <a href="explorer.html">Explorer</a>
+                    </div>
                 </div>
-                <div class="infra-card reveal">
-                    <h3><span class="infra-badge">Storage</span> Persistent + Versioned</h3>
-                    <p>sled embedded DB with 10 trees, schema v4, auto-migration from earlier versions. Full state rebuild on restart from canonical chain.</p>
+                <div>
+                    <h4>Build</h4>
+                    <div class="footer-links">
+                        <a href="examples.html">Examples</a>
+                        <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">Repository</a>
+                        <a href="https://github.com/Pazificateur69/curs3d/blob/main/whitepaper.md" target="_blank" rel="noopener">Markdown whitepaper</a>
+                    </div>
                 </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ═══════════ CTA ═══════════ -->
-    <section class="cta">
-        <div class="section-container">
-            <div class="cta-box reveal">
-                <h2>Verify everything yourself.</h2>
-                <p>Every claim on this page maps to code in the repository. Clone it, build it, run the tests, read the source.</p>
-                <div class="cta-buttons">
-                    <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener" class="btn btn-primary">
-                        View Source on GitHub
-                        <span class="btn-icon">&rarr;</span>
-                    </a>
-                    <a href="docs.html" class="btn btn-secondary">Documentation</a>
+                <div>
+                    <h4>Positioning</h4>
+                    <div class="footer-links">
+                        <a href="index.html">Built to Endure</a>
+                        <a href="whitepaper.html#problem">Long-horizon thesis</a>
+                        <a href="docs.html#api-surface">Developer surface</a>
+                    </div>
                 </div>
             </div>
-        </div>
-    </section>
-
-    <!-- ═══════════ Footer ═══════════ -->
-    <footer>
-        <div class="footer-container">
-            <div class="footer-top">
-                <div class="footer-brand">
-                    <span class="logo"><span class="logo-diamond"></span>CURS3D</span>
-                    <p>Post-quantum blockchain infrastructure. Written from scratch in Rust. Open source under MIT License.</p>
-                </div>
-                <div class="footer-links-group">
-                    <span class="footer-heading">Protocol</span>
-                    <a href="#features">Features</a>
-                    <a href="#smart-contracts">Smart Contracts</a>
-                    <a href="#technology">Tech Stack</a>
-                    <a href="whitepaper.html">Whitepaper</a>
-                </div>
-                <div class="footer-links-group">
-                    <span class="footer-heading">Developers</span>
-                    <a href="docs.html">Documentation</a>
-                    <a href="examples.html">Tutorials</a>
-                    <a href="explorer.html">Block Explorer</a>
-                    <a href="docs.html#rest-api">API Reference</a>
-                </div>
-                <div class="footer-links-group">
-                    <span class="footer-heading">Open Source</span>
-                    <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
-                    <a href="https://github.com/Pazificateur69/curs3d/issues" target="_blank" rel="noopener">Issues</a>
-                    <a href="https://github.com/Pazificateur69/curs3d/pulls" target="_blank" rel="noopener">Pull Requests</a>
-                </div>
-            </div>
-            <div class="footer-bottom">
-                <p>&copy; 2026 CURS3D Protocol. MIT License. Built by <a href="https://github.com/Pazificateur69" target="_blank" rel="noopener">Pazificateur69</a>.</p>
-            </div>
+            <div class="footer-bottom">© <span data-year></span> CURS3D. Open source protocol, disciplined trust-layer positioning.</div>
         </div>
     </footer>
-
-    <script src="script.js"></script>
+</div>
+<script src="script.js"></script>
 </body>
 </html>
