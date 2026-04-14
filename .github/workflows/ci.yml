@@ -8,12 +8,12 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-C linker=cc -C link-arg=-fuse-ld=bfd"
+  RUSTFLAGS: "-C probe-stack=none"
 
 jobs:
   check:
     name: Cargo Check
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -22,7 +22,7 @@ jobs:
 
   test:
     name: Tests
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -31,7 +31,7 @@ jobs:
 
   clippy:
     name: Clippy
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -42,7 +42,7 @@ jobs:
 
   fmt:
     name: Formatting
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
