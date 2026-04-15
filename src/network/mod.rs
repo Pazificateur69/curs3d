@@ -149,6 +149,114 @@ impl PeerRateLimiter {
     }
 }
 
+// ─── Peer Scoring ───────────────────────────────────────────────────
+
+// Score constants and thresholds
+const PEER_SCORE_INITIAL: i64 = 100;
+#[allow(dead_code)]
+const PEER_SCORE_MAX: i64 = 200;
+const PEER_SCORE_MIN: i64 = -100;
+const PEER_SCORE_BAN_THRESHOLD: i64 = -50;
+const PEER_SCORE_DECAY_PER_TICK: i64 = 1;
+#[allow(dead_code)]
+const SCORE_VALID_BLOCK: i64 = 5;
+#[allow(dead_code)]
+const SCORE_VALID_TX: i64 = 1;
+#[allow(dead_code)]
+const SCORE_VALID_VOTE: i64 = 3;
+#[allow(dead_code)]
+const SCORE_INVALID_BLOCK: i64 = -20;
+#[allow(dead_code)]
+const SCORE_INVALID_TX: i64 = -5;
+#[allow(dead_code)]
+const SCORE_INVALID_MESSAGE: i64 = -10;
+const SCORE_RATE_LIMITED: i64 = -15;
+
+struct PeerScore {
+    score: i64,
+    #[allow(dead_code)]
+    valid_messages: u64,
+    #[allow(dead_code)]
+    invalid_messages: u64,
+    last_updated: Instant,
+}
+
+impl PeerScore {
+    fn new() -> Self {
+        Self {
+            score: PEER_SCORE_INITIAL,
+            valid_messages: 0,
+            invalid_messages: 0,
+            last_updated: Instant::now(),
+        }
+    }
+}
+
+struct PeerScorer {
+    scores: HashMap<PeerId, PeerScore>,
+}
+
+impl PeerScorer {
+    fn new() -> Self {
+        Self {
+            scores: HashMap::new(),
+        }
+    }
+
+    /// Record a positive behavior from a peer.
+    #[allow(dead_code)]
+    fn record_good(&mut self, peer_id: &PeerId, points: i64) {
+        let entry = self.scores.entry(*peer_id).or_insert_with(PeerScore::new);
+        entry.score = (entry.score + points).min(PEER_SCORE_MAX);
+        entry.valid_messages += 1;
+        entry.last_updated = Instant::now();
+    }
+
+    /// Record a negative behavior from a peer.
+    fn record_bad(&mut self, peer_id: &PeerId, points: i64) {
+        let entry = self.scores.entry(*peer_id).or_insert_with(PeerScore::new);
+        entry.score = (entry.score + points).max(PEER_SCORE_MIN);
+        entry.invalid_messages += 1;
+        entry.last_updated = Instant::now();
+    }
+
+    /// Check if a peer should be banned based on their score.
+    fn should_ban(&self, peer_id: &PeerId) -> bool {
+        self.scores
+            .get(peer_id)
+            .is_some_and(|s| s.score <= PEER_SCORE_BAN_THRESHOLD)
+    }
+
+    /// Get the current score of a peer.
+    #[allow(dead_code)]
+    fn get_score(&self, peer_id: &PeerId) -> i64 {
+        self.scores
+            .get(peer_id)
+            .map(|s| s.score)
+            .unwrap_or(PEER_SCORE_INITIAL)
+    }
+
+    /// Decay scores toward the initial value over time. Call periodically.
+    fn decay_scores(&mut self) {
+        for score in self.scores.values_mut() {
+            if score.score > PEER_SCORE_INITIAL {
+                score.score = (score.score - PEER_SCORE_DECAY_PER_TICK).max(PEER_SCORE_INITIAL);
+            } else if score.score < PEER_SCORE_INITIAL {
+                score.score = (score.score + PEER_SCORE_DECAY_PER_TICK).min(PEER_SCORE_INITIAL);
+            }
+        }
+    }
+
+    /// Remove stale peer entries.
+    fn cleanup(&mut self) {
+        let now = Instant::now();
+        let stale = Duration::from_secs(600); // 10 min without activity
+        self.scores.retain(|_, s| {
+            now.duration_since(s.last_updated) < stale || s.score <= PEER_SCORE_BAN_THRESHOLD
+        });
+    }
+}
+
 // ─── Network Messages ────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -355,8 +463,9 @@ impl NetworkNode {
     ) {
         let mut discovered_peers: HashSet<PeerId> = HashSet::new();
 
-        // P2P rate limiter
+        // P2P rate limiter + peer scoring
         let mut rate_limiter = PeerRateLimiter::new();
+        let mut peer_scorer = PeerScorer::new();
         let mut rate_limiter_cleanup_timer =
             tokio::time::interval(Duration::from_secs(PEER_CLEANUP_INTERVAL_SECS));
 
@@ -559,9 +668,11 @@ impl NetworkNode {
                     let _ = self.broadcast(&msg);
                 }
 
-                // Rate limiter cleanup
+                // Rate limiter + peer scoring cleanup
                 _ = rate_limiter_cleanup_timer.tick() => {
                     rate_limiter.cleanup();
+                    peer_scorer.decay_scores();
+                    peer_scorer.cleanup();
                 }
 
                 // Network events
@@ -570,11 +681,15 @@ impl NetworkNode {
                         SwarmEvent::Behaviour(CursBehaviourEvent::Gossipsub(
                             gossipsub::Event::Message { message, .. }
                         )) => {
-                            // P2P rate limiting: check the propagation source
-                            if let Some(source_peer) = message.source
-                                && !rate_limiter.check(&source_peer)
-                            {
-                                continue;
+                            // P2P rate limiting + peer scoring
+                            if let Some(source_peer) = message.source {
+                                if !rate_limiter.check(&source_peer) {
+                                    peer_scorer.record_bad(&source_peer, SCORE_RATE_LIMITED);
+                                    continue;
+                                }
+                                if peer_scorer.should_ban(&source_peer) {
+                                    continue;
+                                }
                             }
                             if let Ok(net_msg) = serde_json::from_slice::<NetworkMessage>(&message.data) {
                                 match net_msg {
@@ -1274,5 +1389,52 @@ mod tests {
         assert!(!limiter.check(&peer));
         let state = limiter.peers.get(&peer).unwrap();
         assert_eq!(state.total_violations, 2);
+    }
+
+    #[test]
+    fn test_peer_scorer_good_behavior() {
+        let mut scorer = PeerScorer::new();
+        let peer = test_peer_id(10);
+        scorer.record_good(&peer, SCORE_VALID_BLOCK);
+        assert_eq!(
+            scorer.get_score(&peer),
+            PEER_SCORE_INITIAL + SCORE_VALID_BLOCK
+        );
+        assert!(!scorer.should_ban(&peer));
+    }
+
+    #[test]
+    fn test_peer_scorer_bad_behavior_leads_to_ban() {
+        let mut scorer = PeerScorer::new();
+        let peer = test_peer_id(11);
+        // Hammer with bad scores
+        for _ in 0..10 {
+            scorer.record_bad(&peer, SCORE_INVALID_BLOCK);
+        }
+        // 100 + (10 * -20) = -100, well below ban threshold (-50)
+        assert!(scorer.should_ban(&peer));
+    }
+
+    #[test]
+    fn test_peer_scorer_decay_toward_initial() {
+        let mut scorer = PeerScorer::new();
+        let peer = test_peer_id(12);
+        scorer.record_good(&peer, 50);
+        assert_eq!(scorer.get_score(&peer), PEER_SCORE_INITIAL + 50);
+        scorer.decay_scores();
+        assert_eq!(
+            scorer.get_score(&peer),
+            PEER_SCORE_INITIAL + 50 - PEER_SCORE_DECAY_PER_TICK
+        );
+    }
+
+    #[test]
+    fn test_peer_scorer_score_clamped() {
+        let mut scorer = PeerScorer::new();
+        let peer = test_peer_id(13);
+        for _ in 0..100 {
+            scorer.record_good(&peer, 50);
+        }
+        assert_eq!(scorer.get_score(&peer), PEER_SCORE_MAX);
     }
 }

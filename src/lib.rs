@@ -8,5 +8,6 @@ pub mod network;
 pub mod rpc;
 pub mod storage;
 pub mod token;
+pub mod trie;
 pub mod vm;
 pub mod wallet;

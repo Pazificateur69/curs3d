@@ -7,6 +7,7 @@ mod network;
 mod rpc;
 mod storage;
 mod token;
+mod trie;
 mod vm;
 mod wallet;
 

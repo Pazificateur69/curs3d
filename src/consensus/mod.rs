@@ -10,6 +10,15 @@ use crate::crypto::dilithium::{self, Signature};
 /// Percentage of stake slashed on equivocation (33%)
 pub const EQUIVOCATION_SLASH_PERCENT: u64 = 33;
 
+/// Epoch reward rate: microtokens per CUR staked per epoch
+pub const EPOCH_REWARD_RATE_PER_CUR: u64 = 100;
+
+/// Inactivity penalty: microtokens per CUR staked per missed epoch
+pub const INACTIVITY_PENALTY_RATE_PER_CUR: u64 = 50;
+
+/// Number of consecutive missed epochs before penalty applies
+pub const INACTIVITY_GRACE_EPOCHS: u64 = 2;
+
 // ─── Validator ───────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -263,6 +272,125 @@ pub struct EpochSnapshot {
     pub start_height: u64,
     pub validators: Vec<Validator>,
     pub total_stake: u64,
+}
+
+// ─── Epoch Settlement (Rewards + Inactivity Penalties) ──────────────
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EpochSettlement {
+    pub epoch: u64,
+    pub rewards: Vec<ValidatorReward>,
+    pub penalties: Vec<ValidatorPenalty>,
+    pub total_rewards_distributed: u64,
+    pub total_penalties_applied: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ValidatorReward {
+    pub address: Vec<u8>,
+    pub amount: u64,
+    pub blocks_produced: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ValidatorPenalty {
+    pub address: Vec<u8>,
+    pub amount: u64,
+    pub reason: PenaltyReason,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PenaltyReason {
+    Inactivity { missed_epochs: u64 },
+    Equivocation,
+}
+
+/// Compute epoch settlement: rewards for active validators, penalties for inactive ones.
+///
+/// `block_producers` maps validator addresses to the number of blocks they produced in this epoch.
+/// `missed_epochs` maps validator addresses to how many consecutive epochs they've missed.
+pub fn compute_epoch_settlement(
+    snapshot: &EpochSnapshot,
+    block_producers: &HashMap<Vec<u8>, u64>,
+    missed_epochs: &HashMap<Vec<u8>, u64>,
+) -> EpochSettlement {
+    let mut rewards = Vec::new();
+    let mut penalties = Vec::new();
+    let mut total_rewards = 0u64;
+    let mut total_penalties = 0u64;
+
+    for validator in &snapshot.validators {
+        let blocks_produced = block_producers
+            .get(&validator.address)
+            .copied()
+            .unwrap_or(0);
+
+        if blocks_produced > 0 {
+            // Reward: proportional to stake and blocks produced
+            let stake_in_cur = validator.stake / 1_000_000; // microtokens to CUR
+            let reward = stake_in_cur
+                .saturating_mul(EPOCH_REWARD_RATE_PER_CUR)
+                .saturating_mul(blocks_produced);
+            if reward > 0 {
+                rewards.push(ValidatorReward {
+                    address: validator.address.clone(),
+                    amount: reward,
+                    blocks_produced,
+                });
+                total_rewards = total_rewards.saturating_add(reward);
+            }
+        } else {
+            // Check inactivity
+            let consecutive_missed = missed_epochs
+                .get(&validator.address)
+                .copied()
+                .unwrap_or(0)
+                .saturating_add(1); // This epoch counts as missed too
+
+            if consecutive_missed > INACTIVITY_GRACE_EPOCHS {
+                let stake_in_cur = validator.stake / 1_000_000;
+                let penalty = stake_in_cur
+                    .saturating_mul(INACTIVITY_PENALTY_RATE_PER_CUR)
+                    .saturating_mul(consecutive_missed.saturating_sub(INACTIVITY_GRACE_EPOCHS));
+                if penalty > 0 {
+                    penalties.push(ValidatorPenalty {
+                        address: validator.address.clone(),
+                        amount: penalty,
+                        reason: PenaltyReason::Inactivity {
+                            missed_epochs: consecutive_missed,
+                        },
+                    });
+                    total_penalties = total_penalties.saturating_add(penalty);
+                }
+            }
+        }
+    }
+
+    EpochSettlement {
+        epoch: snapshot.epoch,
+        rewards,
+        penalties,
+        total_rewards_distributed: total_rewards,
+        total_penalties_applied: total_penalties,
+    }
+}
+
+/// Apply an epoch settlement to account balances.
+pub fn apply_epoch_settlement(
+    accounts: &mut HashMap<Vec<u8>, AccountState>,
+    settlement: &EpochSettlement,
+) {
+    // Apply rewards (add to liquid balance)
+    for reward in &settlement.rewards {
+        let account = accounts.entry(reward.address.clone()).or_default();
+        account.balance = account.balance.saturating_add(reward.amount);
+    }
+
+    // Apply penalties (deduct from staked balance)
+    for penalty in &settlement.penalties {
+        let account = accounts.entry(penalty.address.clone()).or_default();
+        account.staked_balance = account.staked_balance.saturating_sub(penalty.amount);
+    }
 }
 
 // ─── Proof of Stake ──────────────────────────────────────────────────
@@ -794,5 +922,116 @@ mod tests {
         assert!(tracker.add_vote(vote1, &snapshot).is_some());
         // Duplicate is ignored (block already finalized, height <= finalized)
         assert!(tracker.add_vote(vote2, &snapshot).is_none());
+    }
+
+    #[test]
+    fn test_epoch_settlement_rewards() {
+        let snapshot = EpochSnapshot {
+            epoch: 1,
+            start_height: 32,
+            validators: vec![Validator {
+                address: vec![1u8; 20],
+                public_key: vec![1u8; 32],
+                stake: 10_000_000_000, // 10,000 CUR
+            }],
+            total_stake: 10_000_000_000,
+        };
+        let mut producers = HashMap::new();
+        producers.insert(vec![1u8; 20], 5u64); // produced 5 blocks
+        let missed = HashMap::new();
+
+        let settlement = compute_epoch_settlement(&snapshot, &producers, &missed);
+        assert_eq!(settlement.rewards.len(), 1);
+        assert_eq!(settlement.penalties.len(), 0);
+        // 10,000 CUR * 100 rate * 5 blocks = 5,000,000 microtokens
+        assert_eq!(settlement.rewards[0].amount, 5_000_000);
+        assert_eq!(settlement.rewards[0].blocks_produced, 5);
+    }
+
+    #[test]
+    fn test_epoch_settlement_inactivity_penalty() {
+        let snapshot = EpochSnapshot {
+            epoch: 5,
+            start_height: 160,
+            validators: vec![Validator {
+                address: vec![2u8; 20],
+                public_key: vec![2u8; 32],
+                stake: 5_000_000_000, // 5,000 CUR
+            }],
+            total_stake: 5_000_000_000,
+        };
+        let producers = HashMap::new(); // produced nothing
+        let mut missed = HashMap::new();
+        missed.insert(vec![2u8; 20], 3u64); // already missed 3 epochs
+
+        let settlement = compute_epoch_settlement(&snapshot, &producers, &missed);
+        assert_eq!(settlement.rewards.len(), 0);
+        assert_eq!(settlement.penalties.len(), 1);
+        // missed 3+1=4, grace=2, penalty epochs=2
+        // 5,000 CUR * 50 rate * 2 = 500,000 microtokens
+        assert_eq!(settlement.penalties[0].amount, 500_000);
+    }
+
+    #[test]
+    fn test_epoch_settlement_grace_period() {
+        let snapshot = EpochSnapshot {
+            epoch: 2,
+            start_height: 64,
+            validators: vec![Validator {
+                address: vec![3u8; 20],
+                public_key: vec![3u8; 32],
+                stake: 1_000_000_000,
+            }],
+            total_stake: 1_000_000_000,
+        };
+        let producers = HashMap::new();
+        let mut missed = HashMap::new();
+        missed.insert(vec![3u8; 20], 1u64); // missed 1 epoch (+ this one = 2, still within grace)
+
+        let settlement = compute_epoch_settlement(&snapshot, &producers, &missed);
+        // 2 missed <= INACTIVITY_GRACE_EPOCHS (2), no penalty
+        assert_eq!(settlement.penalties.len(), 0);
+    }
+
+    #[test]
+    fn test_apply_epoch_settlement() {
+        let mut accounts = HashMap::new();
+        accounts.insert(
+            vec![1u8; 20],
+            AccountState {
+                balance: 1_000_000,
+                staked_balance: 10_000_000_000,
+                ..Default::default()
+            },
+        );
+        accounts.insert(
+            vec![2u8; 20],
+            AccountState {
+                balance: 500_000,
+                staked_balance: 5_000_000_000,
+                ..Default::default()
+            },
+        );
+
+        let settlement = EpochSettlement {
+            epoch: 1,
+            rewards: vec![ValidatorReward {
+                address: vec![1u8; 20],
+                amount: 1_000_000,
+                blocks_produced: 10,
+            }],
+            penalties: vec![ValidatorPenalty {
+                address: vec![2u8; 20],
+                amount: 250_000,
+                reason: PenaltyReason::Inactivity { missed_epochs: 3 },
+            }],
+            total_rewards_distributed: 1_000_000,
+            total_penalties_applied: 250_000,
+        };
+
+        apply_epoch_settlement(&mut accounts, &settlement);
+
+        assert_eq!(accounts[&vec![1u8; 20]].balance, 2_000_000); // 1M + 1M reward
+        assert_eq!(accounts[&vec![2u8; 20]].staked_balance, 4_999_750_000); // 5B - 250K penalty
     }
 }
