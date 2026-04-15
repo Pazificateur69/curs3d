@@ -9,8 +9,9 @@
   <img src="https://img.shields.io/badge/tests-cargo%20test-brightgreen.svg" alt="cargo test">
   <img src="https://img.shields.io/badge/clippy-0%20warnings-brightgreen.svg" alt="0 clippy warnings">
   <img src="https://img.shields.io/badge/quantum-resistant-blueviolet.svg" alt="Quantum Resistant">
+  <a href="https://api.curs3d.fr/api/status"><img src="https://img.shields.io/badge/testnet-LIVE-brightgreen.svg" alt="Testnet Live"></a>
   <br>
-  <a href="https://curs3d.fr">Website</a> · <a href="https://curs3d.fr/docs.html">Docs</a> · <a href="https://curs3d.fr/whitepaper.html">Whitepaper</a> · <a href="https://curs3d.fr/explorer.html">Explorer</a> · <a href="https://curs3d.fr/examples.html">Tutorials</a>
+  <a href="https://explorer.curs3d.fr">Website</a> · <a href="https://explorer.curs3d.fr/docs.html">Docs</a> · <a href="https://explorer.curs3d.fr/whitepaper.html">Whitepaper</a> · <a href="https://explorer.curs3d.fr/explorer.html">Explorer</a> · <a href="https://explorer.curs3d.fr/examples.html">Tutorials</a> · <a href="https://api.curs3d.fr/api/status">Live API</a>
 </p>
 
 ---
@@ -71,23 +72,51 @@ printf '%s\n' 'change-this-validator-password' > validator.password
 #   HTTP API: 127.0.0.1:8080
 #   TCP RPC:  127.0.0.1:9545
 
-# Check chain status
+# Check chain status (local)
 curl http://localhost:8080/api/status | jq .data
+
+# Or query the live public testnet directly
+curl https://api.curs3d.fr/api/status | jq .data
+```
+
+### Live Public Testnet
+
+The CURS3D public testnet is running and accessible:
+
+| Surface | URL |
+|---------|-----|
+| **API** | https://api.curs3d.fr/api/status |
+| **Explorer** | https://explorer.curs3d.fr |
+| **Faucet** | `POST https://api.curs3d.fr/api/faucet/request` |
+| **WebSocket** | `wss://api.curs3d.fr/ws` |
+| **P2P Bootnode** | `api.curs3d.fr:4337` |
+
+```bash
+# Request testnet tokens
+curl -X POST https://api.curs3d.fr/api/faucet/request \
+  -H 'Content-Type: application/json' \
+  -d '{"address":"YOUR_CUR_ADDRESS"}'
+
+# View recent blocks
+curl https://api.curs3d.fr/api/blocks?from=0\&limit=5 | jq .data
+
+# View active validators
+curl https://api.curs3d.fr/api/validators | jq .data
 ```
 
 ### With Docker
 
 ```bash
-docker compose up -d           # Start 2-node network
+docker compose up -d           # Start 2-node local network
 curl localhost:8080/api/status  # Query the chain
 docker compose down             # Stop
 ```
 
-### Public VPS
+### Deploy Your Own Node
 
 Use the deployment assets in [`deploy/`](deploy/):
 
-- [`deploy/DEPLOY_VPS.md`](deploy/DEPLOY_VPS.md)
+- [`deploy/scripts/deploy.sh`](deploy/scripts/deploy.sh) — One-shot VPS deployment script
 - [`deploy/docker-compose.public.yml`](deploy/docker-compose.public.yml)
 - [`deploy/systemd/curs3d.service`](deploy/systemd/curs3d.service)
 - [`deploy/nginx/curs3d.conf`](deploy/nginx/curs3d.conf)

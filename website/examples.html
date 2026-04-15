@@ -73,13 +73,13 @@ printf '%s\n' 'YOUR_SECURE_PASSWORD_HERE' > validator.password
                 </article>
                 <article class="content-section example-card reveal">
                     <h2><span class="example-number">3</span><span data-lang="en">Query public status</span><span data-lang="fr">Interroger le statut public</span></h2>
-                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code>curl http://127.0.0.1:8080/api/status | jq .data
-curl http://127.0.0.1:8080/api/validators | jq .data
-curl http://127.0.0.1:8080/api/blocks?from=0\&limit=10 | jq .data</code></pre></div>
+                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code>curl https://api.curs3d.fr/api/status | jq .data
+curl https://api.curs3d.fr/api/validators | jq .data
+curl https://api.curs3d.fr/api/blocks?from=0\&limit=10 | jq .data</code></pre></div>
                 </article>
                 <article class="content-section example-card reveal">
                     <h2><span class="example-number">4</span><span data-lang="en">Request faucet funds</span><span data-lang="fr">Demander des fonds au faucet</span></h2>
-                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code>curl -X POST http://127.0.0.1:8080/api/faucet/request \
+                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code>curl -X POST https://api.curs3d.fr/api/faucet/request \
   -H 'Content-Type: application/json' \
   -d '{"address":"CUR0123456789abcdef0123456789abcdef01234567"}'</code></pre></div>
                 </article>
@@ -103,7 +103,7 @@ curl http://127.0.0.1:8080/api/blocks?from=0\&limit=10 | jq .data</code></pre></
   --total-supply 1000000000
 
 # List all deployed tokens
-curl http://127.0.0.1:8080/api/tokens | jq .data</code></pre></div>
+curl https://api.curs3d.fr/api/tokens | jq .data</code></pre></div>
                 </article>
                 <article class="content-section example-card reveal">
                     <h2><span class="example-number">7</span><span data-lang="en">Transfer CUR-20 tokens</span><span data-lang="fr">Transférer des tokens CUR-20</span></h2>
@@ -116,25 +116,25 @@ curl http://127.0.0.1:8080/api/tokens | jq .data</code></pre></div>
   --amount 1000
 
 # Check token balance
-curl http://127.0.0.1:8080/api/token/TOKEN_ADDR/balance/OWNER_ADDR | jq .data</code></pre></div>
+curl https://api.curs3d.fr/api/token/TOKEN_ADDR/balance/OWNER_ADDR | jq .data</code></pre></div>
                 </article>
                 <article class="content-section example-card reveal">
                     <h2><span class="example-number">8</span><span data-lang="en">Inspect token and governance state</span><span data-lang="fr">Inspecter l’état token et gouvernance</span></h2>
-                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code>curl http://127.0.0.1:8080/api/tokens | jq .data
-curl http://127.0.0.1:8080/api/governance/proposals | jq .data
-curl http://127.0.0.1:8080/api/pending | jq .data</code></pre></div>
+                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code>curl https://api.curs3d.fr/api/tokens | jq .data
+curl https://api.curs3d.fr/api/governance/proposals | jq .data
+curl https://api.curs3d.fr/api/pending | jq .data</code></pre></div>
                 </article>
                 <article class="content-section example-card reveal">
                     <h2><span class="example-number">9</span><span data-lang="en">Connect via WebSocket</span><span data-lang="fr">Se connecter via WebSocket</span></h2>
                     <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code># Using wscat (npm install -g wscat)
-wscat -c ws://127.0.0.1:8080/ws
+wscat -c wss://api.curs3d.fr/ws
 
 # Subscribe to specific events
 > {"events": ["new_block", "new_transaction"]}
 
 # Or using the JavaScript SDK
 import { CursClient } from "@curs3d/sdk";
-const client = new CursClient("http://127.0.0.1:8080");
+const client = new CursClient("https://api.curs3d.fr");
 client.subscribe(["new_block"], (event) => {
   console.log("New block:", event.data.height);
 });</code></pre></div>
@@ -143,7 +143,7 @@ client.subscribe(["new_block"], (event) => {
                     <h2><span class="example-number">10</span><span data-lang="en">Use the Python SDK</span><span data-lang="fr">Utiliser le SDK Python</span></h2>
                     <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">python</span><button class="code-copy">Copy</button></div><pre class="code-body"><code>from curs3d import CursClient
 
-client = CursClient("http://127.0.0.1:8080")
+client = CursClient("https://api.curs3d.fr")
 status = client.get_status()
 print(f"Chain: {status[‘chain_name’]}, Height: {status[‘height’]}")
 
