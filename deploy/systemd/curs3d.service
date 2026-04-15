@@ -33,8 +33,5 @@ PrivateTmp=yes
 ReadOnlyPaths=/etc/curs3d
 ReadWritePaths=/var/lib/curs3d
 
-# Watchdog
-WatchdogSec=120
-
 [Install]
 WantedBy=multi-user.target
