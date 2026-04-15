@@ -186,7 +186,8 @@ impl LightClient {
         block_hash: &[u8],
         signature: &dilithium::Signature,
     ) -> bool {
-        dilithium::verify(block_hash, signature, &header.validator_public_key)
+        let signable = crate::core::block::Block::signable_block_hash(block_hash);
+        dilithium::verify(&signable, signature, &header.validator_public_key)
     }
 }
 

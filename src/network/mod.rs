@@ -712,7 +712,14 @@ impl NetworkNode {
                                         }
                                     }
                                     NetworkMessage::NewTransaction(data) => {
-                                        Self::handle_new_transaction(&chain, &data, &event_tx).await;
+                                        let tx_ok = Self::handle_new_transaction(&chain, &data, &event_tx).await;
+                                        if let Some(source) = message.source {
+                                            if tx_ok {
+                                                peer_scorer.record_good(&source, SCORE_VALID_TX);
+                                            } else {
+                                                peer_scorer.record_bad(&source, SCORE_INVALID_TX);
+                                            }
+                                        }
                                     }
                                     NetworkMessage::RequestBlocks {
                                         from_height,
@@ -1171,7 +1178,7 @@ impl NetworkNode {
         chain: &Arc<Mutex<Blockchain>>,
         data: &[u8],
         event_tx: &Option<tokio::sync::broadcast::Sender<String>>,
-    ) {
+    ) -> bool {
         match bincode::deserialize::<crate::core::transaction::Transaction>(data) {
             Ok(tx) => {
                 let tx_hash = hex::encode(crate::crypto::hash::sha3_hash(
@@ -1194,11 +1201,18 @@ impl NetworkNode {
                                 .to_string(),
                             );
                         }
+                        true
                     }
-                    Err(e) => warn!("Rejected transaction: {}", e),
+                    Err(e) => {
+                        warn!("Rejected transaction: {}", e);
+                        false
+                    }
                 }
             }
-            Err(e) => warn!("Failed to deserialize transaction: {}", e),
+            Err(e) => {
+                warn!("Failed to deserialize transaction: {}", e);
+                false
+            }
         }
     }
 

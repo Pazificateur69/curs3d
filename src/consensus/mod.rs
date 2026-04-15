@@ -115,15 +115,22 @@ pub struct FinalityVote {
 }
 
 impl FinalityVote {
+    /// Domain-separated signable data for finality votes
+    fn signable_data(block_hash: &[u8], block_height: u64, epoch: u64) -> Vec<u8> {
+        let mut data = b"curs3d-finality-vote-v1:".to_vec();
+        data.extend_from_slice(block_hash);
+        data.extend_from_slice(&block_height.to_le_bytes());
+        data.extend_from_slice(&epoch.to_le_bytes());
+        data
+    }
+
     pub fn new(
         block_hash: Vec<u8>,
         block_height: u64,
         epoch: u64,
         keypair: &crate::crypto::dilithium::KeyPair,
     ) -> Self {
-        let mut data = block_hash.clone();
-        data.extend_from_slice(&block_height.to_le_bytes());
-        data.extend_from_slice(&epoch.to_le_bytes());
+        let data = Self::signable_data(&block_hash, block_height, epoch);
         let signature = keypair.sign(&data);
         FinalityVote {
             block_hash,
@@ -135,9 +142,7 @@ impl FinalityVote {
     }
 
     pub fn verify(&self) -> bool {
-        let mut data = self.block_hash.clone();
-        data.extend_from_slice(&self.block_height.to_le_bytes());
-        data.extend_from_slice(&self.epoch.to_le_bytes());
+        let data = Self::signable_data(&self.block_hash, self.block_height, self.epoch);
         dilithium::verify(&data, &self.signature, &self.voter_public_key)
     }
 }
@@ -436,6 +441,10 @@ impl ProofOfStake {
                     return None;
                 }
                 if account.jailed_until_height > self.current_height {
+                    return None;
+                }
+                // Permanently slashed validators cannot participate
+                if self.slashed_validators.contains(address) {
                     return None;
                 }
                 Some(Validator {

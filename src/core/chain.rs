@@ -268,6 +268,8 @@ pub struct Blockchain {
     pub log_index: Vec<IndexedLogEntry>,
     pub token_registry: TokenRegistry,
     pub governance: GovernanceState,
+    /// Tracks consecutive missed epochs per validator address (for inactivity penalties)
+    pub validator_missed_epochs: HashMap<Vec<u8>, u64>,
     storage: Option<Storage>,
 }
 
@@ -330,6 +332,7 @@ impl Blockchain {
             log_index: Vec::new(),
             token_registry: TokenRegistry::new(),
             governance: GovernanceState::new(),
+            validator_missed_epochs: HashMap::new(),
             storage: None,
         })
     }
@@ -446,6 +449,7 @@ impl Blockchain {
                 log_index: Vec::new(),
                 token_registry: stored_token_registry,
                 governance: stored_governance,
+                validator_missed_epochs: HashMap::new(),
                 storage: Some(storage),
             };
 
@@ -1303,7 +1307,7 @@ impl Blockchain {
             let settlement = crate::consensus::compute_epoch_settlement(
                 snapshot,
                 &block_producers,
-                &HashMap::new(),
+                &self.validator_missed_epochs,
             );
             crate::consensus::apply_epoch_settlement(&mut projected_accounts, &settlement);
         }
@@ -1397,9 +1401,21 @@ impl Blockchain {
             let settlement = crate::consensus::compute_epoch_settlement(
                 snapshot,
                 &block_producers,
-                &HashMap::new(), // TODO: track missed epochs per validator
+                &self.validator_missed_epochs,
             );
             crate::consensus::apply_epoch_settlement(&mut self.accounts, &settlement);
+
+            // Update missed_epochs tracker: reset producers, increment non-producers
+            for validator in &snapshot.validators {
+                if block_producers.contains_key(&validator.address) {
+                    self.validator_missed_epochs.remove(&validator.address);
+                } else {
+                    *self
+                        .validator_missed_epochs
+                        .entry(validator.address.clone())
+                        .or_default() += 1;
+                }
+            }
 
             if settlement.total_rewards_distributed > 0 || settlement.total_penalties_applied > 0 {
                 tracing::info!(
@@ -3462,7 +3478,7 @@ mod tests {
         let mut block = chain.create_block(&validator).unwrap();
         block.header.state_root = vec![7; 32];
         block.hash = Block::compute_hash(&block.header);
-        block.signature = Some(validator.sign(&block.hash));
+        block.signature = Some(validator.sign(&Block::signable_block_hash(&block.hash)));
 
         let err = chain.add_block(block).unwrap_err();
         assert!(matches!(err, ChainError::InvalidStateRoot));
@@ -3504,7 +3520,7 @@ mod tests {
         fork.header.prev_hash = chain.blocks[0].hash.clone();
         fork.header.state_root = vec![7; 32];
         fork.hash = Block::compute_hash(&fork.header);
-        fork.signature = Some(validator.sign(&fork.hash));
+        fork.signature = Some(validator.sign(&Block::signable_block_hash(&fork.hash)));
 
         let err = chain.add_block_with_fork_choice(fork).unwrap_err();
         assert!(matches!(err, ChainError::InvalidStateRoot));
@@ -4185,7 +4201,7 @@ mod tests {
         let mut block = chain.create_block(&validator).unwrap();
         block.header.version = 99; // Wrong version
         block.hash = Block::compute_hash(&block.header);
-        block.signature = Some(validator.sign(&block.hash));
+        block.signature = Some(validator.sign(&Block::signable_block_hash(&block.hash)));
 
         let err = chain.add_block(block).unwrap_err();
         assert!(matches!(err, ChainError::InvalidProtocolVersion { .. }));

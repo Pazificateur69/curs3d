@@ -60,7 +60,8 @@ impl Block {
         };
 
         let hash = Self::compute_hash(&header);
-        let signature = Some(validator_keypair.sign(&hash));
+        let signable = Self::signable_block_hash(&hash);
+        let signature = Some(validator_keypair.sign(&signable));
 
         Block {
             header,
@@ -116,6 +117,13 @@ impl Block {
         hash::double_hash(&serialized)
     }
 
+    /// Domain-separated block hash for signing (prevents cross-layer replay)
+    pub fn signable_block_hash(block_hash: &[u8]) -> Vec<u8> {
+        let mut data = b"curs3d-block-sig-v1:".to_vec();
+        data.extend_from_slice(block_hash);
+        data
+    }
+
     pub fn hash_hex(&self) -> String {
         hex::encode(&self.hash)
     }
@@ -129,9 +137,10 @@ impl Block {
             return self.signature.is_none();
         }
 
+        let signable = Self::signable_block_hash(&self.hash);
         match &self.signature {
             Some(signature) => {
-                dilithium::verify(&self.hash, signature, &self.header.validator_public_key)
+                dilithium::verify(&signable, signature, &self.header.validator_public_key)
             }
             None => false,
         }

@@ -265,7 +265,12 @@ impl Transaction {
             gas_limit: self.gas_limit,
             data: &self.data,
         };
-        bincode::serialize(&payload).expect("failed to serialize transaction payload")
+        let serialized =
+            bincode::serialize(&payload).expect("failed to serialize transaction payload");
+        // Domain-separated signing: prefix with domain tag
+        let mut prefixed = b"curs3d-tx-v1:".to_vec();
+        prefixed.extend_from_slice(&serialized);
+        prefixed
     }
 
     pub fn sign(&mut self, keypair: &KeyPair) {
