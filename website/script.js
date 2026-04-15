@@ -279,6 +279,32 @@
         metricElements.forEach(function (el) { metricObserver.observe(el); });
     }
 
+    /* ─── Live Stats (Hero Panel) ────────────────────────────────── */
+
+    function fetchLiveStats() {
+        var heightEl = document.getElementById("liveHeight");
+        var validatorsEl = document.getElementById("liveValidators");
+        var epochEl = document.getElementById("liveEpoch");
+
+        if (!heightEl) return; // Not on index page
+
+        fetch("https://api.curs3d.fr/api/status")
+            .then(function (r) { return r.json(); })
+            .then(function (json) {
+                if (json && json.ok && json.data) {
+                    heightEl.textContent = json.data.height || "0";
+                    validatorsEl.textContent = json.data.active_validators || "0";
+                    epochEl.textContent = json.data.epoch || "0";
+                }
+            })
+            .catch(function () {
+                // Silently fail — stats stay as "--"
+            });
+    }
+
+    fetchLiveStats();
+    setInterval(fetchLiveStats, 10000);
+
     /* ─── Init Language ──────────────────────────────────────────── */
 
     setLanguage(getPreferredLanguage());

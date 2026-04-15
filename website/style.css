@@ -363,9 +363,14 @@ html[data-current-lang="fr"] [data-lang-grid="fr"] { display: grid !important; }
 .hero-panel {
     padding: 1.6rem;
     border-radius: var(--radius-lg);
-    border: 1px solid rgba(200, 169, 107, 0.18);
-    background: linear-gradient(180deg, rgba(27, 36, 48, 0.86), rgba(10, 13, 18, 0.97));
-    box-shadow: var(--shadow);
+    border: 1px solid rgba(63, 208, 212, 0.15);
+    background: linear-gradient(180deg, rgba(20, 28, 38, 0.92), rgba(10, 13, 18, 0.97));
+    box-shadow: var(--shadow), 0 0 60px rgba(63, 208, 212, 0.04);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.5rem;
 }
 
 .hero-panel::before {
@@ -376,9 +381,91 @@ html[data-current-lang="fr"] [data-lang-grid="fr"] { display: grid !important; }
     width: 250px;
     height: 250px;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(200, 169, 107, 0.08), transparent 60%);
+    background: radial-gradient(circle, rgba(63, 208, 212, 0.06), transparent 60%);
     pointer-events: none;
     animation: float-orb 30s ease-in-out infinite reverse;
+}
+
+/* Live badge */
+.live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 1rem;
+    border-radius: 999px;
+    border: 1px solid rgba(111, 226, 181, 0.25);
+    background: rgba(111, 226, 181, 0.08);
+    color: var(--success);
+    font-family: var(--mono-font);
+    font-weight: 700;
+    font-size: 0.78rem;
+    letter-spacing: 0.12em;
+}
+
+.live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 8px rgba(111, 226, 181, 0.6);
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Hero SVG visual */
+@keyframes orbit-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.hero-visual {
+    position: relative;
+    width: 220px;
+    height: 220px;
+    margin: 0.5rem auto;
+}
+
+.hero-svg {
+    width: 100%;
+    height: 100%;
+    animation: orbit-spin 60s linear infinite;
+}
+
+.orbit-dot { animation: pulse-glow 3s ease-in-out infinite; }
+.orbit-dot-2 { animation: pulse-glow 4s ease-in-out infinite 1s; }
+.orbit-dot-3 { animation: pulse-glow 3.5s ease-in-out infinite 0.5s; }
+
+/* Live stats in hero panel */
+.hero-stats-live {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.8rem;
+    width: 100%;
+}
+
+.hero-stat {
+    padding: 0.6rem;
+    border-radius: 14px;
+    border: 1px solid rgba(63, 208, 212, 0.1);
+    background: rgba(63, 208, 212, 0.04);
+}
+
+.hero-stat-value {
+    display: block;
+    font-family: var(--title-font);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--cyan-bright);
+    text-shadow: 0 0 16px rgba(63, 208, 212, 0.3);
+    letter-spacing: -0.02em;
+}
+
+.hero-stat-label {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--muted-2);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 0.15rem;
 }
 
 .hero-ribbon {
