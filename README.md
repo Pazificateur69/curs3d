@@ -140,20 +140,26 @@ CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technicall
 - **Encrypted wallets** (AES-256-GCM + Argon2), auto-migration from legacy format
 - **Protocol versioning** with upgrade-at-height activation and network topic filtering
 - **P2P rate limiting** with per-peer tracking, escalating bans, automatic cleanup
+- **Peer scoring** reputation system with behavior-based scoring and automatic bans
+- **Epoch rewards** distributed to validators proportional to stake and blocks produced
+- **Inactivity penalties** with grace period, then escalating stake deductions
+- **Sparse Merkle Trie** with 256-bit key space, O(log n) proofs (ready for state root migration)
+- **Domain separation** in all hashing (prevents cross-layer collisions)
+- **Checksummed addresses** (EIP-55 style, detects typos)
+- **Rate-limit headers** (X-RateLimit-Limit/Remaining/Window) on all API responses
 - **Persistent storage** (sled, 10 trees, schema v4 with auto-migration)
-- **REST API** (20 endpoints) + WebSocket + TCP RPC + CLI (11 commands)
+- **REST API** (22 endpoints) + WebSocket + TCP RPC + CLI (11 commands)
 - **SDKs**: JavaScript/TypeScript (@curs3d/sdk) and Python (curs3d)
 - **Block explorer** web UI with live dashboard
 - **Benchmarks** (criterion) and **fuzzing** targets (cargo-fuzz)
 - **Docker** multi-stage build + docker-compose + nginx TLS + systemd
 - **CI/CD** pipeline (check, test, clippy 0 warnings, fmt)
-- **112 tests** across 12 modules
+- **129 tests** across 15 modules
 
 ### What Remains for Mainnet
 
 - External security audit (consensus, VM, crypto)
-- State trie (MPT or Verkle tree)
-- Epoch-based rewards + inactivity penalties
+- Migrate state root to Sparse Merkle Trie (protocol upgrade)
 - Long-run soak tests + partition testing
 - Contract SDK (Rust + AssemblyScript)
 
