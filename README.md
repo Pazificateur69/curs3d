@@ -100,28 +100,32 @@ CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technicall
 - **WASM smart contracts** with Wasmer 5, Cranelift backend, 11 host functions, instruction-level fuel metering
 - **EIP-1559 fee market** with dynamic base fee, separate max/priority fees, gas refunds, mempool pressure management
 - **12 transaction types**: native transfers/staking, WASM contracts, CUR-20 token ops, governance
+- **CUR-20 token standard**: deploy, transfer, approve, transferFrom with native registry
+- **On-chain governance**: validator proposals, stake-weighted voting, automatic execution
+- **Light client** module with header-only sync and Merkle proof verification
+- **WebSocket** real-time event streaming (new blocks, transactions, finality)
 - **Fork choice tree** with heaviest-chain rule, automatic reorg, finality boundary, non-canonical pruning
 - **Provable slashing** with cryptographic EquivocationEvidence (dual Dilithium signatures)
 - **State sync** with Merkle-verified snapshot chunks, manifest protocol, finalized checkpoints
 - **Account + storage proofs** exportable via API (Merkle inclusion proofs)
 - **Encrypted wallets** (AES-256-GCM + Argon2), auto-migration from legacy format
 - **Protocol versioning** with upgrade-at-height activation and network topic filtering
+- **P2P rate limiting** with per-peer tracking, escalating bans, automatic cleanup
 - **Persistent storage** (sled, 10 trees, schema v4 with auto-migration)
-- **REST API** (11 endpoints) + TCP RPC + CLI
+- **REST API** (20 endpoints) + WebSocket + TCP RPC + CLI (11 commands)
+- **SDKs**: JavaScript/TypeScript (@curs3d/sdk) and Python (curs3d)
 - **Block explorer** web UI with live dashboard
-- **Docker** multi-stage build + docker-compose
+- **Benchmarks** (criterion) and **fuzzing** targets (cargo-fuzz)
+- **Docker** multi-stage build + docker-compose + nginx TLS + systemd
 - **CI/CD** pipeline (check, test, clippy 0 warnings, fmt)
-- **Repository test suite** exercised through `cargo test`
+- **107 tests** across 12 modules
 
 ### What Remains for Mainnet
 
 - External security audit (consensus, VM, crypto)
-- Peer scoring + anti-spam hardening
 - State trie (MPT or Verkle tree)
-- Indexed receipts + log filters
-- Prometheus metrics + structured logging
 - Epoch-based rewards + inactivity penalties
-- Fuzzing + long-run soak tests
+- Long-run soak tests + partition testing
 - Contract SDK (Rust + AssemblyScript)
 
 ## Architecture
@@ -134,15 +138,18 @@ src/
     block.rs         BlockHeader, Block, genesis, signatures, verification
     blocktree.rs     BlockTree, fork choice (heaviest chain), pruning
     chain.rs         Blockchain state, validation, reorg, fee market, snapshots
-    transaction.rs   6 types: Transfer, Stake, Unstake, Coinbase, DeployContract, CallContract
+    transaction.rs   12 types: Transfer, Stake, Unstake, Coinbase, DeployContract, CallContract, DeployToken, TokenTransfer, TokenApprove, TokenTransferFrom, SubmitProposal, GovernanceVote
     receipt.rs       Execution receipts with gas details and logs
     state_proof.rs   AccountProof, StorageProof (Merkle inclusion)
   crypto/
     dilithium.rs     CRYSTALS-Dilithium Level 5 (pqcrypto)
     hash.rs          SHA-3, double-hash, Merkle trees/proofs, address derivation
-  network/         libp2p P2P (Gossipsub + mDNS), sync, block production, state sync
+  governance/      On-chain governance: proposals, voting, parameter changes
+  light/           Light client: header sync, Merkle proof verification
+  network/         libp2p P2P (Gossipsub + mDNS), sync, block production, state sync, rate limiting
   rpc/             TCP JSON RPC (port 9545)
   storage/         sled DB (10 trees, schema v4, snapshots, migration)
+  token/           CUR-20 token standard: deploy, transfer, approve, transferFrom
   vm/
     mod.rs           Wasmer WASM execution, host functions, fuel middleware
     gas.rs           Gas cost schedule
@@ -158,16 +165,27 @@ website/           Documentation site (6 pages)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/status` | Chain height, finalized height, epoch, validators, protocol version |
+| GET | `/api/healthz` | Health check with block age |
+| GET | `/api/metrics` | Prometheus-format metrics |
 | GET | `/api/block/:height` | Block with transactions, state root, merkle root |
 | GET | `/api/blocks?from=&limit=` | Paginated blocks (max 100) |
 | GET | `/api/account/:address` | Balance, nonce, staked balance |
 | GET | `/api/account/:address/proof` | Merkle account proof |
 | GET | `/api/contract/:addr/storage/:key/proof` | Merkle storage proof |
 | GET | `/api/tx/:hash` | Transaction by hash |
+| GET | `/api/receipt/:hash` | Transaction receipt with gas details and logs |
+| GET | `/api/logs?...` | Filtered log entries (by contract, topic, block range) |
 | GET | `/api/pending` | Mempool pending transactions |
 | GET | `/api/validators` | Active validator set with stakes |
+| GET | `/api/tokens` | List all CUR-20 tokens |
+| GET | `/api/token/:address` | CUR-20 token metadata |
+| GET | `/api/token/:addr/balance/:owner` | CUR-20 token balance |
+| GET | `/api/governance/proposals` | List governance proposals |
+| GET | `/api/governance/proposal/:id` | Proposal details |
+| POST | `/api/faucet/request` | Request 100 CUR testnet tokens (1h cooldown) |
 | POST | `/api/tx/submit` | Submit signed transaction (auth optional) |
 | POST | `/api/tx/estimate` | Dry-run: gas estimate, fees, replacement check |
+| WS | `/ws` | Real-time events: new_block, new_transaction, finality |
 
 All responses: `{"ok": true, "data": {...}}` or `{"ok": false, "error": "..."}`.
 

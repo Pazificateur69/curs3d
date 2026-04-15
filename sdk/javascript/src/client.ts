@@ -78,7 +78,11 @@ export class CursClient {
   }
 
   async requestFaucet(address: string): Promise<Record<string, unknown>> {
-    return this.request(`/api/faucet/${address}`);
+    return this.request("/api/faucet/request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address }),
+    });
   }
 
   async submitTransaction(

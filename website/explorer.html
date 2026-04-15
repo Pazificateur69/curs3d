@@ -277,6 +277,59 @@
         }
     }
 
+    // ─── WebSocket ────────────────────────────────────────────
+    var ws = null;
+    var wsReconnectTimer = null;
+
+    function connectWebSocket() {
+        if (ws && ws.readyState === WebSocket.OPEN) return;
+        var wsUrl = getApi().replace(/^http/, "ws") + "/ws";
+        try {
+            ws = new WebSocket(wsUrl);
+        } catch (e) {
+            return;
+        }
+        ws.onopen = function () {
+            addFeedLine(t("WebSocket connected", "WebSocket connecté"));
+            ws.send(JSON.stringify({ events: ["new_block", "new_transaction", "finality"] }));
+        };
+        ws.onmessage = function (msg) {
+            try {
+                var event = JSON.parse(msg.data);
+                if (event.type === "new_block" && event.data) {
+                    addFeedLine(
+                        t("Block #", "Bloc #") + event.data.height +
+                        " (" + (event.data.tx_count || 0) + " txs)"
+                    );
+                    refreshStatus();
+                    refreshBlocks();
+                } else if (event.type === "new_transaction" && event.data) {
+                    addFeedLine(
+                        t("New tx: ", "Nouvelle tx : ") + formatHash(event.data.hash)
+                    );
+                } else if (event.type === "finality" && event.data) {
+                    addFeedLine(
+                        t("Finality at #", "Finalité au #") + event.data.height
+                    );
+                    refreshStatus();
+                } else if (event.type === "subscribed") {
+                    addFeedLine(t("Subscribed to live events", "Abonné aux événements live"));
+                }
+            } catch (e) {
+                // ignore
+            }
+        };
+        ws.onclose = function () {
+            addFeedLine(t("WebSocket disconnected, falling back to polling", "WebSocket déconnecté, bascule sur le polling"));
+            ws = null;
+            wsReconnectTimer = setTimeout(connectWebSocket, 5000);
+        };
+        ws.onerror = function () {
+            ws = null;
+        };
+    }
+
+    // ─── Polling (fallback) ─────────────────────────────────
     function startPolling() {
         if (pollTimer) clearInterval(pollTimer);
         refreshStatus();
@@ -289,13 +342,17 @@
 
     connectBtn.addEventListener("click", function () {
         addFeedLine(t("Connecting to ", "Connexion à ") + getApi());
+        if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+        if (ws) { ws.close(); ws = null; }
         startPolling();
+        connectWebSocket();
     });
     lookupBtn.addEventListener("click", lookupAccount);
     txSearchBtn.addEventListener("click", lookupTransaction);
     accountAddr.addEventListener("keydown", function (event) { if (event.key === "Enter") lookupAccount(); });
     txHashInput.addEventListener("keydown", function (event) { if (event.key === "Enter") lookupTransaction(); });
     startPolling();
+    connectWebSocket();
 })();
 </script>
 </body>

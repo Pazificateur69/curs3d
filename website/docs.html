@@ -101,6 +101,11 @@ printf '%s\n' 'change-this-validator-password' > validator.password
                                     <tr><td><code>curs3d send</code></td><td><span data-lang="en">Submit a transfer through the RPC path.</span><span data-lang="fr">Soumettre un transfert via le chemin RPC.</span></td></tr>
                                     <tr><td><code>curs3d stake</code></td><td><span data-lang="en">Lock stake for validator participation.</span><span data-lang="fr">Verrouiller du stake pour la participation validateur.</span></td></tr>
                                     <tr><td><code>curs3d status</code></td><td><span data-lang="en">Inspect local or remote chain status.</span><span data-lang="fr">Inspecter le statut de la chaîne en local ou à distance.</span></td></tr>
+                                    <tr><td><code>curs3d unstake</code></td><td><span data-lang="en">Withdraw staked tokens (unlock after delay).</span><span data-lang="fr">Retirer du stake (déverrouillage après délai).</span></td></tr>
+                                    <tr><td><code>curs3d deploy-token</code></td><td><span data-lang="en">Deploy a CUR-20 token (name, symbol, supply).</span><span data-lang="fr">Déployer un token CUR-20 (nom, symbole, supply).</span></td></tr>
+                                    <tr><td><code>curs3d token-transfer</code></td><td><span data-lang="en">Transfer CUR-20 tokens to a recipient.</span><span data-lang="fr">Transférer des tokens CUR-20 à un destinataire.</span></td></tr>
+                                    <tr><td><code>curs3d genesis</code></td><td><span data-lang="en">Generate genesis configuration for a new chain.</span><span data-lang="fr">Générer la configuration genesis pour une nouvelle chaîne.</span></td></tr>
+                                    <tr><td><code>curs3d bootnode-address</code></td><td><span data-lang="en">Display public bootnode multiaddresses.</span><span data-lang="fr">Afficher les multi-adresses bootnode publiques.</span></td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -127,8 +132,13 @@ printf '%s\n' 'change-this-validator-password' > validator.password
                                     <tr><td>POST</td><td><code>/api/faucet/request</code></td><td><span data-lang="en">JSON faucet request.</span><span data-lang="fr">Requête faucet JSON.</span></td></tr>
                                     <tr><td>POST</td><td><code>/api/tx/submit</code></td><td><span data-lang="en">Submit a signed transaction.</span><span data-lang="fr">Soumettre une transaction signée.</span></td></tr>
                                     <tr><td>POST</td><td><code>/api/tx/estimate</code></td><td><span data-lang="en">Estimate execution path and cost.</span><span data-lang="fr">Estimer le coût et le chemin d’exécution.</span></td></tr>
-                                    <tr><td>GET</td><td><code>/api/tokens</code></td><td><span data-lang="en">Token registry list.</span><span data-lang="fr">Liste du registre de tokens.</span></td></tr>
+                                    <tr><td>GET</td><td><code>/api/pending</code></td><td><span data-lang="en">Mempool pending transactions.</span><span data-lang="fr">Transactions en attente dans le mempool.</span></td></tr>
+                                    <tr><td>GET</td><td><code>/api/tokens</code></td><td><span data-lang="en">CUR-20 token registry.</span><span data-lang="fr">Registre de tokens CUR-20.</span></td></tr>
+                                    <tr><td>GET</td><td><code>/api/token/:address</code></td><td><span data-lang="en">Token metadata (name, symbol, supply).</span><span data-lang="fr">Métadonnées token (nom, symbole, supply).</span></td></tr>
+                                    <tr><td>GET</td><td><code>/api/token/:addr/balance/:owner</code></td><td><span data-lang="en">CUR-20 token balance for an owner.</span><span data-lang="fr">Balance CUR-20 d'un propriétaire.</span></td></tr>
                                     <tr><td>GET</td><td><code>/api/governance/proposals</code></td><td><span data-lang="en">Governance proposal list.</span><span data-lang="fr">Liste des propositions de gouvernance.</span></td></tr>
+                                    <tr><td>GET</td><td><code>/api/governance/proposal/:id</code></td><td><span data-lang="en">Single proposal details.</span><span data-lang="fr">Détails d'une proposition.</span></td></tr>
+                                    <tr><td>WS</td><td><code>/ws</code></td><td><span data-lang="en">WebSocket: real-time new_block, new_transaction, finality events.</span><span data-lang="fr">WebSocket : événements new_block, new_transaction, finality en temps réel.</span></td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -143,10 +153,18 @@ printf '%s\n' 'change-this-validator-password' > validator.password
                     <section class="content-section reveal" id="ops">
                         <h2><span data-lang="en">Operations</span><span data-lang="fr">Opérations</span></h2>
                         <ul class="clean-list">
-                            <li><span data-lang="en">Default P2P port: 4337</span><span data-lang="fr">Port P2P par défaut : 4337</span></li>
-                            <li><span data-lang="en">Default HTTP API: 127.0.0.1:8080</span><span data-lang="fr">API HTTP par défaut : 127.0.0.1:8080</span></li>
-                            <li><span data-lang="en">Default TCP RPC: 127.0.0.1:9545</span><span data-lang="fr">TCP RPC par défaut : 127.0.0.1:9545</span></li>
-                            <li><span data-lang="en">Deployment assets are available under deploy/</span><span data-lang="fr">Les assets de déploiement sont disponibles dans deploy/</span></li>
+                            <li><span data-lang="en">P2P port: 4337 (Gossipsub + mDNS + noise + yamux)</span><span data-lang="fr">Port P2P : 4337 (Gossipsub + mDNS + noise + yamux)</span></li>
+                            <li><span data-lang="en">HTTP API: 127.0.0.1:8080 (22 endpoints + WebSocket)</span><span data-lang="fr">API HTTP : 127.0.0.1:8080 (22 endpoints + WebSocket)</span></li>
+                            <li><span data-lang="en">TCP RPC: 127.0.0.1:9545 (CLI only)</span><span data-lang="fr">TCP RPC : 127.0.0.1:9545 (CLI uniquement)</span></li>
+                            <li><span data-lang="en">Rate limiting: 60 GET/min, 10 POST/min per IP</span><span data-lang="fr">Rate limiting : 60 GET/min, 10 POST/min par IP</span></li>
+                            <li><span data-lang="en">P2P rate limiting: per-peer tracking with escalating bans</span><span data-lang="fr">Rate limiting P2P : suivi par peer avec bans escaladants</span></li>
+                            <li><span data-lang="en">Faucet: 100 CUR per request, 1 hour cooldown per address</span><span data-lang="fr">Faucet : 100 CUR par requête, 1h de cooldown par adresse</span></li>
+                            <li><span data-lang="en">Block production: every 10 seconds</span><span data-lang="fr">Production de blocs : toutes les 10 secondes</span></li>
+                            <li><span data-lang="en">Epoch length: 32 blocks (validator set frozen per epoch)</span><span data-lang="fr">Longueur d'epoch : 32 blocs (set de validateurs gelé par epoch)</span></li>
+                            <li><span data-lang="en">Minimum stake: 1,000 CUR</span><span data-lang="fr">Stake minimum : 1 000 CUR</span></li>
+                            <li><span data-lang="en">Block gas limit: 10,000,000</span><span data-lang="fr">Gas limit par bloc : 10 000 000</span></li>
+                            <li><span data-lang="en">Deployment: Docker, systemd, nginx TLS, deploy/scripts/deploy.sh</span><span data-lang="fr">Déploiement : Docker, systemd, nginx TLS, deploy/scripts/deploy.sh</span></li>
+                            <li><span data-lang="en">SDKs: JavaScript (@curs3d/sdk) and Python (curs3d)</span><span data-lang="fr">SDKs : JavaScript (@curs3d/sdk) et Python (curs3d)</span></li>
                         </ul>
                     </section>
 

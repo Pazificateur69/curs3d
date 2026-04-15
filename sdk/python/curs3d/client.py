@@ -80,7 +80,7 @@ class CursClient:
         return self._request("GET", "/api/pending")
 
     def request_faucet(self, address: str) -> dict:
-        return self._request("GET", f"/api/faucet/{address}")
+        return self._request("POST", "/api/faucet/request", json={"address": address})
 
     def submit_transaction(self, signed_tx: dict) -> dict:
         return self._request("POST", "/api/tx/submit", json=signed_tx)

@@ -1011,7 +1011,9 @@ async fn handle_request(
                     {
                         let _ = outbound_tx.try_send(NetworkMessage::NewTransaction(data));
                     }
-                    let event = serde_json::json!({"type": "new_tx", "hash": tx_hash}).to_string();
+                    let event =
+                        serde_json::json!({"type": "new_transaction", "data": {"hash": tx_hash}})
+                            .to_string();
                     let _ = event_tx.send(event);
                     Ok(json_ok(serde_json::json!({"tx_hash": tx_hash})))
                 }

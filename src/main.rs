@@ -135,6 +135,58 @@ enum Commands {
         #[arg(long, default_value_t = DEFAULT_EPOCH_LENGTH)]
         epoch_length: u64,
     },
+    Unstake {
+        #[arg(short, long, default_value = "wallet.json")]
+        wallet: String,
+        #[arg(long)]
+        password_file: Option<String>,
+        #[arg(short, long)]
+        amount: u64,
+        #[arg(short, long, default_value_t = 1000)]
+        fee: u64,
+        #[arg(long, default_value = DEFAULT_DATA_DIR)]
+        data_dir: String,
+        #[arg(long, default_value = DEFAULT_RPC_ADDR)]
+        rpc_addr: String,
+    },
+    DeployToken {
+        #[arg(short, long, default_value = "wallet.json")]
+        wallet: String,
+        #[arg(long)]
+        password_file: Option<String>,
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        symbol: String,
+        #[arg(long, default_value_t = 6)]
+        decimals: u8,
+        #[arg(long)]
+        total_supply: u64,
+        #[arg(short, long, default_value_t = 1000)]
+        fee: u64,
+        #[arg(long, default_value = DEFAULT_DATA_DIR)]
+        data_dir: String,
+        #[arg(long, default_value = DEFAULT_RPC_ADDR)]
+        rpc_addr: String,
+    },
+    TokenTransfer {
+        #[arg(short, long, default_value = "wallet.json")]
+        wallet: String,
+        #[arg(long)]
+        password_file: Option<String>,
+        #[arg(long)]
+        token: String,
+        #[arg(long)]
+        to: String,
+        #[arg(short, long)]
+        amount: u64,
+        #[arg(short, long, default_value_t = 1000)]
+        fee: u64,
+        #[arg(long, default_value = DEFAULT_DATA_DIR)]
+        data_dir: String,
+        #[arg(long, default_value = DEFAULT_RPC_ADDR)]
+        rpc_addr: String,
+    },
     BootnodeAddress {
         #[arg(short, long, default_value = DEFAULT_DATA_DIR)]
         data_dir: String,
@@ -250,6 +302,70 @@ async fn main() {
             minimum_stake_cur,
             epoch_length,
         ),
+        Commands::Unstake {
+            wallet: path,
+            password_file,
+            amount,
+            fee,
+            data_dir,
+            rpc_addr,
+        } => {
+            unstake_tokens(
+                &path,
+                password_file.as_deref(),
+                amount,
+                fee,
+                &data_dir,
+                &rpc_addr,
+            )
+            .await
+        }
+        Commands::DeployToken {
+            wallet: path,
+            password_file,
+            name,
+            symbol,
+            decimals,
+            total_supply,
+            fee,
+            data_dir,
+            rpc_addr,
+        } => {
+            deploy_token(
+                &path,
+                password_file.as_deref(),
+                &name,
+                &symbol,
+                decimals,
+                total_supply,
+                fee,
+                &data_dir,
+                &rpc_addr,
+            )
+            .await
+        }
+        Commands::TokenTransfer {
+            wallet: path,
+            password_file,
+            token,
+            to,
+            amount,
+            fee,
+            data_dir,
+            rpc_addr,
+        } => {
+            transfer_token(
+                &path,
+                password_file.as_deref(),
+                &token,
+                &to,
+                amount,
+                fee,
+                &data_dir,
+                &rpc_addr,
+            )
+            .await
+        }
         Commands::BootnodeAddress {
             data_dir,
             public_addrs,
@@ -784,6 +900,254 @@ async fn stake_tokens(
             );
         }
         Err(e) => eprintln!("Failed to submit stake transaction: {}", e),
+    }
+}
+
+async fn unstake_tokens(
+    wallet_path: &str,
+    password_file: Option<&str>,
+    amount: u64,
+    fee: u64,
+    data_dir: &str,
+    rpc_addr: &str,
+) {
+    let password = resolve_password(
+        password_file,
+        "CURS3D_WALLET_PASSWORD_FILE",
+        "CURS3D_WALLET_PASSWORD",
+        Some(("Enter wallet password: ", false)),
+    );
+    let w = match wallet::Wallet::load_auto(wallet_path, &password) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("Failed to load wallet: {}", e);
+            return;
+        }
+    };
+
+    let sender_address = wallet::Wallet::derive_address_bytes(&w.keypair.public_key);
+    let account_state = match fetch_account_state(sender_address.clone(), data_dir, rpc_addr).await
+    {
+        Ok(state) => state,
+        Err(err) => {
+            eprintln!("Failed to resolve account state: {}", err);
+            return;
+        }
+    };
+
+    let unstake_micro = amount.saturating_mul(MICROTOKENS_PER_CUR);
+    if account_state.staked_balance < unstake_micro {
+        eprintln!(
+            "Insufficient staked balance: have {} CURS3D staked, trying to unstake {} CURS3D",
+            account_state.staked_balance / MICROTOKENS_PER_CUR,
+            amount
+        );
+        return;
+    }
+
+    let chain_id = resolve_chain_id(data_dir, rpc_addr)
+        .await
+        .unwrap_or_else(|_| "curs3d-devnet".to_string());
+    let mut tx = crate::core::transaction::Transaction::unstake(
+        &chain_id,
+        w.keypair.public_key.clone(),
+        unstake_micro,
+        fee,
+        account_state.nonce,
+    );
+    tx.sign(&w.keypair);
+
+    match submit_transaction(tx.clone(), data_dir, rpc_addr).await {
+        Ok(mode) => {
+            println!("=== CURS3D Unstake Submitted ===");
+            println!("Validator: {}", w.address);
+            println!("Unstake:   {} CURS3D", amount);
+            println!("Fee:       {} microtokens", fee);
+            println!("Nonce:     {}", account_state.nonce);
+            println!("TxHash:    {}", tx.hash_hex());
+            println!("Route:     {}", mode);
+            println!();
+            println!(
+                "Funds will unlock after {} blocks.",
+                crate::core::chain::DEFAULT_UNSTAKE_DELAY_BLOCKS
+            );
+        }
+        Err(e) => eprintln!("Failed to submit unstake transaction: {}", e),
+    }
+}
+
+async fn deploy_token(
+    wallet_path: &str,
+    password_file: Option<&str>,
+    name: &str,
+    symbol: &str,
+    decimals: u8,
+    total_supply: u64,
+    fee: u64,
+    data_dir: &str,
+    rpc_addr: &str,
+) {
+    let password = resolve_password(
+        password_file,
+        "CURS3D_WALLET_PASSWORD_FILE",
+        "CURS3D_WALLET_PASSWORD",
+        Some(("Enter wallet password: ", false)),
+    );
+    let w = match wallet::Wallet::load_auto(wallet_path, &password) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("Failed to load wallet: {}", e);
+            return;
+        }
+    };
+
+    let sender_address = wallet::Wallet::derive_address_bytes(&w.keypair.public_key);
+    let account_state = match fetch_account_state(sender_address.clone(), data_dir, rpc_addr).await
+    {
+        Ok(state) => state,
+        Err(err) => {
+            eprintln!("Failed to resolve account state: {}", err);
+            return;
+        }
+    };
+
+    let params = crate::token::DeployTokenParams {
+        name: name.to_string(),
+        symbol: symbol.to_string(),
+        decimals,
+        total_supply,
+    };
+    let data = serde_json::to_vec(&params).expect("failed to serialize token params");
+
+    let chain_id = resolve_chain_id(data_dir, rpc_addr)
+        .await
+        .unwrap_or_else(|_| "curs3d-devnet".to_string());
+
+    let mut tx = crate::core::transaction::Transaction {
+        chain_id,
+        kind: crate::core::transaction::TransactionKind::DeployToken,
+        from: sender_address,
+        sender_public_key: w.keypair.public_key.clone(),
+        to: Vec::new(),
+        amount: 0,
+        fee,
+        max_fee_per_gas: fee,
+        max_priority_fee_per_gas: fee,
+        nonce: account_state.nonce,
+        timestamp: chrono::Utc::now().timestamp(),
+        signature: None,
+        gas_limit: 0,
+        data,
+    };
+    tx.sign(&w.keypair);
+
+    match submit_transaction(tx.clone(), data_dir, rpc_addr).await {
+        Ok(mode) => {
+            println!("=== CURS3D Token Deployed ===");
+            println!("Name:         {}", name);
+            println!("Symbol:       {}", symbol);
+            println!("Decimals:     {}", decimals);
+            println!("Total Supply: {}", total_supply);
+            println!("Deployer:     {}", w.address);
+            println!("TxHash:       {}", tx.hash_hex());
+            println!("Route:        {}", mode);
+        }
+        Err(e) => eprintln!("Failed to deploy token: {}", e),
+    }
+}
+
+async fn transfer_token(
+    wallet_path: &str,
+    password_file: Option<&str>,
+    token_address: &str,
+    to: &str,
+    amount: u64,
+    fee: u64,
+    data_dir: &str,
+    rpc_addr: &str,
+) {
+    let password = resolve_password(
+        password_file,
+        "CURS3D_WALLET_PASSWORD_FILE",
+        "CURS3D_WALLET_PASSWORD",
+        Some(("Enter wallet password: ", false)),
+    );
+    let w = match wallet::Wallet::load_auto(wallet_path, &password) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("Failed to load wallet: {}", e);
+            return;
+        }
+    };
+
+    let sender_address = wallet::Wallet::derive_address_bytes(&w.keypair.public_key);
+    let account_state = match fetch_account_state(sender_address.clone(), data_dir, rpc_addr).await
+    {
+        Ok(state) => state,
+        Err(err) => {
+            eprintln!("Failed to resolve account state: {}", err);
+            return;
+        }
+    };
+
+    let token_clean = token_address.strip_prefix("CUR").unwrap_or(token_address);
+    let token_bytes = match hex::decode(token_clean) {
+        Ok(b) if b.len() == 20 => b,
+        _ => {
+            eprintln!("Invalid token address: {}", token_address);
+            return;
+        }
+    };
+
+    let to_clean = to.strip_prefix("CUR").unwrap_or(to);
+    let to_bytes = match hex::decode(to_clean) {
+        Ok(b) if b.len() == 20 => b,
+        _ => {
+            eprintln!("Invalid recipient address: {}", to);
+            return;
+        }
+    };
+
+    let params = crate::token::TokenTransferParams {
+        token_address: token_bytes,
+        recipient: to_bytes,
+        amount,
+    };
+    let data = serde_json::to_vec(&params).expect("failed to serialize token transfer params");
+
+    let chain_id = resolve_chain_id(data_dir, rpc_addr)
+        .await
+        .unwrap_or_else(|_| "curs3d-devnet".to_string());
+
+    let mut tx = crate::core::transaction::Transaction {
+        chain_id,
+        kind: crate::core::transaction::TransactionKind::TokenTransfer,
+        from: sender_address,
+        sender_public_key: w.keypair.public_key.clone(),
+        to: Vec::new(),
+        amount: 0,
+        fee,
+        max_fee_per_gas: fee,
+        max_priority_fee_per_gas: fee,
+        nonce: account_state.nonce,
+        timestamp: chrono::Utc::now().timestamp(),
+        signature: None,
+        gas_limit: 0,
+        data,
+    };
+    tx.sign(&w.keypair);
+
+    match submit_transaction(tx.clone(), data_dir, rpc_addr).await {
+        Ok(mode) => {
+            println!("=== CURS3D Token Transfer Submitted ===");
+            println!("Token:     {}", token_address);
+            println!("To:        {}", to);
+            println!("Amount:    {}", amount);
+            println!("From:      {}", w.address);
+            println!("TxHash:    {}", tx.hash_hex());
+            println!("Route:     {}", mode);
+        }
+        Err(e) => eprintln!("Failed to submit token transfer: {}", e),
     }
 }
 

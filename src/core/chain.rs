@@ -2290,7 +2290,8 @@ impl Blockchain {
                     })?;
                 // Verify sender is a validator
                 let sender_account = accounts.get(&tx.from);
-                let is_validator = sender_account.is_some_and(|a| a.staked_balance >= minimum_stake);
+                let is_validator =
+                    sender_account.is_some_and(|a| a.staked_balance >= minimum_stake);
                 if !is_validator {
                     return Err(ChainError::UnauthorizedValidator);
                 }
@@ -2308,7 +2309,10 @@ impl Blockchain {
                         ChainError::InvalidTransactionFormat("invalid GovernanceVote JSON in data")
                     })?;
                 // Get voter stake
-                let voter_stake = accounts.get(&tx.from).map(|a| a.staked_balance).unwrap_or(0);
+                let voter_stake = accounts
+                    .get(&tx.from)
+                    .map(|a| a.staked_balance)
+                    .unwrap_or(0);
                 if voter_stake < minimum_stake {
                     return Err(ChainError::UnauthorizedValidator);
                 }
@@ -4043,8 +4047,12 @@ mod tests {
         chain.add_block(block).unwrap();
 
         let expected_registry = chain.token_registry.clone();
-        let expected_governance_ids: Vec<Vec<u8>> =
-            chain.governance.list_proposals().iter().map(|p| p.id.clone()).collect();
+        let expected_governance_ids: Vec<Vec<u8>> = chain
+            .governance
+            .list_proposals()
+            .iter()
+            .map(|p| p.id.clone())
+            .collect();
 
         assert_eq!(expected_registry.tokens.len(), 1);
         assert_eq!(expected_governance_ids.len(), 1);

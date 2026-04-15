@@ -84,10 +84,77 @@ curl http://127.0.0.1:8080/api/blocks?from=0\&limit=10 | jq .data</code></pre></
   -d '{"address":"CUR0123456789abcdef0123456789abcdef01234567"}'</code></pre></div>
                 </article>
                 <article class="content-section example-card reveal">
-                    <h2><span class="example-number">5</span><span data-lang="en">Inspect token and governance state</span><span data-lang="fr">Inspecter l’état token et gouvernance</span></h2>
+                    <h2><span class="example-number">5</span><span data-lang="en">Unstake tokens</span><span data-lang="fr">Retirer du stake</span></h2>
+                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code># Unstake 500 CUR (funds unlock after 10 blocks)
+./target/release/curs3d unstake \
+  --wallet validator.json \
+  --password-file validator.password \
+  --amount 500</code></pre></div>
+                </article>
+                <article class="content-section example-card reveal">
+                    <h2><span class="example-number">6</span><span data-lang="en">Deploy a CUR-20 token</span><span data-lang="fr">Déployer un token CUR-20</span></h2>
+                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code># Deploy a new token with 1 billion supply
+./target/release/curs3d deploy-token \
+  --wallet validator.json \
+  --password-file validator.password \
+  --name "My Token" \
+  --symbol "MYT" \
+  --decimals 6 \
+  --total-supply 1000000000
+
+# List all deployed tokens
+curl http://127.0.0.1:8080/api/tokens | jq .data</code></pre></div>
+                </article>
+                <article class="content-section example-card reveal">
+                    <h2><span class="example-number">7</span><span data-lang="en">Transfer CUR-20 tokens</span><span data-lang="fr">Transférer des tokens CUR-20</span></h2>
+                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code># Transfer 1000 tokens to another address
+./target/release/curs3d token-transfer \
+  --wallet validator.json \
+  --password-file validator.password \
+  --token CUR_TOKEN_ADDRESS_HEX \
+  --to CUR_RECIPIENT_ADDRESS_HEX \
+  --amount 1000
+
+# Check token balance
+curl http://127.0.0.1:8080/api/token/TOKEN_ADDR/balance/OWNER_ADDR | jq .data</code></pre></div>
+                </article>
+                <article class="content-section example-card reveal">
+                    <h2><span class="example-number">8</span><span data-lang="en">Inspect token and governance state</span><span data-lang="fr">Inspecter l’état token et gouvernance</span></h2>
                     <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code>curl http://127.0.0.1:8080/api/tokens | jq .data
 curl http://127.0.0.1:8080/api/governance/proposals | jq .data
 curl http://127.0.0.1:8080/api/pending | jq .data</code></pre></div>
+                </article>
+                <article class="content-section example-card reveal">
+                    <h2><span class="example-number">9</span><span data-lang="en">Connect via WebSocket</span><span data-lang="fr">Se connecter via WebSocket</span></h2>
+                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code># Using wscat (npm install -g wscat)
+wscat -c ws://127.0.0.1:8080/ws
+
+# Subscribe to specific events
+> {"events": ["new_block", "new_transaction"]}
+
+# Or using the JavaScript SDK
+import { CursClient } from "@curs3d/sdk";
+const client = new CursClient("http://127.0.0.1:8080");
+client.subscribe(["new_block"], (event) => {
+  console.log("New block:", event.data.height);
+});</code></pre></div>
+                </article>
+                <article class="content-section example-card reveal">
+                    <h2><span class="example-number">10</span><span data-lang="en">Use the Python SDK</span><span data-lang="fr">Utiliser le SDK Python</span></h2>
+                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">python</span><button class="code-copy">Copy</button></div><pre class="code-body"><code>from curs3d import CursClient
+
+client = CursClient("http://127.0.0.1:8080")
+status = client.get_status()
+print(f"Chain: {status[‘chain_name’]}, Height: {status[‘height’]}")
+
+# Get account balance
+account = client.get_account("CUR...")
+print(f"Balance: {account[‘balance’] / 1_000_000} CUR")
+
+# List tokens
+tokens = client.get_tokens()
+for t in tokens:
+    print(f"{t[‘symbol’]}: {t[‘name’]}")</code></pre></div>
                 </article>
             </div>
         </section>
