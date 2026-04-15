@@ -1283,6 +1283,30 @@ impl Blockchain {
         let mut projected_token_registry = self.token_registry.clone();
         let mut projected_governance = self.governance.clone();
         Self::apply_unstake_unlocks(&mut projected_accounts, height);
+
+        // Apply epoch settlement if crossing epoch boundary (must match add_block logic)
+        let prev_epoch = self.epoch_for_height(self.height());
+        let new_epoch = self.epoch_for_height(height);
+        if new_epoch > prev_epoch
+            && prev_epoch > 0
+            && let Some(snapshot) = self.epoch_snapshots.get(&prev_epoch)
+        {
+            let epoch_start = prev_epoch * self.epoch_length.max(1);
+            let epoch_end = new_epoch * self.epoch_length.max(1);
+            let mut block_producers: HashMap<Vec<u8>, u64> = HashMap::new();
+            for h in epoch_start..epoch_end {
+                if let Some(b) = self.blocks.get(h as usize) {
+                    let addr = hash::address_bytes_from_public_key(&b.header.validator_public_key);
+                    *block_producers.entry(addr).or_default() += 1;
+                }
+            }
+            let settlement = crate::consensus::compute_epoch_settlement(
+                snapshot,
+                &block_producers,
+                &HashMap::new(),
+            );
+            crate::consensus::apply_epoch_settlement(&mut projected_accounts, &settlement);
+        }
         let mut block_txs = Vec::new();
         let mut total_priority_fees = 0u64;
         let mut total_gas_used = 0u64;
