@@ -1343,10 +1343,48 @@ impl Blockchain {
 
     pub fn add_block(&mut self, block: Block) -> Result<(), ChainError> {
         let prev_accounts = self.accounts.clone();
-        if block.header.height > 0 && block.header.height.is_multiple_of(self.epoch_length.max(1)) {
-            let epoch = self.epoch_for_height(block.header.height);
-            if !self.epoch_snapshots.contains_key(&epoch) {
-                self.create_epoch_snapshot_from_accounts(epoch, &prev_accounts);
+        let prev_epoch = self.epoch_for_height(self.height());
+        let new_epoch = self.epoch_for_height(block.header.height);
+
+        if block.header.height > 0
+            && block.header.height.is_multiple_of(self.epoch_length.max(1))
+            && !self.epoch_snapshots.contains_key(&new_epoch)
+        {
+            self.create_epoch_snapshot_from_accounts(new_epoch, &prev_accounts);
+        }
+
+        // Epoch settlement: when crossing epoch boundary, compute and apply rewards/penalties
+        if new_epoch > prev_epoch
+            && prev_epoch > 0
+            && let Some(snapshot) = self.epoch_snapshots.get(&prev_epoch)
+        {
+            // Count blocks produced by each validator in the previous epoch
+            let epoch_start = prev_epoch * self.epoch_length.max(1);
+            let epoch_end = new_epoch * self.epoch_length.max(1);
+            let mut block_producers: HashMap<Vec<u8>, u64> = HashMap::new();
+            for h in epoch_start..epoch_end {
+                if let Some(b) = self.blocks.get(h as usize) {
+                    let addr = hash::address_bytes_from_public_key(&b.header.validator_public_key);
+                    *block_producers.entry(addr).or_default() += 1;
+                }
+            }
+
+            // Compute and apply settlement
+            let settlement = crate::consensus::compute_epoch_settlement(
+                snapshot,
+                &block_producers,
+                &HashMap::new(), // TODO: track missed epochs per validator
+            );
+            crate::consensus::apply_epoch_settlement(&mut self.accounts, &settlement);
+
+            if settlement.total_rewards_distributed > 0 || settlement.total_penalties_applied > 0 {
+                tracing::info!(
+                    target: "audit",
+                    event = "epoch_settlement",
+                    epoch = prev_epoch,
+                    rewards = settlement.total_rewards_distributed,
+                    penalties = settlement.total_penalties_applied,
+                );
             }
         }
         let prev = self.latest_block();

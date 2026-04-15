@@ -694,7 +694,7 @@ impl NetworkNode {
                             if let Ok(net_msg) = serde_json::from_slice::<NetworkMessage>(&message.data) {
                                 match net_msg {
                                     NetworkMessage::NewBlock(data) => {
-                                        Self::handle_new_block(
+                                        let accepted = Self::handle_new_block(
                                             &chain,
                                             &data,
                                             &mut seen_block_hashes,
@@ -702,6 +702,14 @@ impl NetworkNode {
                                             self,
                                             &event_tx,
                                         ).await;
+                                        // Score the peer based on block validity
+                                        if let Some(source) = message.source {
+                                            if accepted {
+                                                peer_scorer.record_good(&source, SCORE_VALID_BLOCK);
+                                            } else {
+                                                peer_scorer.record_bad(&source, SCORE_INVALID_BLOCK);
+                                            }
+                                        }
                                     }
                                     NetworkMessage::NewTransaction(data) => {
                                         Self::handle_new_transaction(&chain, &data, &event_tx).await;
@@ -1035,6 +1043,7 @@ impl NetworkNode {
 
     // ─── Message Handlers ────────────────────────────────────────────
 
+    /// Handle a new block from the network. Returns `true` if the block was accepted.
     async fn handle_new_block(
         chain: &Arc<Mutex<Blockchain>>,
         data: &[u8],
@@ -1042,11 +1051,11 @@ impl NetworkNode {
         validator_key: &Option<KeyPair>,
         node: &mut Self,
         event_tx: &Option<tokio::sync::broadcast::Sender<String>>,
-    ) {
+    ) -> bool {
         // Dedup: hash the raw data
         let data_hash = crate::crypto::hash::sha3_hash(data);
         if seen_hashes.contains(&data_hash) {
-            return;
+            return false;
         }
         if seen_hashes.len() >= MAX_SEEN_BLOCKS {
             seen_hashes.clear();
@@ -1057,7 +1066,7 @@ impl NetworkNode {
             Ok(b) => b,
             Err(e) => {
                 warn!("Failed to deserialize block: {}", e);
-                return;
+                return false;
             }
         };
 
@@ -1102,6 +1111,7 @@ impl NetworkNode {
                         let _ = node.broadcast(&msg);
                     }
                 }
+                return true;
             }
             Err(ChainError::InvalidHeight { .. }) | Err(ChainError::InvalidPrevHash) => {
                 // This might be a fork — try fork choice
@@ -1142,7 +1152,7 @@ impl NetworkNode {
                                     drop(chain_lock);
                                     let msg = NetworkMessage::SlashingEvidence(ev_data);
                                     let _ = node.broadcast(&msg);
-                                    return;
+                                    return false;
                                 }
                             }
                         }
@@ -1154,6 +1164,7 @@ impl NetworkNode {
                 warn!("Rejected block #{}: {}", block_height, e);
             }
         }
+        false
     }
 
     async fn handle_new_transaction(
