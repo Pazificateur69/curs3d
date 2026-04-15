@@ -74,7 +74,7 @@
 cd curs3d
 cargo build --release
 
-printf '%s\n' 'change-this-validator-password' > validator.password
+printf '%s\n' 'YOUR_SECURE_PASSWORD_HERE' > validator.password
 ./target/release/curs3d wallet --output validator.json --password-file validator.password
 
 ./target/release/curs3d genesis \

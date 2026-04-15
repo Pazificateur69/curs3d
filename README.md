@@ -118,7 +118,7 @@ CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technicall
 - **Benchmarks** (criterion) and **fuzzing** targets (cargo-fuzz)
 - **Docker** multi-stage build + docker-compose + nginx TLS + systemd
 - **CI/CD** pipeline (check, test, clippy 0 warnings, fmt)
-- **107 tests** across 12 modules
+- **112 tests** across 12 modules
 
 ### What Remains for Mainnet
 

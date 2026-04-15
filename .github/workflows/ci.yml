@@ -53,3 +53,17 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all --check
+
+  bench:
+    name: Benchmarks (compile check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Compile benchmarks
+        run: |
+          echo '.global __rust_probestack; .type __rust_probestack, @function; __rust_probestack: ret' > /tmp/probestack.s
+          gcc -c /tmp/probestack.s -o /tmp/probestack.o
+          ar rcs /tmp/libprobestack.a /tmp/probestack.o
+          RUSTFLAGS="-L /tmp -l static=probestack" cargo bench --no-run

@@ -338,11 +338,14 @@ impl ProofOfStake {
             return None;
         }
 
-        let mut seed = Vec::new();
-        seed.extend_from_slice(&block_height.to_le_bytes());
-        seed.extend_from_slice(prev_hash);
-        let hash = crate::crypto::hash::sha3_hash(&seed);
-        let mut selector = u64::from_le_bytes(hash[..8].try_into().unwrap()) % total_stake;
+        let hash = crate::crypto::hash::sha3_hash_domain(
+            b"curs3d-validator-selection",
+            &[&block_height.to_le_bytes(), prev_hash],
+        );
+        // SHA-3-256 always returns 32 bytes; taking first 8 is safe
+        let mut selector = u64::from_le_bytes([
+            hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
+        ]) % total_stake;
 
         for validator in validators {
             if selector < validator.stake {
@@ -369,11 +372,13 @@ impl ProofOfStake {
             return None;
         }
 
-        let mut seed = Vec::new();
-        seed.extend_from_slice(&block_height.to_le_bytes());
-        seed.extend_from_slice(prev_hash);
-        let hash = crate::crypto::hash::sha3_hash(&seed);
-        let mut selector = u64::from_le_bytes(hash[..8].try_into().unwrap()) % total_stake;
+        let hash = crate::crypto::hash::sha3_hash_domain(
+            b"curs3d-validator-selection",
+            &[&block_height.to_le_bytes(), prev_hash],
+        );
+        let mut selector = u64::from_le_bytes([
+            hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
+        ]) % total_stake;
 
         for validator in &snapshot.validators {
             if selector < validator.stake {
