@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body data-title-en="CURS3D | Quantum-Secure Layer 1" data-title-fr="CURS3D | Layer 1 Post-Quantique" data-description-en="CURS3D is the quantum-secure Layer 1 for digital assets that need to last. Explore the thesis, stack, governance, tokenomics and full protocol documentation." data-description-fr="CURS3D est la Layer 1 post-quantique pour les actifs numériques conçus pour durer. Explorez la thèse, la stack, la gouvernance, les tokenomics et toute la documentation du protocole.">
+<canvas id="particles-canvas"></canvas>
 <div class="site-shell">
     <nav class="site-nav" id="nav">
         <div class="container nav-inner">
@@ -65,15 +66,17 @@
                     </h1>
                     <p class="lede" data-lang-block="en">CURS3D is a post-quantum blockchain built in Rust for long-duration digital assets, trust-critical infrastructure and issuers that want a stronger long-horizon security posture from day one.</p>
                     <p class="lede" data-lang-block="fr">CURS3D est une blockchain post-quantique développée en Rust pour les actifs numériques de longue durée, les infrastructures critiques et les émetteurs qui veulent une posture de sécurité plus crédible sur le long terme dès le départ.</p>
-                    <div class="pill-row" style="margin: 1.25rem 0 1.5rem;">
-                        <span class="pill" data-lang-block="en">Post-quantum signatures</span>
-                        <span class="pill" data-lang-block="fr">Signatures post-quantiques</span>
-                        <span class="pill" data-lang-block="en">PoS + explicit finality</span>
-                        <span class="pill" data-lang-block="fr">PoS + finalité explicite</span>
-                        <span class="pill" data-lang-block="en">WASM execution</span>
-                        <span class="pill" data-lang-block="fr">Exécution WASM</span>
-                        <span class="pill" data-lang-block="en">Token + governance primitives</span>
-                        <span class="pill" data-lang-block="fr">Primitives token + gouvernance</span>
+                    <div class="pill-row" style="margin: 1.25rem 0 1.5rem;" data-lang-flex="en">
+                        <span class="pill">Post-quantum signatures</span>
+                        <span class="pill">PoS + explicit finality</span>
+                        <span class="pill">WASM execution</span>
+                        <span class="pill">Token + governance primitives</span>
+                    </div>
+                    <div class="pill-row" style="margin: 1.25rem 0 1.5rem;" data-lang-flex="fr">
+                        <span class="pill">Signatures post-quantiques</span>
+                        <span class="pill">PoS + finalité explicite</span>
+                        <span class="pill">Exécution WASM</span>
+                        <span class="pill">Primitives token + gouvernance</span>
                     </div>
                     <div class="btn-row">
                         <a class="btn btn-primary" href="whitepaper.html"><span data-lang="en">Read the thesis</span><span data-lang="fr">Lire la thèse</span></a>
@@ -184,24 +187,28 @@
                 </div>
                 <div class="split-grid four">
                     <article class="card reveal">
+                        <div class="card-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>
                         <h3 data-lang="en">Docs</h3><h3 data-lang="fr">Documentation</h3>
-                        <p data-lang-block="en">Node workflow, API surface, proofs, operations and public protocol interfaces.</p>
-                        <p data-lang-block="fr">Workflow node, surface API, preuves, opérations et interfaces publiques du protocole.</p>
+                        <p data-lang-block="en">22 API endpoints, 11 CLI commands, WebSocket streaming, proofs and operator workflows.</p>
+                        <p data-lang-block="fr">22 endpoints API, 11 commandes CLI, streaming WebSocket, preuves et workflows opérateur.</p>
                     </article>
                     <article class="card reveal">
+                        <div class="card-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
                         <h3>Stack</h3>
-                        <p data-lang-block="en">Consensus, execution, networking, state, storage and runtime structure.</p>
-                        <p data-lang-block="fr">Consensus, exécution, réseau, état, stockage et structure runtime.</p>
+                        <p data-lang-block="en">Rust core, Dilithium 5 crypto, BFT PoS consensus, WASM VM, EIP-1559 fees, sled storage.</p>
+                        <p data-lang-block="fr">Coeur Rust, crypto Dilithium 5, consensus BFT PoS, VM WASM, frais EIP-1559, stockage sled.</p>
                     </article>
                     <article class="card reveal">
+                        <div class="card-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
                         <h3 data-lang="en">Governance</h3><h3 data-lang="fr">Gouvernance</h3>
-                        <p data-lang-block="en">Proposal flow, upgrade doctrine, validator responsibilities and emergency posture.</p>
-                        <p data-lang-block="fr">Flux de proposition, doctrine d’upgrade, responsabilités validateurs et posture d’urgence.</p>
+                        <p data-lang-block="en">On-chain proposals, stake-weighted voting, automatic execution, parameter changes.</p>
+                        <p data-lang-block="fr">Propositions on-chain, vote pondéré par stake, exécution automatique, changement de paramètres.</p>
                     </article>
                     <article class="card reveal">
+                        <div class="card-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg></div>
                         <h3>Tokenomics</h3>
-                        <p data-lang-block="en">Token role, allocation philosophy, fees, incentives and treasury logic.</p>
-                        <p data-lang-block="fr">Rôle du token, philosophie d’allocation, frais, incentives et logique de trésorerie.</p>
+                        <p data-lang-block="en">CUR-20 token standard, native transfers, staking rewards, fee burning, treasury logic.</p>
+                        <p data-lang-block="fr">Standard CUR-20, transferts natifs, récompenses de staking, fee burning, logique de trésorerie.</p>
                     </article>
                 </div>
             </div>
