@@ -4,6 +4,7 @@ use libp2p::{
     Multiaddr, PeerId, Swarm, SwarmBuilder, gossipsub, identity, mdns, noise, swarm::SwarmEvent,
     tcp, yamux,
 };
+use bincode::Options;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
@@ -22,6 +23,19 @@ const SYNC_TIMEOUT_SECS: u64 = 15;
 const MAX_SYNC_RETRIES: u32 = 3;
 const MAX_SEEN_BLOCKS: usize = 1000;
 const SYNC_BATCH_SIZE: u64 = 50;
+/// Maximum size for any deserialized P2P message (16 MB) — prevents OOM from malicious payloads
+const MAX_DESERIALIZE_SIZE: u64 = 16 * 1024 * 1024;
+
+/// Bounded bincode deserialization to prevent OOM attacks from untrusted network data.
+fn bounded_deserialize<T: serde::de::DeserializeOwned>(data: &[u8]) -> Result<T, String> {
+    if data.len() as u64 > MAX_DESERIALIZE_SIZE {
+        return Err(format!("payload too large: {} bytes", data.len()));
+    }
+    bincode::options()
+        .with_limit(MAX_DESERIALIZE_SIZE)
+        .deserialize(data)
+        .map_err(|e| format!("deserialize error: {}", e))
+}
 
 // ─── P2P Rate Limiting ──────────────────────────────────────────────
 
@@ -841,7 +855,7 @@ impl NetworkNode {
                                         }
                                     }
                                     NetworkMessage::SlashingEvidence(data) => {
-                                        if let Ok(evidence) = bincode::deserialize::<EquivocationEvidence>(&data) {
+                                        if let Ok(evidence) = bounded_deserialize::<EquivocationEvidence>(&data) {
                                             let mut chain_lock = chain.lock().await;
                                             match chain_lock.process_equivocation(&evidence) {
                                                 Ok(penalty) => {
@@ -857,7 +871,7 @@ impl NetworkNode {
                                         }
                                     }
                                     NetworkMessage::FinalityVote(data) => {
-                                        if let Ok(vote) = bincode::deserialize::<crate::consensus::FinalityVote>(&data) {
+                                        if let Ok(vote) = bounded_deserialize::<crate::consensus::FinalityVote>(&data) {
                                             let mut chain_lock = chain.lock().await;
                                             if let Some(finalized) = chain_lock.add_finality_vote(vote) {
                                                 info!(
@@ -926,7 +940,7 @@ impl NetworkNode {
                                         if target_peer_id != self.peer_id.to_string() {
                                             continue;
                                         }
-                                        match bincode::deserialize::<SnapshotManifest>(&data) {
+                                        match bounded_deserialize::<SnapshotManifest>(&data) {
                                             Ok(manifest) => {
                                                 info!("Received snapshot manifest for height {}", manifest.height);
                                                 let same_session = pending_snapshot_manifest
@@ -953,7 +967,7 @@ impl NetworkNode {
                                         if manifest.height != height {
                                             continue;
                                         }
-                                        match bincode::deserialize::<StateChunk>(&data) {
+                                        match bounded_deserialize::<StateChunk>(&data) {
                                             Ok(chunk) => {
                                                 pending_snapshot_chunks.insert(chunk.index, chunk);
                                                 if pending_snapshot_chunks.len() == manifest.chunk_count {
@@ -1069,7 +1083,7 @@ impl NetworkNode {
         }
         seen_hashes.insert(data_hash);
 
-        let block = match bincode::deserialize::<Block>(data) {
+        let block = match bounded_deserialize::<Block>(data) {
             Ok(b) => b,
             Err(e) => {
                 warn!("Failed to deserialize block: {}", e);
@@ -1179,7 +1193,7 @@ impl NetworkNode {
         data: &[u8],
         event_tx: &Option<tokio::sync::broadcast::Sender<String>>,
     ) -> bool {
-        match bincode::deserialize::<crate::core::transaction::Transaction>(data) {
+        match bounded_deserialize::<crate::core::transaction::Transaction>(data) {
             Ok(tx) => {
                 let tx_hash = hex::encode(crate::crypto::hash::sha3_hash(
                     &bincode::serialize(&tx).unwrap_or_default(),
@@ -1294,7 +1308,7 @@ impl NetworkNode {
 
         let mut accepted = 0u64;
         for data in blocks_data {
-            match bincode::deserialize::<Block>(data) {
+            match bounded_deserialize::<Block>(data) {
                 Ok(block) => {
                     let height = block.header.height;
                     match chain_lock.add_block(block) {

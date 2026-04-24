@@ -26,7 +26,7 @@ pub const DEFAULT_MIN_STAKE: u64 = 1_000_000_000;
 pub const DEFAULT_UNSTAKE_DELAY_BLOCKS: u64 = 10;
 pub const DEFAULT_EPOCH_LENGTH: u64 = 32;
 pub const DEFAULT_JAIL_DURATION_BLOCKS: u64 = 64;
-pub const DEFAULT_INITIAL_BASE_FEE_PER_GAS: u64 = 0;
+pub const DEFAULT_INITIAL_BASE_FEE_PER_GAS: u64 = 1;
 pub const DEFAULT_BASE_FEE_CHANGE_DENOMINATOR: u64 = 8;
 const MAX_FUTURE_BLOCK_TIME_SECS: i64 = 30;
 const MAX_FUTURE_TX_TIME_SECS: i64 = 30;
@@ -518,8 +518,8 @@ impl Blockchain {
         if parent.header.gas_used == target {
             return parent_base_fee;
         }
-        if parent_base_fee == 0 && parent.header.gas_used <= target {
-            return 0;
+        if parent_base_fee == 0 {
+            return 1;
         }
 
         let delta = parent.header.gas_used.abs_diff(target);
@@ -533,7 +533,7 @@ impl Blockchain {
         if parent.header.gas_used > target {
             parent_base_fee.saturating_add(change)
         } else {
-            parent_base_fee.saturating_sub(change)
+            parent_base_fee.saturating_sub(change).max(1)
         }
     }
 
@@ -726,7 +726,7 @@ impl Blockchain {
         // Persist chunks to storage
         if let Some(ref storage) = self.storage {
             for chunk in &chunks {
-                let _ = storage.put_snapshot_chunk(snapshot_height, chunk);
+                let _ = storage.put_snapshot_chunk(snapshot_height, chunk, Some(chunks.len()));
             }
             let _ = storage.put_snapshot_manifest(snapshot_height, &manifest);
         }
@@ -1112,6 +1112,11 @@ impl Blockchain {
             return Err(ChainError::FeeTooLow);
         }
         let expected_nonce_floor = self.accounts.get(&tx.from).map(|a| a.nonce).unwrap_or(0);
+        if tx.nonce < expected_nonce_floor {
+            return Err(ChainError::InvalidTransactionFormat(
+                "transaction nonce below account nonce (stale transaction)",
+            ));
+        }
         if tx.nonce > expected_nonce_floor.saturating_add(MAX_PENDING_NONCE_GAP) {
             return Err(ChainError::InvalidTransactionFormat(
                 "transaction nonce gap too large for mempool admission",
@@ -1582,6 +1587,16 @@ impl Blockchain {
     /// If it builds on the tip, behaves like add_block.
     /// If it forks, inserts into the block tree and potentially reorgs.
     pub fn add_block_with_fork_choice(&mut self, block: Block) -> Result<bool, ChainError> {
+        // Reject blocks too far behind the chain tip to limit reorg depth
+        const MAX_REORG_DEPTH: u64 = 64;
+        if self.height() > MAX_REORG_DEPTH
+            && block.header.height < self.height().saturating_sub(MAX_REORG_DEPTH)
+        {
+            return Err(ChainError::InvalidTransactionFormat(
+                "block too old: exceeds maximum reorg depth",
+            ));
+        }
+
         let builds_on_tip = block.header.prev_hash == self.latest_block().hash;
 
         if builds_on_tip {
@@ -2298,10 +2313,8 @@ impl Blockchain {
                     })?;
                 token_registry
                     .deploy_token(&tx.from, tx.nonce.wrapping_sub(1), &params, current_height)
-                    .map_err(|e| {
-                        ChainError::InvalidTransactionFormat(Box::leak(
-                            format!("token error: {}", e).into_boxed_str(),
-                        ))
+                    .map_err(|_e| {
+                        ChainError::InvalidTransactionFormat("token operation failed")
                     })?;
             }
             TransactionKind::TokenTransfer => {
@@ -2316,10 +2329,8 @@ impl Blockchain {
                         &params.recipient,
                         params.amount,
                     )
-                    .map_err(|e| {
-                        ChainError::InvalidTransactionFormat(Box::leak(
-                            format!("token error: {}", e).into_boxed_str(),
-                        ))
+                    .map_err(|_e| {
+                        ChainError::InvalidTransactionFormat("token operation failed")
                     })?;
             }
             TransactionKind::TokenApprove => {
@@ -2334,10 +2345,8 @@ impl Blockchain {
                         &params.spender,
                         params.amount,
                     )
-                    .map_err(|e| {
-                        ChainError::InvalidTransactionFormat(Box::leak(
-                            format!("token error: {}", e).into_boxed_str(),
-                        ))
+                    .map_err(|_e| {
+                        ChainError::InvalidTransactionFormat("token operation failed")
                     })?;
             }
             TransactionKind::TokenTransferFrom => {
@@ -2355,10 +2364,8 @@ impl Blockchain {
                         &params.recipient,
                         params.amount,
                     )
-                    .map_err(|e| {
-                        ChainError::InvalidTransactionFormat(Box::leak(
-                            format!("token error: {}", e).into_boxed_str(),
-                        ))
+                    .map_err(|_e| {
+                        ChainError::InvalidTransactionFormat("token operation failed")
                     })?;
             }
             TransactionKind::SubmitProposal => {
@@ -2373,12 +2380,16 @@ impl Blockchain {
                 if !is_validator {
                     return Err(ChainError::UnauthorizedValidator);
                 }
+                // Snapshot all validator stakes at proposal creation time
+                let stake_snapshot: std::collections::HashMap<Vec<u8>, u64> = accounts
+                    .iter()
+                    .filter(|(_, a)| a.staked_balance >= minimum_stake)
+                    .map(|(addr, a)| (addr.clone(), a.staked_balance))
+                    .collect();
                 governance
-                    .submit_proposal(&tx.from, &params, current_height, epoch_length)
-                    .map_err(|e| {
-                        ChainError::InvalidTransactionFormat(Box::leak(
-                            format!("governance error: {}", e).into_boxed_str(),
-                        ))
+                    .submit_proposal(&tx.from, &params, current_height, epoch_length, stake_snapshot)
+                    .map_err(|_| {
+                        ChainError::InvalidTransactionFormat("governance operation failed")
                     })?;
             }
             TransactionKind::GovernanceVote => {
@@ -2402,10 +2413,8 @@ impl Blockchain {
                         voter_stake,
                         current_height,
                     )
-                    .map_err(|e| {
-                        ChainError::InvalidTransactionFormat(Box::leak(
-                            format!("governance error: {}", e).into_boxed_str(),
-                        ))
+                    .map_err(|_e| {
+                        ChainError::InvalidTransactionFormat("governance operation failed")
                     })?;
             }
             _ => {}
@@ -3129,14 +3138,15 @@ mod tests {
         deploy_tx.sign(&validator);
         chain.add_transaction(deploy_tx).unwrap();
 
-        assert_eq!(chain.current_base_fee_per_gas(), 0);
+        // Base fee starts at minimum 1 (never 0, prevents free spam)
+        let initial_fee = chain.current_base_fee_per_gas();
+        assert!(initial_fee >= 1);
         let block1 = chain.create_block(&validator).unwrap();
-        assert_eq!(block1.header.base_fee_per_gas, 0);
         assert!(block1.header.gas_used > chain.target_block_gas_usage());
         chain.add_block(block1).unwrap();
 
         let block2 = chain.create_block(&validator).unwrap();
-        assert!(block2.header.base_fee_per_gas > 0);
+        assert!(block2.header.base_fee_per_gas > initial_fee);
     }
 
     #[test]
@@ -3165,10 +3175,10 @@ mod tests {
         chain.add_block(block).unwrap();
 
         assert_eq!(chain.get_balance(&recipient_address), 1000);
-        assert_eq!(
-            chain.get_balance(&sender_address),
-            DEFAULT_BLOCK_REWARD * 2 - 1000
-        );
+        // Sender paid: 1000 transfer + gas fees (base_fee >= 1)
+        let sender_balance = chain.get_balance(&sender_address);
+        assert!(sender_balance < DEFAULT_BLOCK_REWARD * 2 - 1000);
+        assert!(sender_balance > DEFAULT_BLOCK_REWARD * 2 - 1000 - 100_000); // Reasonable fee range
         assert!(chain.is_valid());
     }
 
@@ -3215,10 +3225,10 @@ mod tests {
         chain.add_block(block).unwrap();
 
         assert_eq!(chain.get_staked_balance(&address), 10_000_000);
-        assert_eq!(
-            chain.get_balance(&address),
-            DEFAULT_BLOCK_REWARD * 2 - 10_000_000
-        );
+        // Balance = 2 block rewards - staked - gas fees
+        let balance = chain.get_balance(&address);
+        assert!(balance < DEFAULT_BLOCK_REWARD * 2 - 10_000_000);
+        assert!(balance > DEFAULT_BLOCK_REWARD * 2 - 10_000_000 - 100_000);
     }
 
     #[test]
@@ -3457,10 +3467,9 @@ mod tests {
         assert_eq!(chain.get_staked_balance(&address), 5_000_000);
         assert_eq!(chain.get_account(&address).pending_unstakes.len(), 1);
         let balance_after_unstake_block = chain.get_balance(&address);
-        assert_eq!(
-            balance_after_unstake_block,
-            balance_after_stake + DEFAULT_BLOCK_REWARD - 5_000_000
-        );
+        // Balance includes block reward but minus gas fees for unstake tx
+        assert!(balance_after_unstake_block < balance_after_stake + DEFAULT_BLOCK_REWARD - 5_000_000);
+        assert!(balance_after_unstake_block > balance_after_stake + DEFAULT_BLOCK_REWARD - 5_000_000 - 100_000);
 
         for _ in 0..DEFAULT_UNSTAKE_DELAY_BLOCKS {
             let block = chain.create_block(&validator).unwrap();

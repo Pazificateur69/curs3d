@@ -44,6 +44,9 @@ pub struct Proposal {
     pub votes_for: u64,
     pub votes_against: u64,
     pub voters: HashSet<Vec<u8>>,
+    /// Snapshot of validator stakes at proposal creation — prevents stake-transfer double-vote
+    #[serde(default)]
+    pub stake_snapshot: HashMap<Vec<u8>, u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -90,6 +93,7 @@ impl GovernanceState {
         params: &SubmitProposalParams,
         current_height: u64,
         epoch_length: u64,
+        stake_snapshot: HashMap<Vec<u8>, u64>,
     ) -> Result<Vec<u8>, GovernanceError> {
         // Validate proposal kind
         match &params.kind {
@@ -132,6 +136,7 @@ impl GovernanceState {
             votes_for: 0,
             votes_against: 0,
             voters: HashSet::new(),
+            stake_snapshot,
         };
 
         self.proposals.insert(id.clone(), proposal);
@@ -143,7 +148,7 @@ impl GovernanceState {
         voter: &[u8],
         proposal_id: &[u8],
         choice: &VoteChoice,
-        voter_stake: u64,
+        _voter_stake_current: u64,
         current_height: u64,
     ) -> Result<(), GovernanceError> {
         let proposal = self
@@ -163,10 +168,16 @@ impl GovernanceState {
             return Err(GovernanceError::AlreadyVoted);
         }
 
+        // Use stake snapshot from proposal creation time to prevent stake-transfer attacks
+        let snapshotted_stake = proposal.stake_snapshot.get(voter).copied().unwrap_or(0);
+        if snapshotted_stake == 0 {
+            return Err(GovernanceError::ProposalNotActive);
+        }
+
         proposal.voters.insert(voter.to_vec());
         match choice {
-            VoteChoice::For => proposal.votes_for += voter_stake,
-            VoteChoice::Against => proposal.votes_against += voter_stake,
+            VoteChoice::For => proposal.votes_for += snapshotted_stake,
+            VoteChoice::Against => proposal.votes_against += snapshotted_stake,
         }
 
         Ok(())
@@ -253,6 +264,13 @@ mod tests {
         vec![2u8; 20]
     }
 
+    fn test_snapshot() -> HashMap<Vec<u8>, u64> {
+        let mut snap = HashMap::new();
+        snap.insert(test_validator(), 700);
+        snap.insert(test_validator2(), 300);
+        snap
+    }
+
     #[test]
     fn test_submit_proposal() {
         let mut gov = GovernanceState::new();
@@ -263,11 +281,12 @@ mod tests {
             },
         };
         let id = gov
-            .submit_proposal(&test_validator(), &params, 100, 32)
+            .submit_proposal(&test_validator(), &params, 100, 32, test_snapshot())
             .unwrap();
         let proposal = gov.get_proposal(&id).unwrap();
         assert_eq!(proposal.status, ProposalStatus::Active);
         assert_eq!(proposal.voting_deadline_height, 100 + 2 * 32);
+        assert_eq!(proposal.stake_snapshot.len(), 2);
     }
 
     #[test]
@@ -280,12 +299,13 @@ mod tests {
             },
         };
         let id = gov
-            .submit_proposal(&test_validator(), &params, 100, 32)
+            .submit_proposal(&test_validator(), &params, 100, 32, test_snapshot())
             .unwrap();
-        gov.vote(&test_validator(), &id, &VoteChoice::For, 1000, 100)
+        gov.vote(&test_validator(), &id, &VoteChoice::For, 700, 100)
             .unwrap();
         let proposal = gov.get_proposal(&id).unwrap();
-        assert_eq!(proposal.votes_for, 1000);
+        // Uses snapshot stake (700), not the passed parameter
+        assert_eq!(proposal.votes_for, 700);
     }
 
     #[test]
@@ -298,7 +318,7 @@ mod tests {
             },
         };
         let id = gov
-            .submit_proposal(&test_validator(), &params, 100, 32)
+            .submit_proposal(&test_validator(), &params, 100, 32, test_snapshot())
             .unwrap();
         gov.vote(&test_validator(), &id, &VoteChoice::For, 1000, 100)
             .unwrap();
@@ -316,7 +336,7 @@ mod tests {
             },
         };
         let id = gov
-            .submit_proposal(&test_validator(), &params, 100, 32)
+            .submit_proposal(&test_validator(), &params, 100, 32, test_snapshot())
             .unwrap();
         // Vote with supermajority
         gov.vote(&test_validator(), &id, &VoteChoice::For, 700, 100)
@@ -351,15 +371,16 @@ mod tests {
                 new_value: 20_000_000,
             },
         };
+        // Snapshot: validator1=1000, validator2=1000
         let id = gov
-            .submit_proposal(&test_validator(), &params, 100, 32)
+            .submit_proposal(&test_validator(), &params, 100, 32, test_snapshot())
             .unwrap();
-        // Only 10% of stake votes
-        gov.vote(&test_validator(), &id, &VoteChoice::For, 100, 100)
+        // Only validator1 votes (700 out of 10000 total = 7%, below 50% quorum)
+        gov.vote(&test_validator(), &id, &VoteChoice::For, 700, 100)
             .unwrap();
 
         let deadline = 100 + 2 * 32;
-        let _ = gov.process_block(deadline + 1, 1000, 32);
+        let _ = gov.process_block(deadline + 1, 10000, 32);
         assert_eq!(
             gov.get_proposal(&id).unwrap().status,
             ProposalStatus::Rejected
@@ -375,8 +396,12 @@ mod tests {
                 new_value: 20_000_000,
             },
         };
+        // Equal stakes so 50/50 split fails 67% approval threshold
+        let mut equal_snapshot = HashMap::new();
+        equal_snapshot.insert(test_validator(), 500);
+        equal_snapshot.insert(test_validator2(), 500);
         let id = gov
-            .submit_proposal(&test_validator(), &params, 100, 32)
+            .submit_proposal(&test_validator(), &params, 100, 32, equal_snapshot)
             .unwrap();
         // 50/50 split (needs 67%)
         gov.vote(&test_validator(), &id, &VoteChoice::For, 500, 100)
@@ -401,7 +426,7 @@ mod tests {
                 new_value: 42,
             },
         };
-        let result = gov.submit_proposal(&test_validator(), &params, 100, 32);
+        let result = gov.submit_proposal(&test_validator(), &params, 100, 32, test_snapshot());
         assert!(matches!(result, Err(GovernanceError::UnknownParameter(_))));
     }
 
@@ -415,7 +440,7 @@ mod tests {
             },
         };
         let id = gov
-            .submit_proposal(&test_validator(), &params, 100, 32)
+            .submit_proposal(&test_validator(), &params, 100, 32, test_snapshot())
             .unwrap();
         let deadline = 100 + 2 * 32;
         let result = gov.vote(&test_validator(), &id, &VoteChoice::For, 1000, deadline + 1);

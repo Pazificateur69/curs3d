@@ -153,20 +153,26 @@ printf '%s\n' 'YOUR_SECURE_PASSWORD_HERE' > validator.password
                     <section class="content-section reveal" id="ops">
                         <h2><span data-lang="en">Operations</span><span data-lang="fr">Opérations</span></h2>
                         <ul class="clean-list">
+                            <li><span data-lang="en">Network: multi-node testnet with 4 BFT validators across independent Oracle Cloud instances</span><span data-lang="fr">Reseau : testnet multi-node avec 4 validateurs BFT sur des instances Oracle Cloud independantes</span></li>
                             <li><span data-lang="en">Live API: <a href="https://api.curs3d.fr/api/status">https://api.curs3d.fr</a></span><span data-lang="fr">API live : <a href="https://api.curs3d.fr/api/status">https://api.curs3d.fr</a></span></li>
                             <li><span data-lang="en">Live Explorer: <a href="https://explorer.curs3d.fr">https://explorer.curs3d.fr</a></span><span data-lang="fr">Explorer live : <a href="https://explorer.curs3d.fr">https://explorer.curs3d.fr</a></span></li>
                             <li><span data-lang="en">WebSocket: wss://api.curs3d.fr/ws</span><span data-lang="fr">WebSocket : wss://api.curs3d.fr/ws</span></li>
                             <li><span data-lang="en">P2P Bootnode: api.curs3d.fr:4337</span><span data-lang="fr">Bootnode P2P : api.curs3d.fr:4337</span></li>
+                            <li><span data-lang="en">Consensus: BFT PoS with 2/3 stake-weighted finality, equivocation slashing</span><span data-lang="fr">Consensus : BFT PoS avec finalite 2/3 ponderee par stake, slashing par equivocation</span></li>
                             <li><span data-lang="en">Local HTTP API: 127.0.0.1:8080 (22 endpoints + WebSocket)</span><span data-lang="fr">API HTTP locale : 127.0.0.1:8080 (22 endpoints + WebSocket)</span></li>
                             <li><span data-lang="en">Local TCP RPC: 127.0.0.1:9545 (CLI only)</span><span data-lang="fr">TCP RPC local : 127.0.0.1:9545 (CLI uniquement)</span></li>
                             <li><span data-lang="en">Rate limiting: 60 GET/min, 10 POST/min per IP</span><span data-lang="fr">Rate limiting : 60 GET/min, 10 POST/min par IP</span></li>
-                            <li><span data-lang="en">P2P rate limiting: per-peer tracking with escalating bans</span><span data-lang="fr">Rate limiting P2P : suivi par peer avec bans escaladants</span></li>
-                            <li><span data-lang="en">Faucet: 100 CUR per request, 1 hour cooldown per address</span><span data-lang="fr">Faucet : 100 CUR par requête, 1h de cooldown par adresse</span></li>
+                            <li><span data-lang="en">P2P rate limiting: per-peer tracking with escalating bans + reputation scoring</span><span data-lang="fr">Rate limiting P2P : suivi par peer avec bans escaladants + scoring de reputation</span></li>
+                            <li><span data-lang="en">Faucet: 100 CUR per request, 1 hour cooldown per address</span><span data-lang="fr">Faucet : 100 CUR par requete, 1h de cooldown par adresse</span></li>
                             <li><span data-lang="en">Block production: every 10 seconds</span><span data-lang="fr">Production de blocs : toutes les 10 secondes</span></li>
-                            <li><span data-lang="en">Epoch length: 32 blocks (validator set frozen per epoch)</span><span data-lang="fr">Longueur d'epoch : 32 blocs (set de validateurs gelé par epoch)</span></li>
+                            <li><span data-lang="en">Epoch length: 32 blocks (validator set frozen per epoch)</span><span data-lang="fr">Longueur d'epoch : 32 blocs (set de validateurs gele par epoch)</span></li>
                             <li><span data-lang="en">Minimum stake: 1,000 CUR</span><span data-lang="fr">Stake minimum : 1 000 CUR</span></li>
                             <li><span data-lang="en">Block gas limit: 10,000,000</span><span data-lang="fr">Gas limit par bloc : 10 000 000</span></li>
-                            <li><span data-lang="en">Deployment: Docker, systemd, nginx TLS, deploy/scripts/deploy.sh</span><span data-lang="fr">Déploiement : Docker, systemd, nginx TLS, deploy/scripts/deploy.sh</span></li>
+                            <li><span data-lang="en">Security: bounded P2P deserialization (16MB), reorg depth limit (64 blocks), nonce floor validation, base_fee floor</span><span data-lang="fr">Securite : deserialisation P2P bornee (16MB), limite reorg (64 blocs), validation nonce floor, base_fee minimum</span></li>
+                            <li><span data-lang="en">Governance: snapshot-based voting (anti double-vote), timelock execution (32 blocks + epoch alignment)</span><span data-lang="fr">Gouvernance : vote par snapshot (anti double-vote), execution avec timelock (32 blocs + alignement epoch)</span></li>
+                            <li><span data-lang="en">Wallet encryption: Argon2id with m=64MB, t=3, p=4 + AES-256-GCM</span><span data-lang="fr">Chiffrement wallet : Argon2id avec m=64MB, t=3, p=4 + AES-256-GCM</span></li>
+                            <li><span data-lang="en">HA: systemd watchdog, auto-restart, healthcheck cron, TLS auto-renew</span><span data-lang="fr">HA : watchdog systemd, auto-restart, healthcheck cron, TLS auto-renew</span></li>
+                            <li><span data-lang="en">Deployment: Docker, systemd, nginx TLS, multi-node deploy scripts</span><span data-lang="fr">Deploiement : Docker, systemd, nginx TLS, scripts deploy multi-node</span></li>
                             <li><span data-lang="en">SDKs: JavaScript (@curs3d/sdk) and Python (curs3d)</span><span data-lang="fr">SDKs : JavaScript (@curs3d/sdk) et Python (curs3d)</span></li>
                         </ul>
                     </section>

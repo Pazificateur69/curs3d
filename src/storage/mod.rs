@@ -654,7 +654,21 @@ impl Storage {
         }
     }
 
-    pub fn put_snapshot_chunk(&self, height: u64, chunk: &StateChunk) -> Result<(), StorageError> {
+    pub fn put_snapshot_chunk(
+        &self,
+        height: u64,
+        chunk: &StateChunk,
+        expected_chunk_count: Option<usize>,
+    ) -> Result<(), StorageError> {
+        // Validate chunk index against manifest to prevent storage bloat attacks
+        if let Some(count) = expected_chunk_count
+            && chunk.index >= count
+        {
+            return Err(StorageError::Serialize(format!(
+                "chunk index {} exceeds expected count {}",
+                chunk.index, count
+            )));
+        }
         let tree = self.db.open_tree(SNAPSHOT_CHUNK_TREE)?;
         let mut key = height.to_be_bytes().to_vec();
         key.extend_from_slice(&(chunk.index as u64).to_be_bytes());
@@ -862,7 +876,7 @@ mod tests {
             hash: vec![0xBB; 32],
             proof: vec![vec![0xCC; 32]],
         };
-        storage.put_snapshot_chunk(100, &chunk).unwrap();
+        storage.put_snapshot_chunk(100, &chunk, None).unwrap();
         let loaded_chunk = storage.get_snapshot_chunk(100, 0).unwrap().unwrap();
         assert_eq!(loaded_chunk.index, 0);
         assert_eq!(loaded_chunk.data, vec![1, 2, 3, 4]);

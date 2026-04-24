@@ -66,10 +66,18 @@ printf '%s\n' 'YOUR_SECURE_PASSWORD_HERE' > validator.password
 ./target/release/curs3d node --validator-wallet validator.json --validator-password-file validator.password --genesis-config genesis.public-testnet.json</code></pre></div>
                 </article>
                 <article class="content-section example-card reveal">
-                    <h2><span class="example-number">2</span><span data-lang="en">Publish a bootnode address</span><span data-lang="fr">Publier une adresse bootnode</span></h2>
-                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code>./target/release/curs3d bootnode-address \
+                    <h2><span class="example-number">2</span><span data-lang="en">Connect to the public testnet</span><span data-lang="fr">Se connecter au testnet public</span></h2>
+                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code># Join the multi-node testnet as a validator
+./target/release/curs3d node \
+  --validator-wallet validator.json \
+  --validator-password-file validator.password \
+  --genesis-config genesis.public-testnet.json \
+  --bootnode /ip4/144.24.192.222/tcp/4337/p2p/12D3KooWC6hEP7YRySmXNA4pTcTi4XMkch525jFWbHNDtwxW6K2K
+
+# Publish your own bootnode address
+./target/release/curs3d bootnode-address \
   --data-dir curs3d_data \
-  --public-addr /dns4/node.example.com/tcp/4337</code></pre></div>
+  --public-addr /dns4/your-node.example.com/tcp/4337</code></pre></div>
                 </article>
                 <article class="content-section example-card reveal">
                     <h2><span class="example-number">3</span><span data-lang="en">Query public status</span><span data-lang="fr">Interroger le statut public</span></h2>

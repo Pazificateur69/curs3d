@@ -2,11 +2,17 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
     aead::{Aead, KeyInit},
 };
-use argon2::Argon2;
+use argon2::{Argon2, Params};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
+
+/// Hardened Argon2 KDF: m=64MB, t=3 iterations, p=4 parallelism
+fn hardened_argon2() -> Argon2<'static> {
+    let params = Params::new(65536, 3, 4, Some(32)).expect("valid argon2 params");
+    Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params)
+}
 
 use crate::crypto::dilithium::KeyPair;
 use crate::crypto::hash;
@@ -61,7 +67,7 @@ impl Wallet {
         rand::thread_rng().fill_bytes(&mut salt);
 
         let mut key = [0u8; 32];
-        Argon2::default()
+        hardened_argon2()
             .hash_password_into(password.as_bytes(), &salt, &mut key)
             .map_err(|e| WalletError::Encryption(e.to_string()))?;
 
@@ -106,7 +112,7 @@ impl Wallet {
 
         // Derive key from password
         let mut key = [0u8; 32];
-        Argon2::default()
+        hardened_argon2()
             .hash_password_into(password.as_bytes(), &salt, &mut key)
             .map_err(|e| WalletError::Encryption(e.to_string()))?;
 
