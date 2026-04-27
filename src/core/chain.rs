@@ -2312,7 +2312,7 @@ impl Blockchain {
                         ChainError::InvalidTransactionFormat("invalid DeployToken JSON in data")
                     })?;
                 token_registry
-                    .deploy_token(&tx.from, tx.nonce.wrapping_sub(1), &params, current_height)
+                    .deploy_token(&tx.from, tx.nonce.saturating_sub(1), &params, current_height)
                     .map_err(|_e| {
                         ChainError::InvalidTransactionFormat("token operation failed")
                     })?;
@@ -2516,7 +2516,7 @@ impl Blockchain {
             ))?,
             TransactionKind::DeployContract => {
                 let (contract, mut receipt) =
-                    Vm::deploy(&tx.to, &tx.from, tx.nonce.wrapping_sub(1), tx.gas_limit)?;
+                    Vm::deploy(&tx.to, &tx.from, tx.nonce.saturating_sub(1), tx.gas_limit)?;
                 let deploy_gas_used = receipt.gas_used;
                 receipt.tx_hash = tx_hash.clone();
                 if let Some(ref addr) = receipt.contract_address {
