@@ -1,6 +1,6 @@
 # CURS3D — Runbook de Deploiement Multi-Node
 
-Derniere mise a jour: 2026-04-23
+Derniere mise a jour: 2026-04-27
 
 ## Architecture
 
@@ -19,20 +19,31 @@ Derniere mise a jour: 2026-04-23
       84.235.238.213        en attente capacite ARM
 ```
 
-- 4 validateurs dans le genesis (BFT 2/3 finality)
-- node1 = bootstrap + API publique + explorer
-- node2-4 = validateurs connectes a node1
-- Tolerance de panne: 1 node down sur 4, le reseau continue
+- 2 validateurs actifs (node1 + node2), extensible a 4
+- node1 = bootstrap + API publique + explorer + site web
+- node2 = validateur connecte a node1
+- node3/4 = en attente de capacite ARM Oracle
+
+**Security hardening (2026-04-24):**
+- Governance: snapshot-based voting (anti double-vote)
+- P2P: bounded deserialization 16MB (anti OOM)
+- Fee market: base_fee >= 1 (anti free spam)
+- Mempool: nonce floor check
+- Chain: reorg depth limit 64 blocks
+- Wallet: Argon2id m=64MB, t=3, p=4
+- Zero Box::leak memory leaks
+
+**IMPORTANT:** Les wallets doivent etre crees sur le serveur (pas cross-compiles) a cause de Argon2id.
 
 ## Nodes
 
 | Node | IP | Role | Validateur | SSH |
 |------|-----|------|-----------|-----|
-| node1 | 144.24.192.222 | Bootstrap + API + Explorer | CUR79c1D9E08D1b2347E27B31b1E8f8733c68E7c8D2 | `ssh curs3d-node1` |
-| node2 | 84.235.238.213 | Validateur | CUR34BC42D53dD63FbFEE51778ADb6d568279eCE23A | `ssh curs3d-node2` |
-| node3 | TBD | Validateur | CURfe35F718fB4939a80EeEb98F8F457fb434A89BCd | — |
-| node4 | TBD | Validateur | CUR578e3E7d7C238cd1b32805013E385C032Df9bC4F | — |
-| Faucet | — | — | CUR0207E1293cFCFfe0fF1517186b982E5DE6f61e8A | — |
+| node1 | 144.24.192.222 | Bootstrap + API + Explorer | CURe1Fa551B3f0524EfD8d0673cdBF9fD0e199458c5 | `ssh curs3d-node1` |
+| node2 | 84.235.238.213 | Validateur | CURdC1ecceD4f12Cb3E34BD0d43E72d6D04fC4823dd | `ssh curs3d-node2` |
+| node3 | TBD | Validateur | TBD (wallet a creer sur le serveur) | — |
+| node4 | TBD | Validateur | TBD (wallet a creer sur le serveur) | — |
+| Faucet | — | — | CUR34cafc74B750C0e0150877e99cd27D77C6c4fC44 | — |
 
 ## Infra
 
@@ -44,7 +55,7 @@ Derniere mise a jour: 2026-04-23
 | OS | Ubuntu 22.04 ARM64 |
 | Quota ARM total | 4 OCPU / 24 GB (Free Tier) |
 | DNS | Hostinger (curs3d.fr) |
-| Bootnode PeerId | 12D3KooWC6hEP7YRySmXNA4pTcTi4XMkch525jFWbHNDtwxW6K2K |
+| Bootnode PeerId | 12D3KooWGy9BLopUe6CmnxuFgk5pCou8Kj5R1DXa9XLga9MD63va |
 
 ## Acces SSH
 
@@ -175,7 +186,7 @@ Chaque node est configure pour ne JAMAIS s'arreter:
 Quand la capacite ARM Oracle se libere:
 ```bash
 cd ~/Desktop/Web3/curs3d
-./deploy/scripts/add-node.sh 3 144.24.192.222 12D3KooWC6hEP7YRySmXNA4pTcTi4XMkch525jFWbHNDtwxW6K2K
+./deploy/scripts/add-node.sh 3 144.24.192.222 12D3KooWGy9BLopUe6CmnxuFgk5pCou8Kj5R1DXa9XLga9MD63va
 ```
 
 ## Redeploy (mise a jour du code)
