@@ -26,7 +26,7 @@ pub const DEFAULT_MIN_STAKE: u64 = 1_000_000_000;
 pub const DEFAULT_UNSTAKE_DELAY_BLOCKS: u64 = 10;
 pub const DEFAULT_EPOCH_LENGTH: u64 = 32;
 pub const DEFAULT_JAIL_DURATION_BLOCKS: u64 = 64;
-pub const DEFAULT_INITIAL_BASE_FEE_PER_GAS: u64 = 1;
+pub const DEFAULT_INITIAL_BASE_FEE_PER_GAS: u64 = 0;
 pub const DEFAULT_BASE_FEE_CHANGE_DENOMINATOR: u64 = 8;
 const MAX_FUTURE_BLOCK_TIME_SECS: i64 = 30;
 const MAX_FUTURE_TX_TIME_SECS: i64 = 30;
@@ -515,11 +515,12 @@ impl Blockchain {
             parent.header.base_fee_per_gas
         };
         let target = self.target_block_gas_usage();
-        if parent.header.gas_used == target {
-            return parent_base_fee;
-        }
+        // Transition: if parent had base_fee=0 (legacy), start charging from 1
         if parent_base_fee == 0 {
             return 1;
+        }
+        if parent.header.gas_used == target {
+            return parent_base_fee;
         }
 
         let delta = parent.header.gas_used.abs_diff(target);
@@ -3138,9 +3139,9 @@ mod tests {
         deploy_tx.sign(&validator);
         chain.add_transaction(deploy_tx).unwrap();
 
-        // Base fee starts at minimum 1 (never 0, prevents free spam)
+        // Genesis base_fee=0 for backwards compat, transitions to >=1 on first block
         let initial_fee = chain.current_base_fee_per_gas();
-        assert!(initial_fee >= 1);
+        assert_eq!(initial_fee, 0); // Genesis starts at 0
         let block1 = chain.create_block(&validator).unwrap();
         assert!(block1.header.gas_used > chain.target_block_gas_usage());
         chain.add_block(block1).unwrap();
