@@ -1411,29 +1411,19 @@ impl Blockchain {
         let mut projected_governance = self.governance.clone();
         Self::apply_unstake_unlocks(&mut projected_accounts, height);
 
-        // Apply epoch settlement if crossing epoch boundary (must match add_block logic)
-        let prev_epoch = self.epoch_for_height(self.height());
-        let new_epoch = self.epoch_for_height(height);
-        if new_epoch > prev_epoch
-            && prev_epoch > 0
-            && let Some(snapshot) = self.epoch_snapshots.get(&prev_epoch)
-        {
-            let epoch_start = prev_epoch * self.epoch_length.max(1);
-            let epoch_end = new_epoch * self.epoch_length.max(1);
-            let mut block_producers: HashMap<Vec<u8>, u64> = HashMap::new();
-            for h in epoch_start..epoch_end {
-                if let Some(b) = self.blocks.get(h as usize) {
-                    let addr = hash::address_bytes_from_public_key(&b.header.validator_public_key);
-                    *block_producers.entry(addr).or_default() += 1;
-                }
-            }
-            let settlement = crate::consensus::compute_epoch_settlement(
-                snapshot,
-                &block_producers,
-                &self.validator_missed_epochs,
-            );
-            crate::consensus::apply_epoch_settlement(&mut projected_accounts, &settlement);
-        }
+        // Apply epoch settlement if crossing epoch boundary. We feed a *clone*
+        // of `self.validator_missed_epochs` to the helper because
+        // `create_block` is `&self` and the canonical update of the tracker
+        // happens in `add_block` once the block is actually accepted.
+        let mut projected_missed = self.validator_missed_epochs.clone();
+        Self::apply_epoch_settlement_for_block(
+            height,
+            self.epoch_length,
+            &self.epoch_snapshots,
+            &self.blocks,
+            &mut projected_accounts,
+            &mut projected_missed,
+        );
         let mut block_txs = Vec::new();
         let mut total_priority_fees = 0u64;
         let mut total_gas_used = 0u64;
@@ -1494,7 +1484,6 @@ impl Blockchain {
 
     pub fn add_block(&mut self, block: Block) -> Result<(), ChainError> {
         let prev_accounts = self.accounts.clone();
-        let prev_epoch = self.epoch_for_height(self.height());
         let new_epoch = self.epoch_for_height(block.header.height);
 
         if block.header.height > 0
@@ -1504,52 +1493,22 @@ impl Blockchain {
             self.create_epoch_snapshot_from_accounts(new_epoch, &prev_accounts);
         }
 
-        // Epoch settlement: when crossing epoch boundary, compute and apply rewards/penalties
-        if new_epoch > prev_epoch
-            && prev_epoch > 0
-            && let Some(snapshot) = self.epoch_snapshots.get(&prev_epoch)
-        {
-            // Count blocks produced by each validator in the previous epoch
-            let epoch_start = prev_epoch * self.epoch_length.max(1);
-            let epoch_end = new_epoch * self.epoch_length.max(1);
-            let mut block_producers: HashMap<Vec<u8>, u64> = HashMap::new();
-            for h in epoch_start..epoch_end {
-                if let Some(b) = self.blocks.get(h as usize) {
-                    let addr = hash::address_bytes_from_public_key(&b.header.validator_public_key);
-                    *block_producers.entry(addr).or_default() += 1;
-                }
-            }
-
-            // Compute and apply settlement
-            let settlement = crate::consensus::compute_epoch_settlement(
-                snapshot,
-                &block_producers,
-                &self.validator_missed_epochs,
-            );
-            crate::consensus::apply_epoch_settlement(&mut self.accounts, &settlement);
-
-            // Update missed_epochs tracker: reset producers, increment non-producers
-            for validator in &snapshot.validators {
-                if block_producers.contains_key(&validator.address) {
-                    self.validator_missed_epochs.remove(&validator.address);
-                } else {
-                    *self
-                        .validator_missed_epochs
-                        .entry(validator.address.clone())
-                        .or_default() += 1;
-                }
-            }
-
-            if settlement.total_rewards_distributed > 0 || settlement.total_penalties_applied > 0 {
-                tracing::info!(
-                    target: "audit",
-                    event = "epoch_settlement",
-                    epoch = prev_epoch,
-                    rewards = settlement.total_rewards_distributed,
-                    penalties = settlement.total_penalties_applied,
-                );
-            }
-        }
+        // Epoch settlement: when crossing epoch boundary, compute and apply
+        // rewards/penalties. The same helper is invoked by the boot-time
+        // replay path (`rebuild_canonical_state` / `replay_state_to_tip`) so
+        // both the apply path and the load path agree on the post-settlement
+        // accounts that feed into `validate_block_against_state`. Mismatched
+        // settlement application was the root cause of the
+        // `state_root_mismatch` crash on restart at multiples of
+        // `epoch_length` past `2 * epoch_length`.
+        Self::apply_epoch_settlement_for_block(
+            block.header.height,
+            self.epoch_length,
+            &self.epoch_snapshots,
+            &self.blocks,
+            &mut self.accounts,
+            &mut self.validator_missed_epochs,
+        );
         let prev = self.latest_block();
         let execution = self.validate_block_against_state(
             &block,
@@ -2189,6 +2148,78 @@ impl Blockchain {
         }
     }
 
+    /// Apply epoch settlement (rewards + inactivity penalties) when the block
+    /// at `block_height` crosses an epoch boundary. The result mutates
+    /// `accounts` in place and updates `validator_missed_epochs`.
+    ///
+    /// This is intentionally a free function over its inputs (no `&self`):
+    /// `add_block` invokes it on `self.accounts` while the boot-time replay
+    /// (`rebuild_canonical_state` / `replay_state_to_tip`) invokes it on a
+    /// local accounts map. Keeping the body in one place is what guarantees
+    /// the live state root and the recomputed-on-restart state root agree —
+    /// the previous divergence caused the `state_root_mismatch` crash loop
+    /// at every multiple of `epoch_length` past `2 * epoch_length`.
+    ///
+    /// The first epoch boundary (`prev_epoch == 0`) intentionally skips
+    /// settlement for the genesis epoch, matching the historical guard in
+    /// `add_block`.
+    fn apply_epoch_settlement_for_block(
+        block_height: u64,
+        epoch_length: u64,
+        epoch_snapshots: &HashMap<u64, EpochSnapshot>,
+        blocks: &[Block],
+        accounts: &mut HashMap<Vec<u8>, AccountState>,
+        validator_missed_epochs: &mut HashMap<Vec<u8>, u64>,
+    ) {
+        let epoch_len = epoch_length.max(1);
+        let prev_epoch = block_height.saturating_sub(1) / epoch_len;
+        let new_epoch = block_height / epoch_len;
+        if new_epoch <= prev_epoch || prev_epoch == 0 {
+            return;
+        }
+        let Some(snapshot) = epoch_snapshots.get(&prev_epoch) else {
+            return;
+        };
+
+        let epoch_start = prev_epoch * epoch_len;
+        let epoch_end = new_epoch * epoch_len;
+        let mut block_producers: HashMap<Vec<u8>, u64> = HashMap::new();
+        for h in epoch_start..epoch_end {
+            if let Some(b) = blocks.get(h as usize) {
+                let addr = hash::address_bytes_from_public_key(&b.header.validator_public_key);
+                *block_producers.entry(addr).or_default() += 1;
+            }
+        }
+
+        let settlement = crate::consensus::compute_epoch_settlement(
+            snapshot,
+            &block_producers,
+            validator_missed_epochs,
+        );
+        crate::consensus::apply_epoch_settlement(accounts, &settlement);
+
+        // Update missed_epochs tracker: reset producers, increment non-producers.
+        for validator in &snapshot.validators {
+            if block_producers.contains_key(&validator.address) {
+                validator_missed_epochs.remove(&validator.address);
+            } else {
+                *validator_missed_epochs
+                    .entry(validator.address.clone())
+                    .or_default() += 1;
+            }
+        }
+
+        if settlement.total_rewards_distributed > 0 || settlement.total_penalties_applied > 0 {
+            tracing::info!(
+                target: "audit",
+                event = "epoch_settlement",
+                epoch = prev_epoch,
+                rewards = settlement.total_rewards_distributed,
+                penalties = settlement.total_penalties_applied,
+            );
+        }
+    }
+
     /// Public helper: return the slot leader at the given (height, prev_hash, rank)
     /// using the chain's frozen epoch snapshots. Used by the network production
     /// loop to gate `create_block` calls — only the elected validator should
@@ -2477,7 +2508,19 @@ impl Blockchain {
             .first()
             .cloned()
             .expect("lineage always includes genesis");
+        // Track missed-epochs locally — same reasoning as in
+        // `rebuild_canonical_state`: keep this replay path in lockstep with
+        // the live `add_block` path so the recomputed state root agrees.
+        let mut missed_epochs: HashMap<Vec<u8>, u64> = HashMap::new();
         for block in lineage.iter().skip(1) {
+            Self::apply_epoch_settlement_for_block(
+                block.header.height,
+                self.epoch_length,
+                &self.epoch_snapshots,
+                &self.blocks,
+                &mut accounts,
+                &mut missed_epochs,
+            );
             let execution = self.validate_block_against_state(
                 block,
                 &previous,
@@ -3523,6 +3566,15 @@ impl Blockchain {
             .first()
             .cloned()
             .ok_or_else(|| ChainError::InvalidGenesis("missing genesis block".to_string()))?;
+        // Mirror `add_block`'s missed-epochs tracker so that any settlement
+        // beyond the first epoch sees the same accumulated misses it would
+        // see in the live path. Persisted state is not affected by
+        // `validator_missed_epochs` directly, but it influences the
+        // inactivity-penalty branch of `compute_epoch_settlement` which
+        // subtracts from `staked_balance`. Drift here was a contributing
+        // factor to long-tail state-root mismatches, in addition to the
+        // primary reward-distribution bug.
+        let mut missed_epochs: HashMap<Vec<u8>, u64> = HashMap::new();
         for block in blocks.iter().skip(1) {
             if block.header.height > 0
                 && block.header.height.is_multiple_of(self.epoch_length.max(1))
@@ -3532,6 +3584,24 @@ impl Blockchain {
                     self.create_epoch_snapshot_from_accounts(epoch, &accounts);
                 }
             }
+
+            // Apply epoch settlement on the parent accounts in lockstep with
+            // `add_block`. Without this the recomputed state root for the
+            // boundary block diverges (the rewards minted in the live path
+            // are missing here) and `validate_block_against_state` returns
+            // `InvalidStateRoot`, which `with_storage` surfaces as the
+            // `Failed to initialize blockchain storage: invalid state root`
+            // crash loop seen on the testnet at every multiple of
+            // `epoch_length` past `2 * epoch_length`.
+            Self::apply_epoch_settlement_for_block(
+                block.header.height,
+                self.epoch_length,
+                &self.epoch_snapshots,
+                &blocks,
+                &mut accounts,
+                &mut missed_epochs,
+            );
+
             let execution = self.validate_block_against_state(
                 block,
                 &previous,
@@ -3553,6 +3623,7 @@ impl Blockchain {
         self.receipts = receipts;
         self.token_registry = token_registry;
         self.governance = governance;
+        self.validator_missed_epochs = missed_epochs;
         self.rebuild_receipt_indexes();
         Ok(())
     }
@@ -5276,5 +5347,109 @@ mod tests {
             count_a,
             count_b
         );
+    }
+
+    /// Regression test for the `state_root_mismatch` bug at the second epoch
+    /// boundary on multi-validator chains.
+    ///
+    /// Symptom: a node that has lived past `h = 2 * epoch_length` (the first
+    /// height where epoch settlement actually distributes rewards — the
+    /// `prev_epoch > 0` guard in `add_block` skips settlement at the very
+    /// first epoch boundary `h = epoch_length`) crashes on restart with
+    /// `Failed to initialize blockchain storage: invalid state root`.
+    ///
+    /// Root cause: `add_block` mutates `self.accounts` via
+    /// `consensus::apply_epoch_settlement` *before* calling
+    /// `validate_block_against_state` — the live state root therefore reflects
+    /// post-settlement balances. But the boot path
+    /// (`with_storage` -> `rebuild_canonical_state`) replays each block via
+    /// `validate_block_against_state` *without* applying the same settlement
+    /// step on the parent accounts handed in. The recomputed state root for
+    /// the boundary block is therefore strictly less (rewards never granted)
+    /// and the chain refuses to load.
+    ///
+    /// This test reproduces the failure with a 2-validator genesis (similar
+    /// to the live testnet) and a small `epoch_length` of 4, mining past
+    /// `h = 2 * epoch_length = 8` so that the *second* epoch boundary
+    /// settles non-zero rewards. With the bug, the second `with_storage`
+    /// returns `ChainError::InvalidStateRoot`. With the fix it succeeds.
+    #[test]
+    fn test_restart_across_epoch_boundary() {
+        let dir = tempfile::tempdir().unwrap();
+        let kp_a = KeyPair::generate();
+        let kp_b = KeyPair::generate();
+        let addr_a = hash::address_bytes_from_public_key(&kp_a.public_key);
+        // Use a tiny epoch length so we cross the *second* boundary quickly.
+        // EPOCH_REWARD_RATE_PER_CUR is 100 microtokens per CUR per block, so
+        // we need staked >= 1 CUR (= 1_000_000 microtokens) for rewards to
+        // be non-zero — the bug is otherwise masked by the saturating
+        // arithmetic.
+        let epoch_length: u64 = 4;
+        let stake = 1_000_000_000u64; // 1000 CUR — comfortably above minimum_stake.
+        let genesis = GenesisConfig {
+            chain_id: "curs3d-restart-epoch-test".to_string(),
+            chain_name: "curs3d-restart-epoch-test".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            unstake_delay_blocks: DEFAULT_UNSTAKE_DELAY_BLOCKS,
+            epoch_length,
+            jail_duration_blocks: DEFAULT_JAIL_DURATION_BLOCKS,
+            allocations: vec![
+                GenesisAllocation {
+                    public_key: hex::encode(&kp_a.public_key),
+                    balance: 1_000_000_000,
+                    staked_balance: stake,
+                },
+                GenesisAllocation {
+                    public_key: hex::encode(&kp_b.public_key),
+                    balance: 1_000_000_000,
+                    staked_balance: stake,
+                },
+            ],
+            ..Default::default()
+        };
+        let data_dir = dir.path().join("chain_db");
+        let data_dir_str = data_dir.to_str().unwrap();
+
+        // Mine across the first *two* epoch boundaries so the bug actually
+        // fires. Settlement at h=epoch_length is skipped (prev_epoch == 0),
+        // settlement at h=2*epoch_length runs and grants rewards. After that
+        // any restart re-validates block 2*epoch_length and trips the bug.
+        let target_height = 2 * epoch_length + 1;
+        let expected_state_roots: Vec<Vec<u8>>;
+        let expected_height: u64;
+        {
+            let mut chain = Blockchain::with_storage(data_dir_str, Some(&genesis)).unwrap();
+            for h in 1..=target_height {
+                let leader = chain
+                    .slot_leader_address(h, chain.latest_hash(), 0)
+                    .expect("slot leader exists");
+                let kp = if leader == addr_a { &kp_a } else { &kp_b };
+                let block = chain.create_block(kp).unwrap();
+                chain.add_block(block).unwrap();
+            }
+            expected_height = chain.height();
+            expected_state_roots = chain
+                .blocks
+                .iter()
+                .map(|b| b.header.state_root.clone())
+                .collect();
+            assert_eq!(expected_height, target_height);
+        }
+
+        // Reload — this is what fails with `invalid state root` in the wild.
+        let restarted = Blockchain::with_storage(data_dir_str, Some(&genesis)).unwrap();
+        assert_eq!(restarted.height(), expected_height);
+        for (h, expected_root) in expected_state_roots.iter().enumerate() {
+            assert_eq!(
+                &restarted.blocks[h].header.state_root, expected_root,
+                "state_root for block {} diverged after restart",
+                h
+            );
+        }
+        // Open a third time as paranoia: ensure replay is idempotent.
+        drop(restarted);
+        let restarted_again = Blockchain::with_storage(data_dir_str, Some(&genesis)).unwrap();
+        assert_eq!(restarted_again.height(), expected_height);
     }
 }
