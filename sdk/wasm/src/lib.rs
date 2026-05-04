@@ -4,11 +4,9 @@
 //! primitives a web wallet needs to manage CURS3D keys and sign transactions
 //! entirely in the browser:
 //!
-//! * Post-quantum signatures: ML-DSA-87 (FIPS-204), pure-Rust, replaces the
-//!   node's `pqcrypto-dilithium` (which can't compile to wasm32 because it
-//!   wraps PQClean C code). Byte-for-byte interop with the existing node
-//!   is **not** available — see README, "Interop". The intent is for the
-//!   node to migrate to ML-DSA-87 alongside this crate.
+//! * Post-quantum signatures: ML-DSA-87 (FIPS-204), pure-Rust. Same crate
+//!   and version as the node's `crypto::dilithium` since the v5 hardfork,
+//!   so signatures produced here verify on the node byte-for-byte.
 //! * Argon2id KDF, parameters `m=64MB, t=3, p=4` — identical to the
 //!   node's `wallet::hardened_argon2`.
 //! * AES-256-GCM wallet encryption with the same on-disk JSON shape

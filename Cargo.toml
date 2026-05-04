@@ -7,9 +7,14 @@ license = "MIT"
 repository = "https://github.com/Pazificateur69/curs3d"
 
 [dependencies]
-# Post-quantum cryptography
-pqcrypto-dilithium = "0.5"
-pqcrypto-traits = "0.3"
+# Post-quantum cryptography (FIPS-204 ML-DSA-87, pure Rust — same crate as
+# `sdk/wasm/curs3d-wallet-wasm`, so signatures produced in the browser wallet
+# verify here byte-for-byte).
+ml-dsa = { version = "=0.1.0-rc.9", default-features = false, features = [
+    "alloc",
+    "rand_core",
+] }
+signature = { version = "3.0.0", default-features = false, features = ["rand_core"] }
 sha3 = "0.10"
 
 # Serialization

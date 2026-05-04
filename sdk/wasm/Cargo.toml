@@ -2,7 +2,7 @@
 name = "curs3d-wallet-wasm"
 version = "0.1.0"
 edition = "2021"
-description = "Browser-side crypto bundle for CURS3D (Dilithium-L5 / ML-DSA-87 + Argon2id + AES-256-GCM)."
+description = "Browser-side crypto bundle for CURS3D (FIPS-204 ML-DSA-87 + Argon2id + AES-256-GCM)."
 license = "MIT"
 repository = "https://github.com/Pazificateur69/curs3d"
 
@@ -11,8 +11,8 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Post-quantum signatures (FIPS-204 ML-DSA-87 — pure Rust, wasm32-friendly).
-# IMPORTANT: signatures produced here are NOT verifiable by the node's
-# `pqcrypto-dilithium 0.5.0` (NIST round 3). See README "Interop" section.
+# Identical pin to the node's `Cargo.toml`, so signatures produced here
+# verify on the node byte-for-byte (since protocol v5).
 ml-dsa = { version = "=0.1.0-rc.9", default-features = false, features = [
     "rand_core",
     "alloc",

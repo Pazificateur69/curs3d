@@ -13,39 +13,24 @@ ever leaving the page.
 | Wallet encryption | `aes-gcm` | AES-256-GCM, 12-byte nonce, 16-byte salt |
 | Hashing | `sha3` | SHA-3-256 + EIP-55 mixed-case checksum |
 
-## Interop with the CURS3D node — important
+## Interop with the CURS3D node
 
-The node currently uses `pqcrypto-dilithium 0.5.0`, which is a Rust binding
-over the PQClean C implementation of the **NIST round 3** Dilithium spec.
+Both this crate and the node depend on the **same** `ml-dsa = =0.1.0-rc.9`
+(RustCrypto, FIPS-204 ML-DSA-87, pure Rust). A signature produced in the
+browser is byte-for-byte verifiable by `core::transaction::Transaction::
+verify_signature` on the node — `/api/tx/submit` accepts wallet-signed
+transactions starting with **protocol v5** (the migration hardfork).
 
-Two unrelated facts make direct interop impossible:
+Sizes (FIPS-204 NIST level 5):
 
-1. **`pqcrypto-dilithium` does not compile to `wasm32-unknown-unknown`.**
-   PQClean is C and needs `<stdlib.h>` / `<string.h>` — only WASI targets ship
-   those, not bare wasm32.
-2. **No pure-Rust Dilithium-L5 crate produces signatures verifiable by
-   `pqcrypto-dilithium 0.5`.** The candidates evaluated were
-   `ml-dsa = 0.1.0-rc.9` (FIPS-204), `dilithium-rs = 0.2.0` (FIPS-204), and
-   `crystals-dilithium = 2.0.0` (both FIPS-204 and round-3 modules).
-   - The FIPS-204 finalised algorithm differs from round 3 in challenge
-     sampling and message framing (`M' = 0x00 || ctx_len || ctx || M`).
-   - `crystals-dilithium`'s round-3 module uses a 32-byte `tr` whereas
-     `pqcrypto-dilithium 0.5` uses 64. Cross-verification fails.
+| Field | Bytes |
+|-------|-------|
+| Public key (verifying key) | 2592 |
+| Secret key (we store the 32-byte seed and re-derive on demand) | 32 |
+| Signature | 4627 |
 
-We picked **`ml-dsa = 0.1.0-rc.9`** (RustCrypto, FIPS-204 ML-DSA-87) for this
-crate because:
-
-* It's the standardised algorithm long-term (FIPS-204 is final, round-3
-  Dilithium is the predecessor).
-* Public key (2592 B) and signature (4627 B) sizes match `pqcrypto-dilithium`
-  exactly — only the bytes' meaning differs.
-* It's pure Rust and compiles to wasm32 cleanly.
-
-**Consequence:** A signature produced by this crate is **not** today
-verifiable by the deployed node. The intended migration path is for the node
-to switch from `pqcrypto-dilithium` to `ml-dsa` so both sides speak FIPS-204.
-Until that migration ships, transactions built here will be rejected by
-`/api/tx/submit`.
+The historical pre-v5 node used `pqcrypto-dilithium 0.5.0` (NIST round 3);
+that path is gone — see `CLAUDE.md` "Hardfork procedure (v4 → v5)".
 
 ## Build
 
@@ -164,8 +149,8 @@ amount, fee, max_fee_per_gas, max_priority_fee_per_gas,
 nonce, timestamp, gas_limit, data
 ```
 
-so once both ends speak the same Dilithium dialect the same `verify_signature`
-on the node will accept it.
+Both sides speak FIPS-204 ML-DSA-87 (same crate, same version), so the
+node's `verify_signature` accepts the result directly.
 
 ## Tests
 

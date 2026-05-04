@@ -638,20 +638,21 @@ impl Blockchain {
     ///
     /// Genesis (height 0) is always version 1 — the genesis block was minted
     /// before any consensus rule existed. From height 1 onward the baseline
-    /// is version 4, which adds an EVM (revm) VM running alongside the
-    /// existing Wasmer VM and recognises `DeployEvmContract` /
-    /// `CallEvmContract` transactions sent through `eth_sendRawTransaction`.
+    /// is version 5: ML-DSA-87 (FIPS-204) replaces NIST round-3 Dilithium-L5
+    /// as the post-quantum signature scheme, so signatures produced by the
+    /// browser wallet (`sdk/wasm`) verify on the node byte-for-byte. v5 is
+    /// otherwise compatible with v4 (EVM dispatch, slot-leader scheduling).
     /// Genesis configs may still declare explicit `upgrades`; those override
     /// the baseline at their specified heights, in declaration order, for
     /// chains that need to model historical version transitions.
     pub fn protocol_version_at_height(&self, height: u64) -> u32 {
         if self.genesis_config.upgrades.is_empty() {
-            // Default: slot-leader rules + EVM dispatch apply uniformly.
-            // We return v4 even at height 0 so the gossipsub topic name
+            // Default: ML-DSA-87 + slot-leader + EVM dispatch apply uniformly.
+            // We return v5 even at height 0 so the gossipsub topic name
             // (which is derived from protocol_version) is identical across
             // freshly-started nodes and nodes that have already synced a
             // few blocks.
-            return 4;
+            return 5;
         }
         let mut version = 1u32;
         for upgrade in &self.genesis_config.upgrades {

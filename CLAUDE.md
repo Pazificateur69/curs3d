@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Context for CURS3D
 
-State as of: **2026-05-04** (afternoon — protocol v4 hardfork live)
+State as of: **2026-04-30** (protocol v5 hardfork — ML-DSA-87 / FIPS-204 migration)
 
 ## What is this project?
 
@@ -8,11 +8,16 @@ CURS3D is a quantum-resistant Layer 1 blockchain written in Rust from scratch.
 It is **not** a fork of any existing chain. Every component — consensus, crypto,
 networking, storage, VM, API — is implemented from zero.
 
-As of protocol **v4**, the chain runs **two VMs side by side**: the native
-quantum-resistant VM (Wasmer 5 WASM, Dilithium-signed transactions) and an
-Ethereum-compatible VM (revm 38, secp256k1-signed RLP transactions, MetaMask
-/ Hardhat / Foundry / ethers.js compatible). Both VMs share the same state
-trie and the same canonical block stream.
+As of protocol **v5**, the chain runs **two VMs side by side**: the native
+quantum-resistant VM (Wasmer 5 WASM, ML-DSA-87 / FIPS-204 signed transactions)
+and an Ethereum-compatible VM (revm 38, secp256k1-signed RLP transactions,
+MetaMask / Hardhat / Foundry / ethers.js compatible). Both VMs share the
+same state trie and the same canonical block stream.
+
+The native PQ signature scheme is the FIPS-204 finalised ML-DSA-87 (NIST
+level 5), backed by the pure-Rust `ml-dsa` crate. Both the node and the
+browser wallet (`sdk/wasm/curs3d-wallet-wasm`) pin the same version, so
+signatures produced in the browser verify on the node byte-for-byte.
 
 ## Production Endpoints (live testnet)
 
@@ -22,7 +27,7 @@ trie and the same canonical block stream.
 | API | https://api.curs3d.fr/api/status |
 | **Ethereum-compatible JSON-RPC (MetaMask, ethers.js, Hardhat, Foundry)** | **https://api.curs3d.fr/eth** |
 | Explorer | https://explorer.curs3d.fr |
-| Browser Wallet UI (read-only, see Known issues) | https://curs3d.fr/wallet |
+| Browser Wallet UI (write-capable since v5) | https://curs3d.fr/wallet |
 | Wallet WASM bundle (24 KB JS shim + 236 KB WASM) | https://curs3d.fr/wallet-wasm/curs3d_wallet_wasm.js |
 | Developers hub | https://curs3d.fr/developers |
 | Security (threat model + audit log + bounty) | https://curs3d.fr/security |
@@ -40,8 +45,8 @@ trie and the same canonical block stream.
 | P2P bootnode | 144.24.192.222:4337 |
 
 - **Chain ID:** `curs3d-public-testnet`
-- **Protocol version:** **v4** (added EVM dispatch + slot-leader scheduling)
-- **Genesis hash (v4 redeploy):** `daeb2e6ac802c182ab737d11211339a3d8c3a8da8f2dfd56595e319dbc938b23`
+- **Protocol version:** **v5** (ML-DSA-87 / FIPS-204 native signatures — browser wallet interop)
+- **Genesis hash (v5 redeploy):** *to be regenerated post-deploy*
 - **Active validators:** **2** (node1 + node2 — both producing and finalizing thanks to slot-leader)
 - **Validator (node1):** `CURe1Fa551B3f0524EfD8d0673cdBF9fD0e199458c5`
 - **Validator (node2):** `CURdC1ecceD4f12Cb3E34BD0d43E72d6D04fC4823dd`
@@ -70,7 +75,7 @@ rustup install nightly --profile minimal
 RUSTUP_TOOLCHAIN=nightly cargo build --release
 
 # Tests, lint, format
-RUSTUP_TOOLCHAIN=nightly cargo test --lib       # 164 tests, all green
+RUSTUP_TOOLCHAIN=nightly cargo test --lib       # 168 tests, all green
 RUSTUP_TOOLCHAIN=nightly cargo clippy --lib -- -D warnings
 RUSTUP_TOOLCHAIN=nightly cargo fmt --check
 ```
@@ -89,39 +94,28 @@ Edition: 2024.
 These are documented to spare the next session a re-discovery. None block
 the public 2-validator testnet, but they affect specific surfaces.
 
-1. **Browser wallet UI is read-only.** ML-DSA-87 (FIPS-204 finalized, used in
-   the wasm bundle, RustCrypto `ml-dsa` crate) is **not** byte-compatible
-   with `pqcrypto-dilithium 0.5.0` (NIST round 3, used by the node). Public
-   key and signature sizes match exactly (PK 2592 B, sig 4627 B) but the
-   challenge sampling and message framing differ (FIPS-204 uses
-   `M' = 0x00 || ctx_len || ctx || M`, round-3 doesn't). Signatures produced
-   in the browser are silently rejected by `/api/tx/submit`. The wallet
-   therefore displays balance / nonce / staked / tx history but **cannot
-   sign or send**. Fix path: migrate the node from `pqcrypto-dilithium` to
-   `pqcrypto-mldsa` or `ml-dsa` (RustCrypto). That migration is itself a
-   crypto-core hardfork.
-2. **`wasm-opt` failed during `wasm-pack build`** on the build host (no
+1. **`wasm-opt` failed during `wasm-pack build`** on the build host (no
    recent binaryen). The deployed bundle is 236 KB instead of ~100 KB
    optimized. Workaround: `brew install binaryen` (or `apt install
    binaryen`) and rerun, OR set `wasm-opt = false` in
    `sdk/wasm/Cargo.toml [package.metadata.wasm-pack.profile.release]` to
    silence the warning.
-3. **HTML/CSS/JS a11y + SEO polish on existing pages** was prototyped in a
+2. **HTML/CSS/JS a11y + SEO polish on existing pages** was prototyped in a
    worktree but not merged due to conflicts with the wallet-nav additions.
    Will be reapplied in a follow-up pass.
-4. **RequestBlocks sync timeout** — `src/network/mod.rs` BlockResponse path.
+3. **RequestBlocks sync timeout** — `src/network/mod.rs` BlockResponse path.
    The bug is still in the code but no longer triggers in normal operation
    thanks to deterministic slot-leader scheduling (commit `343a7a1`).
-5. **Persisted state-root divergence after some restarts** — diagnostic
+4. **Persisted state-root divergence after some restarts** — diagnostic
    logging now dumps each account leaf when a divergence is detected.
    Root cause not yet identified. Rare in practice.
-6. **Cross-compile from Mac** — `cross` is installed but needs Docker
+5. **Cross-compile from Mac** — `cross` is installed but needs Docker
    Desktop / OrbStack running. Today, builds happen on the ARM VPSes.
-7. **No PGP key for security disclosures yet.** A signed contact channel
+6. **No PGP key for security disclosures yet.** A signed contact channel
    is a TODO. Until it is published, security issues are reported privately
    via GitHub security advisories on `Pazificateur69/curs3d`. The plan is to
    publish a long-lived PGP key under `/.well-known/security.txt`.
-8. **No external security audit.** All cryptography, consensus and VM code
+7. **No external security audit.** All cryptography, consensus and VM code
    is implemented in-house and reviewed only internally. External audit is
    a prerequisite to mainnet, not to the public testnet.
 
@@ -169,7 +163,10 @@ src/
     state_proof.rs     AccountProof, StorageProof (Merkle inclusion)
     mod.rs
   crypto/
-    dilithium.rs       CRYSTALS-Dilithium Level 5 (pqcrypto crate)
+    dilithium.rs       FIPS-204 ML-DSA-87 (pure-Rust `ml-dsa` crate, same
+                       version as sdk/wasm — browser ↔ node interop). File
+                       name kept for minimal churn; the previous
+                       `pqcrypto-dilithium` (NIST round 3) wrapper is gone.
     hash.rs            SHA-3, sha3_hash_domain (domain separation), double_hash, merkle trees/proofs, checksummed addresses (EIP-55 style), address derivation
     mod.rs
   governance/mod.rs    On-chain governance: proposals, voting (stake-weighted), automatic execution
@@ -207,8 +204,9 @@ sdk/
                          m=64MiB, t=3, p=4) + `aes-gcm` (AES-256-GCM) + `sha3`.
                          Output bundle: 24 KB JS shim + 236 KB WASM (no wasm-opt;
                          see Known issues #2). 12 native Rust tests, all green.
-                         Powers https://curs3d.fr/wallet. **Read-only** today
-                         (Dilithium dialect mismatch — see Known issues #1).
+                         Powers https://curs3d.fr/wallet. **Write-capable**
+                         since the v5 hardfork — both sides pin the same
+                         `ml-dsa` crate, signatures verify byte-for-byte.
   javascript/            JS SDK
   python/                Python SDK
 deploy/
@@ -346,17 +344,15 @@ deploy/
 
 ## Tests
 
-**164 tests, all green** (2026-05-04 afternoon, post v4 hardfork). Breakdown
-below is approximate — the +14 tests since the previous 150-test baseline
-mostly cover EVM dispatch (revm 38 integration), slot-leader determinism, and
-EVM transaction encode/decode round-trips. Run `cargo test --lib --no-run` and
-read the binary output for the canonical per-module count.
+**168 tests, all green** (2026-04-30, post v5 hardfork — ML-DSA-87 migration).
+Breakdown below is approximate. Run `cargo test --lib --no-run` and read the
+binary output for the canonical per-module count.
 - consensus: 15 (validators, selection, slashing, equivocation, finality votes, dedup, jailing, epochs, epoch rewards, inactivity penalty, grace period, apply settlement)
 - core/block: 2 (genesis, new block)
 - core/blocktree: 6 (basic, fork choice, common ancestor, reject below finalized, pruning, branch rejection)
 - core/chain: 28 (genesis, config, blocks, tx flow, forged mint, stake, unstake, duplicate, state root, contracts, receipts, snapshots, fee market, epochs, state proofs, restart)
 - core/transaction: 5 (sign/verify, coinbase, stake, unstake, forged from)
-- crypto/dilithium: 2 (sign/verify, invalid sig)
+- crypto/dilithium: 5 (sign/verify, invalid sig, ml-dsa sizes match FIPS-204 L5, address derivation stable, wasm interop sanity check)
 - crypto/hash: 7 (sha3, merkle root, merkle proof, address derivation, domain separation, checksum roundtrip, checksum rejection)
 - governance: 8 (submit, vote, double vote, pass/execute, reject no quorum, reject no approval, invalid param, vote after deadline)
 - light: 3 (new client, valid proof, invalid proof, empty headers)
@@ -384,7 +380,8 @@ Run a specific test: `RUSTUP_TOOLCHAIN=nightly cargo test test_name --lib`
 
 ## Dependencies (key ones)
 
-- `pqcrypto-dilithium` — Post-quantum signatures, Dilithium Level 5 (NIST round 3)
+- `ml-dsa = "=0.1.0-rc.9"` — Post-quantum signatures, FIPS-204 ML-DSA-87 (NIST level 5, pure Rust). Pinned to the same version as `sdk/wasm` so browser-signed transactions verify on the node byte-for-byte.
+- `signature = "3.0.0"` — RustCrypto signature traits used with `ml-dsa`.
 - `sha3` — Keccak hashing
 - `sled` — Embedded key-value database
 - `libp2p` 0.54 — P2P networking (Gossipsub + mDNS + noise + yamux)
@@ -457,23 +454,82 @@ the `curs3d.fr` vhost was updated accordingly.
 
 Serve locally: `cd website && python3 -m http.server 3000`.
 
-## Hardfork procedure (v3 → v4 and future protocol bumps)
+## Hardfork procedure (v4 → v5: ML-DSA-87 migration)
 
-The v4 hardfork bundles three breaking changes:
+The v5 hardfork swaps the native PQ signature library:
+
+1. **`pqcrypto-dilithium 0.5.0` (NIST round 3, C bindings) → `ml-dsa
+   = =0.1.0-rc.9` (FIPS-204 ML-DSA-87, pure Rust).** Same crate as
+   `sdk/wasm/curs3d-wallet-wasm`, so browser-signed transactions verify
+   on the node byte-for-byte.
+2. **All on-chain accounts get new addresses.** Public-key bytes differ
+   under the new dialect → SHA3-derived address bytes differ.
+3. **All historical signatures are invalid.** Every block, every
+   `FinalityVote`, every `EquivocationEvidence`, every signed transaction
+   from v4 or earlier no longer verifies under v5.
+
+Procedural notes:
+
+- The genesis does **not** include explicit upgrades — chains are
+  generated with `protocol_version_at_height(0) = 5` uniformly. Mixed-version
+  peers diverge silently. Coordinate restarts.
+- Chain DBs from v4 or earlier are **not** forwards-compatible; full wipe of
+  `/var/lib/curs3d/` is required. The validator wallet, faucet wallet, and
+  any password files **must be regenerated** — the keypairs themselves are
+  no longer valid (different scheme, different addresses). The
+  `p2p_identity.pb` file is unrelated to consensus crypto and can stay.
+- The `KeyPair` JSON shape on disk did not change (still
+  `{public_key: Vec<u8>, secret_key: Vec<u8>}`), but the byte sizes did:
+  `public_key` is 2592 B (unchanged) and `secret_key` is now 32 B
+  (was 4864 B — we now store the FIPS-204 seed and re-derive the expanded
+  signing key on demand). The `EncryptedWallet` envelope (Argon2id m=64MB
+  t=3 p=4 + AES-256-GCM, salt/nonce/ciphertext/version JSON) is unchanged
+  and is the same canonical layout as the browser wallet.
+
+### Operator runbook (v5 deploy)
+
+```bash
+# 1. Stop the old node.
+sudo systemctl stop curs3d.service
+
+# 2. Build the v5 binary.
+RUSTUP_TOOLCHAIN=nightly cargo build --release
+
+# 3. Wipe the v4 chain DB. (p2p_identity.pb may be preserved.)
+sudo rm -rf /var/lib/curs3d/blocks /var/lib/curs3d/state \
+            /var/lib/curs3d/accounts /var/lib/curs3d/*.sled
+
+# 4. Regenerate the validator wallet under v5 ML-DSA-87.
+curs3d wallet --output /etc/curs3d/validator.json \
+              --password-file /etc/curs3d/validator.pass
+
+# 5. Regenerate the faucet wallet (same).
+curs3d wallet --output /etc/curs3d/faucet.json \
+              --password-file /etc/curs3d/faucet.pass
+
+# 6. Regenerate genesis with the new validator + faucet allocations.
+curs3d genesis --validator-wallet /etc/curs3d/validator.json \
+               --faucet-wallet    /etc/curs3d/faucet.json \
+               --output           /etc/curs3d/genesis.json
+
+# 7. Redeploy + start.
+sudo cp target/release/curs3d /usr/local/bin/curs3d
+sudo systemctl start curs3d.service
+```
+
+Repeat steps 1–4 + 7 on every node. Step 6 (`genesis`) only happens on the
+operator machine, then the resulting `genesis.json` is rsynced to every
+peer.
+
+## Hardfork procedure (v3 → v4 — historical, kept for reference)
+
+The v4 hardfork bundled three breaking changes:
 
 1. **EVM dispatch** (revm 38 alongside Wasmer)
 2. **Slot-leader stake-weighted scheduling**
 3. **EVM-flavored transactions** (RLP-signed, secp256k1 sender recovery)
 
-Procedural notes:
-
-- The genesis itself does **not** include explicit upgrades — chains are
-  generated with `protocol_version_at_height(0) = 4` uniformly. Mixed-version
-  peers diverge silently. Coordinate restarts.
-- Chain DBs from v3 or earlier are **not** forwards-compatible; full wipe of
-  `/var/lib/curs3d/` is required. Validator wallet, faucet wallet,
-  `p2p_identity.pb`, and password files must be preserved.
-- `TransactionKind::DeployEvmContract` and `CallEvmContract` are appended at
-  the end of the enum so bincode discriminants for older variants are
-  preserved (forward-compatible bincode payloads, but the *content* of an
-  EVM tx requires v4 to apply).
+`TransactionKind::DeployEvmContract` and `CallEvmContract` are appended at
+the end of the enum so bincode discriminants for older variants are
+preserved (forward-compatible bincode payloads, but the *content* of an
+EVM tx requires v4+ to apply).
