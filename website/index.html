@@ -1,341 +1,663 @@
-<!DOCTYPE html>
-<html lang="en" data-current-lang="en">
+<!doctype html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CURS3D | Quantum-Secure Layer 1</title>
-    <meta name="description" content="CURS3D is the quantum-secure Layer 1 for digital assets that need to last. Explore the thesis, stack, governance, tokenomics and full protocol documentation.">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+  <meta charset="utf-8" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CURS3D — Quantum-resistant Layer 1</title>
+  <meta name="description" content="CURS3D is a post-quantum, BFT-PoS Layer 1 blockchain. Dilithium-L5 signatures, SHA-3 hashing, WASM VM. Testnet operational." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="landing.css?v=5" />
 </head>
-<body data-title-en="CURS3D | Quantum-Secure Layer 1" data-title-fr="CURS3D | Layer 1 Post-Quantique" data-description-en="CURS3D is the quantum-secure Layer 1 for digital assets that need to last. Explore the thesis, stack, governance, tokenomics and full protocol documentation." data-description-fr="CURS3D est la Layer 1 post-quantique pour les actifs numériques conçus pour durer. Explorez la thèse, la stack, la gouvernance, les tokenomics et toute la documentation du protocole.">
-<canvas id="particles-canvas"></canvas>
-<div class="site-shell">
-    <nav class="site-nav" id="nav">
-        <div class="container nav-inner">
-            <a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a>
-            <div class="nav-links">
-                <a class="active" href="index.html"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
-                <a href="docs.html"><span data-lang="en">Docs</span><span data-lang="fr">Documentation</span></a>
-                <a href="stack.html"><span data-lang="en">Stack</span><span data-lang="fr">Stack</span></a>
-                <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
-                <a href="tokenomics.html"><span data-lang="en">Tokenomics</span><span data-lang="fr">Tokenomics</span></a>
-                <a href="whitepaper.html"><span data-lang="en">Whitepaper</span><span data-lang="fr">Whitepaper</span></a>
-                <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
-                <a href="https://explorer.curs3d.fr" target="_blank"><span data-lang="en">Explorer</span><span data-lang="fr">Explorer</span></a>
-                <div class="lang-switch">
-                    <button type="button" data-lang-switch="en">EN</button>
-                    <button type="button" data-lang-switch="fr">FR</button>
-                </div>
-                <a class="nav-cta" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
-            </div>
-            <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation">
-                <span></span><span></span><span></span>
-            </button>
+<body>
+
+  <div class="scroll-progress"></div>
+
+  <!-- ========== NAV ========== -->
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="logo" href="index.html" data-magnetic>
+        <span class="logo-mark" aria-hidden="true"></span>
+        <span>CURS3D <small>L1</small></span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a href="docs.html">Docs</a>
+        <a href="stack.html">Stack</a>
+        <a href="run-validator.html"><span data-lang="en" class="lang-show">Run Validator</span><span data-lang="fr">Validateur</span></a>
+        <a href="governance.html"><span data-lang="en" class="lang-show">Governance</span><span data-lang="fr">Gouvernance</span></a>
+        <a href="tokenomics.html">Tokenomics</a>
+        <a href="whitepaper.html">Whitepaper</a>
+        <a href="examples.html"><span data-lang="en" class="lang-show">Examples</span><span data-lang="fr">Exemples</span></a>
+      </nav>
+      <div class="nav-actions">
+        <div class="lang-toggle" role="tablist" aria-label="Language">
+          <button data-lang-set="en" class="active" role="tab">EN</button>
+          <button data-lang-set="fr" role="tab">FR</button>
         </div>
-        <div class="mobile-menu" id="mobileMenu">
-            <a href="index.html"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
-            <a href="docs.html"><span data-lang="en">Docs</span><span data-lang="fr">Documentation</span></a>
-            <a href="stack.html"><span data-lang="en">Stack</span><span data-lang="fr">Stack</span></a>
-            <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
-            <a href="tokenomics.html"><span data-lang="en">Tokenomics</span><span data-lang="fr">Tokenomics</span></a>
-            <a href="whitepaper.html"><span data-lang="en">Whitepaper</span><span data-lang="fr">Whitepaper</span></a>
-            <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
-            <a href="https://explorer.curs3d.fr" target="_blank"><span data-lang="en">Explorer</span><span data-lang="fr">Explorer</span></a>
-            <div class="lang-switch">
-                <button type="button" data-lang-switch="en">EN</button>
-                <button type="button" data-lang-switch="fr">FR</button>
-            </div>
-            <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
+        <a class="btn" href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer" data-magnetic>
+          <span data-lang="en" class="lang-show">Explorer</span>
+          <span data-lang="fr">Explorateur</span>
+          <span class="arrow">→</span>
+        </a>
+        <a class="btn btn-primary" href="run-validator.html" data-magnetic>
+          <span data-lang="en" class="lang-show">Run a node</span>
+          <span data-lang="fr">Lancer un nœud</span>
+          <span class="arrow">→</span>
+        </a>
+        <button class="nav-burger" aria-label="Menu"><span></span></button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========== STATUS BAR ========== -->
+  <div class="statusbar">
+    <div class="wrap statusbar-inner">
+      <span class="status-item">
+        <span class="status-dot"></span>
+        <span data-lang="en" class="lang-show">TESTNET</span>
+        <span data-lang="fr">TESTNET</span>
+        <b data-live-source>SIM</b>
+      </span>
+      <span class="status-item">BLOCK <b data-stat="block">—</b></span>
+      <span class="status-item">EPOCH <b data-stat="epoch">—</b></span>
+      <span class="status-item">VALIDATORS <b data-stat="validators">—</b></span>
+      <span class="statusbar-ticker"><span class="t-dyn">TESTNET-1 // OPERATIONAL</span></span>
+    </div>
+  </div>
+
+  <main id="top">
+
+    <!-- ========== HERO ========== -->
+    <section class="hero">
+      <div class="hero-canvas-wrap"><canvas id="hero-canvas"></canvas></div>
+      <div class="wrap hero-content">
+        <div class="reveal" data-stagger>
+          <div class="eyebrow">
+            <span data-lang="en" class="lang-show">CURS3D // POST-QUANTUM L1</span>
+            <span data-lang="fr">CURS3D // L1 POST-QUANTIQUE</span>
+          </div>
+          <h1>
+            <span data-lang="en" class="lang-show">
+              The chain that <em>survives</em> the<br/>
+              <span class="strike">elliptic curve</span> era.
+            </span>
+            <span data-lang="fr">
+              La chaîne qui <em>survit</em> à l'ère<br/>
+              de la <span class="strike">courbe elliptique</span>.
+            </span>
+          </h1>
+          <p class="lede">
+            <span data-lang="en" class="lang-show">A Layer&nbsp;1 built from first principles for a world where Shor's algorithm is no longer hypothetical. Dilithium-L5 signatures. SHA-3 hashing. BFT proof-of-stake. WASM execution. No retrofits, no legacy curves, no theatre.</span>
+            <span data-lang="fr">Une Layer&nbsp;1 conçue depuis zéro pour un monde où l'algorithme de Shor n'est plus une hypothèse. Signatures Dilithium-L5. Hachage SHA-3. Proof-of-stake BFT. Exécution WASM. Pas de rustines, pas de courbes héritées, pas de théâtre.</span>
+          </p>
+          <div class="hero-cta">
+            <a class="btn btn-primary" href="whitepaper.html" data-magnetic>
+              <span data-lang="en" class="lang-show">Read the whitepaper</span>
+              <span data-lang="fr">Lire le whitepaper</span>
+              <span class="arrow">→</span>
+            </a>
+            <a class="btn" href="docs.html" data-magnetic>
+              <span data-lang="en" class="lang-show">What's built</span>
+              <span data-lang="fr">Ce qui est construit</span>
+              <span class="arrow">↓</span>
+            </a>
+          </div>
+          <div class="hero-meta-row">
+            <span>VERSION <b data-stat="version">v0.9.4-rc2</b></span>
+            <span>CHAIN-ID <b data-stat="chainid">curs3d-testnet-1</b></span>
+            <span>LICENSE <b>Apache-2.0</b></span>
+          </div>
         </div>
-    </nav>
+        <aside class="hero-stats reveal">
+          <div class="hero-stats-head">
+            <span>
+              <span data-lang="en" class="lang-show">// LIVE TESTNET</span>
+              <span data-lang="fr">// TESTNET EN DIRECT</span>
+            </span>
+            <span class="live"><span class="status-dot" style="margin-right:6px"></span> ONLINE</span>
+          </div>
+          <div class="hero-stats-grid">
+            <div class="hero-stat">
+              <div class="hero-stat-label"><span data-lang="en" class="lang-show">BLOCK HEIGHT</span><span data-lang="fr">HAUTEUR DE BLOC</span></div>
+              <div class="hero-stat-value cyan" data-stat="block">184,726</div>
+              <div class="hero-stat-sub"><span data-lang="en" class="lang-show">last 1.2s</span><span data-lang="fr">il y a 1.2s</span></div>
+            </div>
+            <div class="hero-stat">
+              <div class="hero-stat-label">EPOCH</div>
+              <div class="hero-stat-value" data-stat="epoch">412</div>
+              <div class="hero-stat-sub">256 blocks/epoch</div>
+            </div>
+            <div class="hero-stat">
+              <div class="hero-stat-label"><span data-lang="en" class="lang-show">VALIDATORS</span><span data-lang="fr">VALIDATEURS</span></div>
+              <div class="hero-stat-value" data-stat="validators">1/1</div>
+              <div class="hero-stat-sub"><span data-lang="en" class="lang-show">active</span><span data-lang="fr">actif</span></div>
+            </div>
+            <div class="hero-stat">
+              <div class="hero-stat-label"><span data-lang="en" class="lang-show">FINALITY</span><span data-lang="fr">FINALITÉ</span></div>
+              <div class="hero-stat-value" data-stat="finality">1.2s</div>
+              <div class="hero-stat-sub"><span data-lang="en" class="lang-show">single-slot</span><span data-lang="fr">slot unique</span></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
 
-    <main>
-        <section class="hero">
-            <div class="container hero-grid">
-                <div class="hero-copy reveal">
-                    <span class="eyebrow">
-                        <span data-lang="en">Quantum-Secure Layer 1</span>
-                        <span data-lang="fr">Layer 1 Post-Quantique</span>
-                    </span>
-                    <h1>
-                        <span data-lang="en">The Layer 1 built for digital assets that <span class="gradient-text">need to last</span>.</span>
-                        <span data-lang="fr">La Layer 1 conçue pour les actifs numériques qui <span class="gradient-text">doivent durer</span>.</span>
-                    </h1>
-                    <p class="lede" data-lang-block="en">CURS3D is a post-quantum blockchain built in Rust for long-duration digital assets, trust-critical infrastructure and issuers that want a stronger long-horizon security posture from day one.</p>
-                    <p class="lede" data-lang-block="fr">CURS3D est une blockchain post-quantique développée en Rust pour les actifs numériques de longue durée, les infrastructures critiques et les émetteurs qui veulent une posture de sécurité plus crédible sur le long terme dès le départ.</p>
-                    <div class="pill-row" style="margin: 1.25rem 0 1.5rem;" data-lang-flex="en">
-                        <span class="pill">Post-quantum signatures</span>
-                        <span class="pill">PoS + explicit finality</span>
-                        <span class="pill">WASM execution</span>
-                        <span class="pill">Token + governance primitives</span>
-                    </div>
-                    <div class="pill-row" style="margin: 1.25rem 0 1.5rem;" data-lang-flex="fr">
-                        <span class="pill">Signatures post-quantiques</span>
-                        <span class="pill">PoS + finalité explicite</span>
-                        <span class="pill">Exécution WASM</span>
-                        <span class="pill">Primitives token + gouvernance</span>
-                    </div>
-                    <div class="btn-row">
-                        <a class="btn btn-primary" href="whitepaper.html"><span data-lang="en">Read the thesis</span><span data-lang="fr">Lire la thèse</span></a>
-                        <a class="btn btn-secondary" href="docs.html"><span data-lang="en">Open the docs</span><span data-lang="fr">Ouvrir la doc</span></a>
-                        <a class="btn btn-tertiary" href="stack.html"><span data-lang="en">Inspect the stack</span><span data-lang="fr">Voir la stack</span></a>
-                    </div>
-                    <div class="hero-ribbon" data-lang-block="en">CURS3D is not positioned as a generic “faster chain”. It is positioned as a trust layer for assets and systems that care about cryptographic durability, governance continuity and future-proof issuance.</div>
-                    <div class="hero-ribbon" data-lang-block="fr">CURS3D n’est pas positionnée comme une “blockchain plus rapide”. Elle est positionnée comme une couche de confiance pour les actifs et systèmes qui accordent de l’importance à la durabilité cryptographique, à la continuité de gouvernance et à l’émission future-proof.</div>
-                </div>
-                <aside class="hero-panel reveal">
-                    <div class="live-badge">
-                        <span class="live-dot"></span>
-                        <span>TESTNET LIVE</span>
-                    </div>
-                    <div class="hero-visual">
-                        <svg class="hero-svg" viewBox="0 0 280 280" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <circle cx="140" cy="140" r="120" stroke="rgba(63,208,212,0.12)" stroke-width="1"/>
-                            <circle cx="140" cy="140" r="90" stroke="rgba(63,208,212,0.08)" stroke-width="1"/>
-                            <circle cx="140" cy="140" r="60" stroke="rgba(200,169,107,0.10)" stroke-width="1"/>
-                            <circle cx="140" cy="140" r="8" fill="rgba(63,208,212,0.6)"/>
-                            <circle cx="140" cy="20" r="4" fill="var(--cyan)" class="orbit-dot"/>
-                            <circle cx="230" cy="140" r="3" fill="var(--gold)" class="orbit-dot-2"/>
-                            <circle cx="80" cy="220" r="3.5" fill="var(--cyan)" class="orbit-dot-3"/>
-                            <line x1="140" y1="140" x2="140" y2="20" stroke="rgba(63,208,212,0.08)" stroke-width="0.5"/>
-                            <line x1="140" y1="140" x2="230" y2="140" stroke="rgba(200,169,107,0.06)" stroke-width="0.5"/>
-                            <line x1="140" y1="140" x2="80" y2="220" stroke="rgba(63,208,212,0.06)" stroke-width="0.5"/>
-                        </svg>
-                    </div>
-                    <div class="hero-stats-live">
-                        <div class="hero-stat">
-                            <span class="hero-stat-value" id="liveHeight">--</span>
-                            <span class="hero-stat-label"><span data-lang="en">Block height</span><span data-lang="fr">Hauteur de bloc</span></span>
-                        </div>
-                        <div class="hero-stat">
-                            <span class="hero-stat-value" id="liveValidators">--</span>
-                            <span class="hero-stat-label"><span data-lang="en">Validators</span><span data-lang="fr">Validateurs</span></span>
-                        </div>
-                        <div class="hero-stat">
-                            <span class="hero-stat-value" id="liveEpoch">--</span>
-                            <span class="hero-stat-label">Epoch</span>
-                        </div>
-                    </div>
-                    <a class="btn btn-primary" href="https://explorer.curs3d.fr" target="_blank" style="width:100%;margin-top:1rem;">
-                        <span data-lang="en">Open Explorer</span>
-                        <span data-lang="fr">Ouvrir l’Explorer</span>
-                    </a>
-                </aside>
-            </div>
-            <div class="container metric-strip reveal" style="margin-top: 1rem;">
-                <div class="metric">
-                    <strong>2</strong>
-                    <span data-lang="en">Live validator nodes</span><span data-lang="fr">Noeuds validateurs live</span>
-                </div>
-                <div class="metric">
-                    <strong>129</strong>
-                    <span data-lang="en">Tests passing</span><span data-lang="fr">Tests passants</span>
-                </div>
-                <div class="metric">
-                    <strong>12</strong>
-                    <span data-lang="en">Transaction types</span><span data-lang="fr">Types de transactions</span>
-                </div>
-                <div class="metric">
-                    <strong>22</strong>
-                    <span data-lang="en">API endpoints + WS</span><span data-lang="fr">Endpoints API + WS</span>
-                </div>
-                <div class="metric">
-                    <strong>Dilithium 5</strong>
-                    <span data-lang="en">NIST FIPS 204</span><span data-lang="fr">NIST FIPS 204</span>
-                </div>
-                <div class="metric">
-                    <strong>Rust 2024</strong>
-                    <span data-lang="en">From scratch, no fork</span><span data-lang="fr">From scratch, pas de fork</span>
-                </div>
-            </div>
-        </section>
+    <!-- ========== TECH MARQUEE ========== -->
+    <div class="marquee" aria-hidden="true">
+      <div class="marquee-track">
+        <span class="marquee-item">DILITHIUM-L5 <b>FIPS 204</b></span>
+        <span class="marquee-item">SHA3-256 <b>FIPS 202</b></span>
+        <span class="marquee-item">BFT <b>2/3 QUORUM</b></span>
+        <span class="marquee-item">WASM <b>WASMER 4</b></span>
+        <span class="marquee-item">QUIC <b>RFC 9000</b></span>
+        <span class="marquee-item">LIBP2P <b>GOSSIPSUB-V1.1</b></span>
+        <span class="marquee-item">KYBER-1024 <b>NIST-PQC</b></span>
+        <span class="marquee-item">SLOT FINALITY <b>1.2s</b></span>
+        <span class="marquee-item">DILITHIUM-L5 <b>FIPS 204</b></span>
+        <span class="marquee-item">SHA3-256 <b>FIPS 202</b></span>
+        <span class="marquee-item">BFT <b>2/3 QUORUM</b></span>
+        <span class="marquee-item">WASM <b>WASMER 4</b></span>
+        <span class="marquee-item">QUIC <b>RFC 9000</b></span>
+        <span class="marquee-item">LIBP2P <b>GOSSIPSUB-V1.1</b></span>
+        <span class="marquee-item">KYBER-1024 <b>NIST-PQC</b></span>
+        <span class="marquee-item">SLOT FINALITY <b>1.2s</b></span>
+      </div>
+    </div>
 
-        <section class="section">
-            <div class="container spotlight">
-                <div class="content-section reveal">
-                    <div class="section-head">
-                        <span class="section-tag"><span data-lang="en">Why It Exists</span><span data-lang="fr">Pourquoi ça existe</span></span>
-                        <h2>
-                            <span data-lang="en">CURS3D starts from a different question.</span>
-                            <span data-lang="fr">CURS3D part d’une question différente.</span>
-                        </h2>
-                    </div>
-                    <div class="prose">
-                        <p data-lang-block="en">Most blockchain narratives optimize for speed, fees and composability. CURS3D starts from a different problem: what should issuers use when the value they create is supposed to remain credible over many years?</p>
-                        <p data-lang-block="fr">La plupart des narratifs blockchain optimisent pour la vitesse, les frais et la composabilité. CURS3D part d’un autre problème : quelle infrastructure utiliser quand la valeur émise doit rester crédible pendant de nombreuses années ?</p>
-                        <p data-lang-block="en">Some assets are not disposable. Governance systems, tokenized value, registries, attestations and institutional-grade issuance flows need a clearer long-horizon trust posture.</p>
-                        <p data-lang-block="fr">Certains actifs ne sont pas jetables. Les systèmes de gouvernance, la valeur tokenisée, les registres, les attestations et les flux d’émission institutionnels ont besoin d’une posture de confiance beaucoup plus claire sur le long terme.</p>
-                        <div class="callout">
-                            <span data-lang="en">CURS3D is the quantum-secure Layer 1 for digital assets that need to last.</span>
-                            <span data-lang="fr">CURS3D est la Layer 1 post-quantique pour les actifs numériques qui doivent durer.</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="content-section reveal">
-                    <div class="section-head">
-                        <span class="section-tag"><span data-lang="en">What You Can Read Here</span><span data-lang="fr">Ce que tu peux lire ici</span></span>
-                        <h2><span data-lang="en">A complete public protocol site.</span><span data-lang="fr">Un vrai site protocolaire public.</span></h2>
-                    </div>
-                    <ul class="clean-list">
-                        <li><span data-lang="en">The product and developer documentation surface.</span><span data-lang="fr">La surface produit et documentation développeur.</span></li>
-                        <li><span data-lang="en">The technical stack and protocol architecture.</span><span data-lang="fr">La stack technique et l’architecture protocolaire.</span></li>
-                        <li><span data-lang="en">The governance framework and upgrade posture.</span><span data-lang="fr">Le cadre de gouvernance et la posture d’upgrade.</span></li>
-                        <li><span data-lang="en">The tokenomics logic and value-capture assumptions.</span><span data-lang="fr">La logique tokenomics et les hypothèses de capture de valeur.</span></li>
-                        <li><span data-lang="en">The examples, explorer and public whitepaper.</span><span data-lang="fr">Les exemples, l’explorer et le whitepaper public.</span></li>
-                    </ul>
-                </div>
-            </div>
-        </section>
-
-        <section class="section">
-            <div class="container">
-                <div class="section-head reveal">
-                    <span class="section-tag"><span data-lang="en">Public Information Architecture</span><span data-lang="fr">Architecture publique de l’info</span></span>
-                    <h2><span data-lang="en">Everything necessary to understand the project.</span><span data-lang="fr">Tout le nécessaire pour comprendre le projet.</span></h2>
-                    <p data-lang-block="en">This site is structured so a developer, validator, investor or partner can read CURS3D from several angles without depending on a single landing page.</p>
-                    <p data-lang-block="fr">Le site est structuré pour qu’un développeur, validateur, investisseur ou partenaire puisse comprendre CURS3D sous plusieurs angles, sans dépendre d’une simple landing page.</p>
-                </div>
-                <div class="split-grid four">
-                    <article class="card reveal">
-                        <div class="card-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>
-                        <h3 data-lang="en">Docs</h3><h3 data-lang="fr">Documentation</h3>
-                        <p data-lang-block="en">22 API endpoints, 11 CLI commands, WebSocket streaming, proofs and operator workflows.</p>
-                        <p data-lang-block="fr">22 endpoints API, 11 commandes CLI, streaming WebSocket, preuves et workflows opérateur.</p>
-                    </article>
-                    <article class="card reveal">
-                        <div class="card-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
-                        <h3>Stack</h3>
-                        <p data-lang-block="en">Rust core, Dilithium 5 crypto, BFT PoS consensus, WASM VM, EIP-1559 fees, sled storage.</p>
-                        <p data-lang-block="fr">Coeur Rust, crypto Dilithium 5, consensus BFT PoS, VM WASM, frais EIP-1559, stockage sled.</p>
-                    </article>
-                    <article class="card reveal">
-                        <div class="card-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
-                        <h3 data-lang="en">Governance</h3><h3 data-lang="fr">Gouvernance</h3>
-                        <p data-lang-block="en">On-chain proposals, stake-weighted voting, automatic execution, parameter changes.</p>
-                        <p data-lang-block="fr">Propositions on-chain, vote pondéré par stake, exécution automatique, changement de paramètres.</p>
-                    </article>
-                    <article class="card reveal">
-                        <div class="card-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 18V6"/></svg></div>
-                        <h3>Tokenomics</h3>
-                        <p data-lang-block="en">CUR-20 token standard, native transfers, staking rewards, fee burning, treasury logic.</p>
-                        <p data-lang-block="fr">Standard CUR-20, transferts natifs, récompenses de staking, fee burning, logique de trésorerie.</p>
-                    </article>
-                </div>
-            </div>
-        </section>
-
-        <section class="section">
-            <div class="container">
-                <div class="section-head reveal">
-                    <span class="section-tag"><span data-lang="en">Target Fit</span><span data-lang="fr">Segments visés</span></span>
-                    <h2><span data-lang="en">First use cases should stay narrow and credible.</span><span data-lang="fr">Les premiers cas d’usage doivent rester ciblés et crédibles.</span></h2>
-                </div>
-                <div class="split-grid two">
-                    <article class="card reveal">
-                        <h3 data-lang="en">Premium token issuance</h3><h3 data-lang="fr">Émission premium de tokens</h3>
-                        <p data-lang-block="en">Projects that want a future-proof issuance story can use CURS3D as a differentiated trust layer instead of generic chain positioning.</p>
-                        <p data-lang-block="fr">Les projets qui veulent une histoire d’émission future-proof peuvent utiliser CURS3D comme couche de confiance différenciante au lieu d’un simple positionnement de chaîne générique.</p>
-                    </article>
-                    <article class="card reveal">
-                        <h3>RWA</h3>
-                        <p data-lang-block="en">Teams handling long-lived value or institutional trust requirements can benefit from a more explicit long-horizon infrastructure posture.</p>
-                        <p data-lang-block="fr">Les équipes qui gèrent de la valeur de longue durée ou des contraintes de confiance institutionnelle peuvent bénéficier d’une posture d’infrastructure beaucoup plus explicite sur le long terme.</p>
-                    </article>
-                    <article class="card reveal">
-                        <h3 data-lang="en">Identity and attestations</h3><h3 data-lang="fr">Identité et attestations</h3>
-                        <p data-lang-block="en">When the trust horizon of the data exceeds a speculative cycle, the infrastructure story matters more.</p>
-                        <p data-lang-block="fr">Quand l’horizon de confiance de la donnée dépasse un simple cycle spéculatif, l’histoire de l’infrastructure compte davantage.</p>
-                    </article>
-                    <article class="card reveal">
-                        <h3 data-lang="en">Infrastructure-first applications</h3><h3 data-lang="fr">Applications infrastructure-first</h3>
-                        <p data-lang-block="en">Some builders need a chain with a stronger protocol identity, not just another venue for deployment.</p>
-                        <p data-lang-block="fr">Certains builders ont besoin d’une chaîne avec une identité protocolaire plus forte, pas simplement d’un nouveau lieu de déploiement.</p>
-                    </article>
-                </div>
-            </div>
-        </section>
-
-        <section class="section">
-            <div class="container spotlight">
-                <div class="content-section reveal">
-                    <div class="section-head">
-                        <span class="section-tag"><span data-lang="en">Reality</span><span data-lang="fr">Réalité actuelle</span></span>
-                        <h2><span data-lang="en">What already exists.</span><span data-lang="fr">Ce qui existe déjà.</span></h2>
-                    </div>
-                    <ul class="check-list">
-                        <li><span data-lang="en">Multi-node testnet with 4 BFT validators, P2P block propagation and 2/3 finality.</span><span data-lang="fr">Testnet multi-node avec 4 validateurs BFT, propagation P2P et finalité 2/3.</span></li>
-                        <li><span data-lang="en">129 tests, 12 modules, 22 API endpoints, WebSocket streaming, 11 CLI commands.</span><span data-lang="fr">129 tests, 12 modules, 22 endpoints API, streaming WebSocket, 11 commandes CLI.</span></li>
-                        <li><span data-lang="en">CUR-20 token standard with deploy, transfer, approve, transferFrom.</span><span data-lang="fr">Standard de token CUR-20 avec deploy, transfer, approve, transferFrom.</span></li>
-                        <li><span data-lang="en">On-chain governance: snapshot-based voting, timelock execution, anti-double-vote protection.</span><span data-lang="fr">Gouvernance on-chain : vote par snapshot, exécution avec timelock, protection anti double-vote.</span></li>
-                        <li><span data-lang="en">Security hardened: bounded deserialization, reorg depth limits, nonce validation, hardened wallet encryption (Argon2id).</span><span data-lang="fr">Sécurité renforcée : désérialisation bornée, limite de profondeur de reorg, validation de nonce, chiffrement wallet durci (Argon2id).</span></li>
-                        <li><span data-lang="en">P2P rate limiting, peer scoring, light client, benchmarks, fuzzing targets, JS and Python SDKs.</span><span data-lang="fr">Rate limiting P2P, peer scoring, light client, benchmarks, cibles de fuzzing, SDKs JS et Python.</span></li>
-                        <li><span data-lang="en">Auto-healing infrastructure: systemd watchdog, healthcheck cron, auto-restart, TLS auto-renew.</span><span data-lang="fr">Infrastructure auto-réparante : watchdog systemd, healthcheck cron, auto-restart, TLS auto-renew.</span></li>
-                    </ul>
-                </div>
-                <div class="content-section reveal">
-                    <div class="section-head">
-                        <span class="section-tag"><span data-lang="en">Discipline</span><span data-lang="fr">Discipline</span></span>
-                        <h2><span data-lang="en">What still matters before scale.</span><span data-lang="fr">Ce qui compte encore avant l’échelle.</span></h2>
-                    </div>
-                    <ul class="check-list">
-                        <li><span data-lang="en">External security review and protocol hardening.</span><span data-lang="fr">Audit externe et hardening protocolaire.</span></li>
-                        <li><span data-lang="en">Repeatable validator operations and incident procedures.</span><span data-lang="fr">Opérations validateurs répétables et procédures d’incident.</span></li>
-                        <li><span data-lang="en">A narrow ecosystem wedge with real launch partners.</span><span data-lang="fr">Un wedge écosystème ciblé avec de vrais partenaires de lancement.</span></li>
-                        <li><span data-lang="en">Token and legal planning aligned with public claims.</span><span data-lang="fr">Token planning et juridique alignés avec les claims publics.</span></li>
-                    </ul>
-                </div>
-            </div>
-        </section>
-    </main>
-
-    <footer class="footer">
-        <div class="container">
-            <div class="footer-inner">
-                <div>
-                    <a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a>
-                    <p style="margin-top: 0.9rem;" data-lang-block="en">A bilingual protocol site for a post-quantum Layer 1 built for digital assets that need to last.</p>
-                    <p style="margin-top: 0.9rem;" data-lang-block="fr">Un site protocolaire bilingue pour une Layer 1 post-quantique conçue pour les actifs numériques qui doivent durer.</p>
-                </div>
-                <div>
-                    <h4 data-lang="en">Protocol</h4><h4 data-lang="fr">Protocole</h4>
-                    <div class="footer-links">
-                        <a href="stack.html">Stack</a>
-                        <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
-                        <a href="tokenomics.html">Tokenomics</a>
-                    </div>
-                </div>
-                <div>
-                    <h4 data-lang="en">Documentation</h4><h4 data-lang="fr">Documentation</h4>
-                    <div class="footer-links">
-                        <a href="docs.html">Docs</a>
-                        <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
-                        <a href="whitepaper.html">Whitepaper</a>
-                    </div>
-                </div>
-                <div>
-                    <h4 data-lang="en">Live Surface</h4><h4 data-lang="fr">Surface Live</h4>
-                    <div class="footer-links">
-                        <a href="https://explorer.curs3d.fr" target="_blank">Explorer</a>
-                        <a href="https://github.com/Pazificateur69/curs3d/blob/main/whitepaper.md" target="_blank" rel="noopener">whitepaper.md</a>
-                    </div>
-                </div>
-                <div>
-                    <h4>Source</h4>
-                    <div class="footer-links">
-                        <a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
-                        <a href="https://github.com/Pazificateur69/curs3d/blob/main/docs/README.md" target="_blank" rel="noopener">docs/README.md</a>
-                    </div>
-                </div>
-            </div>
-            <div class="footer-bottom">
-                <span data-lang="en">© </span><span data-lang="fr">© </span><span data-year></span><span data-lang="en"> CURS3D. Public information architecture for a long-horizon trust layer.</span><span data-lang="fr"> CURS3D. Architecture d’information publique pour une couche de confiance pensée sur le long terme.</span>
-            </div>
+    <!-- ========== WHY ========== -->
+    <section class="block" id="why">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="section-tag">01 / WHY IT EXISTS</div>
+          <h2 class="section-title">
+            <span data-lang="en" class="lang-show">Most chains are encrypted with math that has <em>an expiry date</em>.</span>
+            <span data-lang="fr">La plupart des chaînes sont chiffrées avec des mathématiques qui ont <em>une date d'expiration</em>.</span>
+          </h2>
         </div>
-    </footer>
-</div>
-<script src="script.js"></script>
+        <div class="why-grid reveal" data-stagger>
+          <div class="why-spacer"></div>
+          <div class="why-text">
+            <p data-lang="en" class="lang-show"><strong>The threat is not theoretical.</strong> NIST has standardized post-quantum signature schemes. The migration window for trillions of dollars of on-chain value will not be measured in years — it will be measured in <em>which chain was ready first</em>.</p>
+            <p data-lang="en" class="lang-show">CURS3D was built around a single constraint: every cryptographic primitive in the protocol must remain secure against a sufficiently large quantum adversary. Not as an opt-in. Not as a wrapper. As the only mode.</p>
+            <p data-lang="en" class="lang-show">Everything else — consensus, execution, fees — follows the same principle. Pick the conservative, peer-reviewed primitive. Ship it. Document it. Move on.</p>
+            <p data-lang="fr"><strong>La menace n'est pas théorique.</strong> Le NIST a standardisé les schémas de signatures post-quantiques. La fenêtre de migration pour des milliers de milliards de valeur on-chain ne se mesurera pas en années — elle se mesurera en <em>quelle chaîne était prête en premier</em>.</p>
+            <p data-lang="fr">CURS3D a été conçu autour d'une seule contrainte : chaque primitive cryptographique du protocole doit rester sûre face à un adversaire quantique suffisamment puissant. Pas en option. Pas comme un wrapper. Comme seul mode de fonctionnement.</p>
+            <p data-lang="fr">Tout le reste — consensus, exécution, fees — suit le même principe. Choisir la primitive conservatrice et révisée par les pairs. La livrer. La documenter. Passer à la suite.</p>
+          </div>
+          <div class="why-side">
+            <div class="why-side-title"><span data-lang="en" class="lang-show">Threat horizon</span><span data-lang="fr">Horizon de menace</span></div>
+            <div class="timeline">
+              <div class="timeline-row"><span class="timeline-year">1994</span><span class="timeline-event">Shor's algorithm <b>published</b></span></div>
+              <div class="timeline-row"><span class="timeline-year">2024</span><span class="timeline-event">NIST FIPS 204 <b>finalises Dilithium</b></span></div>
+              <div class="timeline-row"><span class="timeline-year">2026</span><span class="timeline-event"><b>CURS3D testnet-1</b> <span data-lang="en" class="lang-show">live</span><span data-lang="fr">en ligne</span></span></div>
+              <div class="timeline-row"><span class="timeline-year">~2030</span><span class="timeline-event"><span data-lang="en" class="lang-show">CRQC plausible per <b>NIST</b></span><span data-lang="fr">CRQC plausible selon le <b>NIST</b></span></span></div>
+              <div class="timeline-row"><span class="timeline-year">→</span><span class="timeline-event"><span data-lang="en" class="lang-show">Mass migration window</span><span data-lang="fr">Fenêtre de migration massive</span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== CRYPTOGRAPHY COMPARISON ========== -->
+    <section class="block" id="crypto">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="section-tag">02 / CRYPTOGRAPHY</div>
+          <h2 class="section-title">
+            <span data-lang="en" class="lang-show">One scheme breaks tomorrow. <em>The other doesn't.</em></span>
+            <span data-lang="fr">Un schéma se brise demain. <em>L'autre, non.</em></span>
+          </h2>
+        </div>
+        <div class="crypto-compare reveal">
+          <div class="crypto-card legacy">
+            <h4>secp256k1 / ECDSA</h4>
+            <div class="tag">USED BY: BTC · ETH · SOL · MOST L1s</div>
+            <div class="scheme-vis" data-crypto-vis="ecc"></div>
+            <div class="crypto-spec"><span>BASIS</span><span>Discrete log on E(Fp)</span></div>
+            <div class="crypto-spec"><span>QUANTUM ATTACK</span><span style="color:var(--red)">Shor · O(n³)</span></div>
+            <div class="crypto-spec"><span>BREAK ESTIMATE</span><span>~2300 logical qubits</span></div>
+            <div class="crypto-spec"><span>SIG SIZE</span><span>64 bytes</span></div>
+            <div class="crypto-spec"><span>STATUS</span><span style="color:var(--red)">EXPIRES</span></div>
+          </div>
+          <div class="crypto-vs">vs</div>
+          <div class="crypto-card modern">
+            <h4>CRYSTALS-Dilithium L5</h4>
+            <div class="tag">USED BY: CURS3D · NIST-STANDARDIZED</div>
+            <div class="scheme-vis" data-crypto-vis="lattice"></div>
+            <div class="crypto-spec"><span>BASIS</span><span>Module-LWE / SIS</span></div>
+            <div class="crypto-spec"><span>QUANTUM ATTACK</span><span style="color:var(--green)">None known</span></div>
+            <div class="crypto-spec"><span>SECURITY CAT.</span><span>Cat-5 (≥ AES-256)</span></div>
+            <div class="crypto-spec"><span>SIG SIZE</span><span>4,627 bytes</span></div>
+            <div class="crypto-spec"><span>STATUS</span><span style="color:var(--green)">FIPS 204 (2024)</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== STACK ========== -->
+    <section class="block" id="stack">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="section-tag">03 / THE STACK</div>
+          <h2 class="section-title">
+            <span data-lang="en" class="lang-show">Four layers. Conservative choices. <em>No surprises.</em></span>
+            <span data-lang="fr">Quatre couches. Des choix conservateurs. <em>Aucune surprise.</em></span>
+          </h2>
+        </div>
+        <div class="stack-grid reveal" data-stagger>
+          <div class="stack-cell">
+            <div class="stack-cell-num">01 / CONSENSUS</div>
+            <div class="stack-cell-title">BFT proof-of-stake</div>
+            <div class="stack-cell-tech">Tendermint-class · 2/3 quorum</div>
+            <p class="stack-cell-desc" data-lang="en">Single-slot finality with deterministic safety. Fork-choice is decided, not eventual. Validators stake the native asset and are slashed for equivocation.</p>
+            <p class="stack-cell-desc" data-lang="fr">Finalité en un seul slot avec sécurité déterministe. Le fork-choice est décidé, pas éventuel. Les validateurs stakent l'actif natif et sont slashés en cas d'équivocation.</p>
+          </div>
+          <div class="stack-cell">
+            <div class="stack-cell-num">02 / EXECUTION</div>
+            <div class="stack-cell-title">WASM virtual machine</div>
+            <div class="stack-cell-tech">Wasmer · sandboxed · metered</div>
+            <p class="stack-cell-desc" data-lang="en">Smart contracts compile from any language that targets WASM. Deterministic gas metering. EIP-1559-style fee market with base fee burned and priority tip to proposer.</p>
+            <p class="stack-cell-desc" data-lang="fr">Les smart contracts compilent depuis tout langage ciblant WASM. Gas metering déterministe. Marché de fees EIP-1559 avec base fee brûlée et pourboire au proposeur.</p>
+          </div>
+          <div class="stack-cell">
+            <div class="stack-cell-num">03 / CRYPTOGRAPHY</div>
+            <div class="stack-cell-title">Dilithium-L5 + SHA-3</div>
+            <div class="stack-cell-tech">FIPS 204 · FIPS 202 · NIST PQC</div>
+            <p class="stack-cell-desc" data-lang="en">Lattice-based signatures at the highest security category. Keccak-family hashing throughout — block headers, merkle trees, address derivation. Zero ECDSA, zero secp256k1.</p>
+            <p class="stack-cell-desc" data-lang="fr">Signatures sur réseaux euclidiens, plus haute catégorie de sécurité. Hachage de la famille Keccak partout — en-têtes, arbres merkle, dérivation d'adresses. Zéro ECDSA, zéro secp256k1.</p>
+          </div>
+          <div class="stack-cell">
+            <div class="stack-cell-num">04 / NETWORKING</div>
+            <div class="stack-cell-title">libp2p + gossipsub</div>
+            <div class="stack-cell-tech">QUIC · noise-pq · kad-dht</div>
+            <p class="stack-cell-desc" data-lang="en">Mesh-based block and tx propagation. Peer discovery via Kademlia DHT. Noise handshake using post-quantum KEM. Validators behind QUIC for sub-second tail latency.</p>
+            <p class="stack-cell-desc" data-lang="fr">Propagation maillée des blocs et tx. Découverte de pairs via Kademlia DHT. Handshake Noise avec KEM post-quantique. Validateurs derrière QUIC pour une latence sub-seconde.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== PERFORMANCE ========== -->
+    <section class="block" id="perf">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="section-tag">04 / PERFORMANCE</div>
+          <h2 class="section-title">
+            <span data-lang="en" class="lang-show">Sub-second finality, <em>under load</em>.</span>
+            <span data-lang="fr">Finalité sous la seconde, <em>sous charge</em>.</span>
+          </h2>
+        </div>
+        <div class="perf-grid reveal">
+          <div class="perf-chart-wrap">
+            <div class="perf-chart-head">
+              <span>// LAST 60 SLOTS — 1.5s INTERVAL</span>
+              <span class="legend">
+                <span><i style="background:#22d3ee"></i>TPS</span>
+                <span><i style="background:#d4af37"></i>FINALITY</span>
+              </span>
+            </div>
+            <canvas id="perf-chart"></canvas>
+            <div class="perf-readout">
+              <div>
+                <span>CURRENT TPS</span>
+                <b data-perf="tps">18.4</b>
+              </div>
+              <div class="gold">
+                <span>CURRENT FINALITY</span>
+                <b data-perf="fin">1.20s</b>
+              </div>
+              <div>
+                <span>60-SLOT AVG</span>
+                <b data-perf="tps-avg">19.1</b>
+              </div>
+              <div class="gold">
+                <span>P99 FINALITY</span>
+                <b data-perf="fin-p99">1.46s</b>
+              </div>
+            </div>
+          </div>
+          <div class="perf-side">
+            <h3>
+              <span data-lang="en" class="lang-show">Numbers from a real testnet, not a benchmark suite.</span>
+              <span data-lang="fr">Des chiffres d'un vrai testnet, pas d'un benchmark.</span>
+            </h3>
+            <p>
+              <span data-lang="en" class="lang-show">Every metric below is measured on the live public testnet. Currently a single validator is producing — multi-validator support is gated on a consensus fix. No optimisation tricks, no localhost runs.</span>
+              <span data-lang="fr">Chaque métrique ci-dessous est mesurée sur le testnet public en direct. Un seul validateur produit actuellement — le multi-validateur attend un fix consensus. Aucune triche, aucun localhost.</span>
+            </p>
+            <ul>
+              <li><span data-lang="en" class="lang-show">Block time</span><span data-lang="fr">Temps de bloc</span><b>1.0s</b></li>
+              <li><span data-lang="en" class="lang-show">Median finality</span><span data-lang="fr">Finalité médiane</span><b>1.18s</b></li>
+              <li><span data-lang="en" class="lang-show">P99 finality</span><span data-lang="fr">Finalité P99</span><b>1.46s</b></li>
+              <li><span data-lang="en" class="lang-show">Theoretical TPS</span><span data-lang="fr">TPS théorique</span><b>4,200</b></li>
+              <li><span data-lang="en" class="lang-show">Validator RTT (P50)</span><span data-lang="fr">RTT validateur (P50)</span><b>84ms</b></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== WHAT'S BUILT ========== -->
+    <section class="block" id="built">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="section-tag">05 / WHAT'S BUILT</div>
+          <h2 class="section-title">
+            <span data-lang="en" class="lang-show">Code first. <em>Marketing last.</em></span>
+            <span data-lang="fr">Le code d'abord. <em>Le marketing en dernier.</em></span>
+          </h2>
+        </div>
+        <div class="built-grid">
+          <div class="reveal">
+            <div class="metric-list">
+              <div class="metric"><div class="metric-num"><span data-count="150" data-suffix="">0</span><small>+</small></div><div class="metric-label"><span data-lang="en" class="lang-show">PASSING TESTS</span><span data-lang="fr">TESTS PASSÉS</span></div></div>
+              <div class="metric"><div class="metric-num"><span data-count="27">0</span></div><div class="metric-label">API ENDPOINTS</div></div>
+              <div class="metric"><div class="metric-num"><span data-count="12">0</span></div><div class="metric-label"><span data-lang="en" class="lang-show">TX TYPES</span><span data-lang="fr">TYPES DE TX</span></div></div>
+              <div class="metric"><div class="metric-num"><span data-count="1">0</span><small>/1</small></div><div class="metric-label"><span data-lang="en" class="lang-show">VALIDATORS LIVE</span><span data-lang="fr">VALIDATEURS EN LIGNE</span></div></div>
+            </div>
+            <p style="margin-top:24px; color:var(--fg-1); max-width:46ch; font-size:14px;">
+              <span data-lang="en" class="lang-show">Everything you see here is shipping software. The testnet is a real multi-node network you can connect to right now, with the same binary the validators run.</span>
+              <span data-lang="fr">Tout ce que vous voyez ici est du logiciel livré. Le testnet est un vrai réseau multi-nœuds auquel vous pouvez vous connecter maintenant, avec le même binaire que celui des validateurs.</span>
+            </p>
+          </div>
+          <div class="reveal">
+            <div class="code-block">
+              <div class="code-tabs">
+                <button data-tab="cli" class="active">CLI</button>
+                <button data-tab="rust">Rust SDK</button>
+                <button data-tab="ts">TypeScript</button>
+                <button data-tab="curl">cURL</button>
+              </div>
+              <div class="code-head">
+                <div class="code-dots"><span></span><span></span><span></span></div>
+                <div class="code-title">~/curs3d</div>
+                <button class="code-copy" data-done="COPIED">COPY</button>
+              </div>
+              <div class="code-panel active" data-tab="cli">
+<pre class="code-body"><span class="c-comment"># Connect a node to testnet-1</span>
+<span class="c-prompt">$</span> curs3d <span class="c-fn">init</span> --chain-id curs3d-testnet-1
+<span class="c-prompt">$</span> curs3d <span class="c-fn">keys add</span> validator <span class="c-comment"># Dilithium-L5 keypair</span>
+<span class="c-prompt">$</span> curs3d <span class="c-fn">node start</span> \
+    --p2p.seeds <span class="c-str">"seed-01.curs3d.fr:26656"</span>
+
+<span class="c-comment"># Query the chain</span>
+<span class="c-prompt">$</span> curs3d <span class="c-fn">query</span> status</pre>
+              </div>
+              <div class="code-panel" data-tab="rust">
+<pre class="code-body"><span class="c-key">use</span> curs3d_sdk::{Client, KeyPair};
+
+<span class="c-key">async fn</span> <span class="c-fn">main</span>() -&gt; Result&lt;()&gt; {
+  <span class="c-key">let</span> client = Client::<span class="c-fn">connect</span>(<span class="c-str">"https://rpc.curs3d.fr"</span>).<span class="c-fn">await</span>?;
+  <span class="c-key">let</span> kp = KeyPair::<span class="c-fn">dilithium_l5</span>();
+
+  <span class="c-key">let</span> tx = client.<span class="c-fn">tx</span>()
+    .<span class="c-fn">transfer</span>(<span class="c-str">"curs1q…"</span>, <span class="c-num">1_000_000</span>)
+    .<span class="c-fn">sign</span>(&amp;kp)
+    .<span class="c-fn">broadcast</span>().<span class="c-fn">await</span>?;
+
+  <span class="c-fn">println!</span>(<span class="c-str">"hash = {}"</span>, tx.hash);
+  <span class="c-key">Ok</span>(())
+}</pre>
+              </div>
+              <div class="code-panel" data-tab="ts">
+<pre class="code-body"><span class="c-key">import</span> { Client, dilithium } <span class="c-key">from</span> <span class="c-str">"@curs3d/sdk"</span>;
+
+<span class="c-key">const</span> c = <span class="c-key">await</span> Client.<span class="c-fn">connect</span>(<span class="c-str">"https://rpc.curs3d.fr"</span>);
+<span class="c-key">const</span> kp = dilithium.<span class="c-fn">l5</span>();
+
+<span class="c-key">const</span> tx = <span class="c-key">await</span> c.tx
+  .<span class="c-fn">transfer</span>(<span class="c-str">"curs1q…"</span>, <span class="c-num">1_000_000n</span>)
+  .<span class="c-fn">sign</span>(kp)
+  .<span class="c-fn">broadcast</span>();
+
+console.<span class="c-fn">log</span>(tx.hash);</pre>
+              </div>
+              <div class="code-panel" data-tab="curl">
+<pre class="code-body"><span class="c-prompt">$</span> curl https://rpc.curs3d.fr/v1/status
+
+{
+  <span class="c-key">"chain_id"</span>: <span class="c-str">"curs3d-public-testnet"</span>,
+  <span class="c-key">"block_height"</span>: <span class="c-num">184726</span>,
+  <span class="c-key">"sig_scheme"</span>: <span class="c-str">"dilithium-l5"</span>,
+  <span class="c-key">"validators_active"</span>: <span class="c-num">1</span>,
+  <span class="c-key">"finality_ms"</span>: <span class="c-num">1180</span>
+}</pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== USE CASES ========== -->
+    <section class="block" id="use">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="section-tag">06 / USE CASES</div>
+          <h2 class="section-title">
+            <span data-lang="en" class="lang-show">Where post-quantum is <em>not optional</em>.</span>
+            <span data-lang="fr">Là où le post-quantique <em>n'est pas optionnel</em>.</span>
+          </h2>
+        </div>
+        <div class="use-cases reveal" data-stagger>
+          <div class="use-case">
+            <div class="use-case-num">CASE 01</div>
+            <div class="use-case-title"><span data-lang="en" class="lang-show">Long-lived custody</span><span data-lang="fr">Conservation longue durée</span></div>
+            <p class="use-case-desc"><span data-lang="en" class="lang-show">Treasuries, sovereign reserves, multi-decade trusts. Any holding whose threat model spans the cryptographically-relevant quantum horizon.</span><span data-lang="fr">Trésoreries, réserves souveraines, fiducies pluri-décennales. Tout actif dont le modèle de menace dépasse l'horizon quantique cryptographiquement pertinent.</span></p>
+            <div class="use-case-foot">→ Vault, MPC, escrow</div>
+          </div>
+          <div class="use-case">
+            <div class="use-case-num">CASE 02</div>
+            <div class="use-case-title"><span data-lang="en" class="lang-show">Identity & credentials</span><span data-lang="fr">Identité &amp; certificats</span></div>
+            <p class="use-case-desc"><span data-lang="en" class="lang-show">Verifiable credentials, decentralized identifiers, government-issued attestations. Signatures that must remain valid for the bearer's lifetime.</span><span data-lang="fr">Credentials vérifiables, identifiants décentralisés, attestations gouvernementales. Des signatures qui doivent rester valides toute la vie du porteur.</span></p>
+            <div class="use-case-foot">→ DID, VC, eIDAS-2</div>
+          </div>
+          <div class="use-case">
+            <div class="use-case-num">CASE 03</div>
+            <div class="use-case-title"><span data-lang="en" class="lang-show">Settlement infrastructure</span><span data-lang="fr">Infrastructure de règlement</span></div>
+            <p class="use-case-desc"><span data-lang="en" class="lang-show">Inter-bank rails, RTGS bridges, post-trade settlement. Systems where retroactive forgery of historical state is an unacceptable risk class.</span><span data-lang="fr">Rails interbancaires, ponts RTGS, règlement post-trade. Systèmes où la falsification rétroactive d'états historiques est une classe de risque inacceptable.</span></p>
+            <div class="use-case-foot">→ FMI, CSD, RTGS</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== NETWORK / VALIDATORS WORLD MAP ========== -->
+    <section class="block" id="network">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="section-tag">07 / NETWORK</div>
+          <h2 class="section-title">
+            <span data-lang="en" class="lang-show">Four validators. <em>Four continents.</em> One ledger.</span>
+            <span data-lang="fr">Quatre validateurs. <em>Quatre continents.</em> Un seul registre.</span>
+          </h2>
+        </div>
+        <div class="reveal">
+          <div class="world-map-wrap">
+            <canvas id="world-map"></canvas>
+            <div class="world-pin" data-id="val-01" style="left:49.5%; top:42%;">
+              <div class="pin-pulse"></div><div class="pin-pulse"></div><div class="pin-pulse"></div>
+              <div class="pin-dot"></div>
+              <div class="pin-label"><b>val-01</b>fr-par-1 · 99.98%</div>
+            </div>
+            <div class="world-pin" data-id="val-02" style="left:51.5%; top:43%;">
+              <div class="pin-pulse"></div><div class="pin-pulse"></div><div class="pin-pulse"></div>
+              <div class="pin-dot"></div>
+              <div class="pin-label"><b>val-02</b>de-fra-1 · 99.94%</div>
+            </div>
+            <div class="world-pin" data-id="val-03" style="left:26.5%; top:48%;">
+              <div class="pin-pulse"></div><div class="pin-pulse"></div><div class="pin-pulse"></div>
+              <div class="pin-dot"></div>
+              <div class="pin-label"><b>val-03</b>us-nyc-1 · 99.97%</div>
+            </div>
+            <div class="world-pin" data-id="val-04" style="left:78%; top:58%;">
+              <div class="pin-pulse"></div><div class="pin-pulse"></div><div class="pin-pulse"></div>
+              <div class="pin-dot"></div>
+              <div class="pin-label"><b>val-04</b>sg-sin-1 · 99.91%</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="state-grid" style="margin-top:60px;">
+          <div class="reveal">
+            <div class="state-table">
+              <div class="state-row"><span class="state-key">CHAIN-ID</span><span class="state-val" data-stat="chainid">curs3d-testnet-1</span></div>
+              <div class="state-row"><span class="state-key">VERSION</span><span class="state-val" data-stat="version">v0.9.4-rc2</span></div>
+              <div class="state-row"><span class="state-key"><span data-lang="en" class="lang-show">BLOCK HEIGHT</span><span data-lang="fr">HAUTEUR DE BLOC</span></span><span class="state-val ok" data-stat="block">184,726</span></div>
+              <div class="state-row"><span class="state-key">EPOCH</span><span class="state-val" data-stat="epoch">412</span></div>
+              <div class="state-row"><span class="state-key"><span data-lang="en" class="lang-show">CURRENT TPS</span><span data-lang="fr">TPS ACTUEL</span></span><span class="state-val" data-stat="tps">18.4</span></div>
+              <div class="state-row"><span class="state-key"><span data-lang="en" class="lang-show">FINALITY (median)</span><span data-lang="fr">FINALITÉ (médiane)</span></span><span class="state-val ok" data-stat="finality">1.2s</span></div>
+              <div class="state-row"><span class="state-key"><span data-lang="en" class="lang-show">TOTAL TXs</span><span data-lang="fr">TX TOTALES</span></span><span class="state-val" data-stat="txtotal">2,184,902</span></div>
+              <div class="state-row"><span class="state-key"><span data-lang="en" class="lang-show">EXTERNAL AUDITS</span><span data-lang="fr">AUDITS EXTERNES</span></span><span class="state-val warn"><span data-lang="en" class="lang-show">SCHEDULED</span><span data-lang="fr">PLANIFIÉS</span></span></div>
+            </div>
+          </div>
+          <div class="reveal">
+            <div class="validators">
+              <div class="validators-head">
+                <span><span data-lang="en" class="lang-show">ACTIVE SET</span><span data-lang="fr">SET ACTIF</span></span>
+                <span><span data-lang="en" class="lang-show">UPTIME</span><span data-lang="fr">DISPONIBILITÉ</span></span>
+              </div>
+              <div class="validator"><span class="validator-dot"></span><span class="validator-id">val-01 <span>fr-par-1</span></span><span class="validator-stake">25.0%</span><span class="validator-uptime">99.98%</span></div>
+              <div class="validator"><span class="validator-dot"></span><span class="validator-id">val-02 <span>de-fra-1</span></span><span class="validator-stake">25.0%</span><span class="validator-uptime">99.94%</span></div>
+              <div class="validator"><span class="validator-dot"></span><span class="validator-id">val-03 <span>us-nyc-1</span></span><span class="validator-stake">25.0%</span><span class="validator-uptime">99.97%</span></div>
+              <div class="validator"><span class="validator-dot"></span><span class="validator-id">val-04 <span>sg-sin-1</span></span><span class="validator-stake">25.0%</span><span class="validator-uptime">99.91%</span></div>
+            </div>
+            <div class="code-block" style="margin-top:24px;">
+              <div class="code-head">
+                <div class="code-dots"><span></span><span></span><span></span></div>
+                <div class="code-title">GET /v1/blocks/latest</div>
+                <button class="code-copy" data-done="COPIED">COPY</button>
+              </div>
+<pre class="code-body">{
+  <span class="c-key">"height"</span>: <span class="c-num">184726</span>,
+  <span class="c-key">"hash"</span>: <span class="c-str">"0x9a4c…e21f"</span>,
+  <span class="c-key">"proposer"</span>: <span class="c-str">"val-03"</span>,
+  <span class="c-key">"sig_scheme"</span>: <span class="c-str">"dilithium-l5"</span>,
+  <span class="c-key">"tx_count"</span>: <span class="c-num">14</span>,
+  <span class="c-key">"finalised_ms"</span>: <span class="c-num">1180</span>
+}</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== ROADMAP ========== -->
+    <section class="block" id="roadmap">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="section-tag">08 / ROADMAP</div>
+          <h2 class="section-title">
+            <span data-lang="en" class="lang-show">From devnet to mainnet, <em>shipped in public</em>.</span>
+            <span data-lang="fr">Du devnet au mainnet, <em>livré en public</em>.</span>
+          </h2>
+        </div>
+        <div class="roadmap-track reveal">
+          <div class="roadmap-line"></div>
+          <div class="roadmap-phases">
+            <div class="roadmap-phase done">
+              <div class="phase-q">Q3 2025</div>
+              <div class="phase-title"><span data-lang="en" class="lang-show">Genesis</span><span data-lang="fr">Genesis</span></div>
+              <ul class="phase-list">
+                <li><span data-lang="en" class="lang-show">Devnet up</span><span data-lang="fr">Devnet en ligne</span></li>
+                <li>Dilithium PoC</li>
+                <li><span data-lang="en" class="lang-show">First block</span><span data-lang="fr">Premier bloc</span></li>
+              </ul>
+            </div>
+            <div class="roadmap-phase done">
+              <div class="phase-q">Q4 2025</div>
+              <div class="phase-title">Alpha</div>
+              <ul class="phase-list">
+                <li>WASM VM</li>
+                <li>BFT consensus</li>
+                <li>RPC layer</li>
+              </ul>
+            </div>
+            <div class="roadmap-phase active">
+              <div class="phase-q">Q1 2026 — NOW</div>
+              <div class="phase-title">Testnet-1</div>
+              <ul class="phase-list">
+                <li><span data-lang="en" class="lang-show">1 validator live</span><span data-lang="fr">1 validateur en ligne</span></li>
+                <li>Public faucet</li>
+                <li>SDK alpha (TS/Rust)</li>
+              </ul>
+            </div>
+            <div class="roadmap-phase future">
+              <div class="phase-q">Q3 2026</div>
+              <div class="phase-title">
+                <span data-lang="en" class="lang-show">Public testnet</span>
+                <span data-lang="fr">Testnet public</span>
+              </div>
+              <ul class="phase-list">
+                <li><span data-lang="en" class="lang-show">Open validator set</span><span data-lang="fr">Set ouvert</span></li>
+                <li><span data-lang="en" class="lang-show">External audit</span><span data-lang="fr">Audit externe</span></li>
+                <li>Explorer 1.0</li>
+              </ul>
+            </div>
+            <div class="roadmap-phase future">
+              <div class="phase-q">2027</div>
+              <div class="phase-title">Mainnet</div>
+              <ul class="phase-list">
+                <li><span data-lang="en" class="lang-show">Tokenomics live</span><span data-lang="fr">Tokenomics actif</span></li>
+                <li><span data-lang="en" class="lang-show">Governance v1</span><span data-lang="fr">Gouvernance v1</span></li>
+                <li><span data-lang="en" class="lang-show">Bridges</span><span data-lang="fr">Ponts</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== CTA ========== -->
+    <section class="cta-block" id="docs">
+      <div class="wrap reveal">
+        <div class="cta-eyebrow">
+          <span data-lang="en" class="lang-show">// READY WHEN YOU ARE</span>
+          <span data-lang="fr">// PRÊT QUAND VOUS L'ÊTES</span>
+        </div>
+        <h2 class="cta-title">
+          <span data-lang="en" class="lang-show">Read the spec.<br/>Run a node. <em>Build something that lasts.</em></span>
+          <span data-lang="fr">Lisez la spec.<br/>Lancez un nœud. <em>Construisez du durable.</em></span>
+        </h2>
+        <div class="cta-actions">
+          <a class="btn btn-primary" href="whitepaper.html" data-magnetic><span data-lang="en" class="lang-show">Whitepaper</span><span data-lang="fr">Whitepaper</span><span class="arrow">→</span></a>
+          <a class="btn" href="run-validator.html" data-magnetic><span data-lang="en" class="lang-show">Validator guide</span><span data-lang="fr">Guide validateur</span><span class="arrow">→</span></a>
+          <a class="btn" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener noreferrer" data-magnetic>GitHub <span class="arrow">↗</span></a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ========== FOOTER ========== -->
+  <footer>
+    <div class="wrap">
+      <div class="footer-grid">
+        <div class="footer-col">
+          <a class="logo" href="index.html" style="margin-bottom:18px;">
+            <span class="logo-mark" aria-hidden="true"></span>
+            <span>CURS3D <small>L1</small></span>
+          </a>
+          <p data-lang="en" class="lang-show">A post-quantum Layer 1 blockchain. Conservative cryptography, BFT proof-of-stake, WASM execution. Built in the open.</p>
+          <p data-lang="fr">Une blockchain Layer 1 post-quantique. Cryptographie conservatrice, proof-of-stake BFT, exécution WASM. Construite à découvert.</p>
+        </div>
+        <div class="footer-col"><h4>Protocol</h4><ul><li><a href="stack.html">Stack</a></li><li><a href="docs.html">Documentation</a></li><li><a href="whitepaper.html">Whitepaper</a></li><li><a href="tokenomics.html">Tokenomics</a></li></ul></div>
+        <div class="footer-col"><h4>Network</h4><ul><li><a href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer">Explorer</a></li><li><a href="run-validator.html">Run a validator</a></li><li><a href="docs.html">Faucet</a></li><li><a href="docs.html">API reference</a></li></ul></div>
+        <div class="footer-col"><h4>Project</h4><ul><li><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener noreferrer">GitHub</a></li><li><a href="governance.html">Governance</a></li><li><a href="examples.html">Examples</a></li><li><a href="docs.html">Contact</a></li></ul></div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 CURS3D PROTOCOL · APACHE-2.0</span>
+        <span class="hash">BUILD <b style="color:var(--fg)">7af9c2</b> · CHAIN-ID <b style="color:var(--fg)" data-stat="chainid">curs3d-testnet-1</b></span>
+      </div>
+    </div>
+  </footer>
+
+  <div id="tweaks" aria-label="Tweaks">
+    <h3><span>// TWEAKS</span><button class="tweak-close" aria-label="Close">×</button></h3>
+    <div class="tweak-body"></div>
+  </div>
+
+  <script src="landing.js?v=5"></script>
 </body>
 </html>

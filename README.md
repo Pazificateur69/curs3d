@@ -18,6 +18,8 @@
 
 CURS3D is a **Layer 1 blockchain written from scratch in Rust**, designed to resist quantum computing attacks. It uses NIST-standardized post-quantum cryptography (CRYSTALS-Dilithium 5), BFT Proof of Stake consensus with explicit 2/3 finality, a WASM smart contract engine with instruction-level gas metering, and an EIP-1559 dynamic fee market. Every component is original — no fork of Ethereum, Cosmos, or Substrate.
 
+> **Status (2026-05-04):** public testnet is live at https://curs3d.fr with **1 active validator** (node1). A second validator is provisioned but disabled until the consensus slot-leader scheduling is implemented (see [`CLAUDE.md`](CLAUDE.md) → "Known bugs"). 150 tests pass on `cargo test --lib`.
+
 ## Why CURS3D?
 
 **The quantum threat is real.** NIST finalized post-quantum cryptography standards in 2024. Most blockchains still rely on ECDSA/EdDSA, which will be broken by Shor's algorithm. CURS3D is built from the ground up with quantum-resistant primitives — not retrofitted.
@@ -37,11 +39,16 @@ CURS3D is a **Layer 1 blockchain written from scratch in Rust**, designed to res
 
 ## Quick Start
 
+> **Rust toolchain:** nightly is required. `multiaddr 0.18.2` fails to compile
+> on stable ≥ 1.94 due to a type-inference regression we have not patched out.
+> Use `rustup install nightly --profile minimal` and prefix builds with
+> `RUSTUP_TOOLCHAIN=nightly`.
+
 ```bash
 # Build from source
 git clone https://github.com/Pazificateur69/curs3d.git
 cd curs3d
-cargo build --release
+RUSTUP_TOOLCHAIN=nightly cargo build --release
 
 # Create password files for non-interactive deploys
 printf '%s\n' 'change-this-validator-password' > validator.password
@@ -85,11 +92,17 @@ The CURS3D public testnet is running and accessible:
 
 | Surface | URL |
 |---------|-----|
+| **Site** | https://curs3d.fr |
 | **API** | https://api.curs3d.fr/api/status |
 | **Explorer** | https://explorer.curs3d.fr |
-| **Faucet** | `POST https://api.curs3d.fr/api/faucet/request` |
+| **Faucet UI** | https://curs3d.fr/faucet (Cloudflare Turnstile, 100 CUR, 1 h cooldown) |
+| **API docs (OpenAPI 3.1)** | https://curs3d.fr/api |
 | **WebSocket** | `wss://api.curs3d.fr/ws` |
-| **P2P Bootnode** | `api.curs3d.fr:4337` |
+| **Status (Grafana)** | https://status.curs3d.fr/ |
+| **Status (Uptime-Kuma)** | https://status.curs3d.fr/status/ |
+| **P2P Bootnode** | `144.24.192.222:4337` |
+| **Chain ID** | `curs3d-public-testnet` |
+| **Genesis hash** | `8a58508589b2e0e2caf760eaed18500c262200fbdff3509faedfc1d9589efb18` |
 
 ```bash
 # Request testnet tokens
@@ -107,9 +120,11 @@ curl https://api.curs3d.fr/api/validators | jq .data
 ### With Docker
 
 ```bash
-docker compose up -d           # Start 2-node local network
-curl localhost:8080/api/status  # Query the chain
-docker compose down             # Stop
+docker compose up -d             # Bootstraps a real 2-validator localnet
+docker compose logs -f node1     # Watch node startup
+curl localhost:8080/api/status   # Query validator 1
+curl localhost:8081/api/status   # Query validator 2
+docker compose down              # Stop
 ```
 
 ### Deploy Your Own Node
@@ -148,13 +163,13 @@ CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technicall
 - **Checksummed addresses** (EIP-55 style, detects typos)
 - **Rate-limit headers** (X-RateLimit-Limit/Remaining/Window) on all API responses
 - **Persistent storage** (sled, 10 trees, schema v4 with auto-migration)
-- **REST API** (22 endpoints) + WebSocket + TCP RPC + CLI (11 commands)
-- **SDKs**: JavaScript/TypeScript (@curs3d/sdk) and Python (curs3d)
+- **REST API** (27 endpoints, OpenAPI 3.1 at https://curs3d.fr/api) + WebSocket + Ethereum-compatible JSON-RPC (`POST /eth`) + TCP RPC + CLI
+- **SDKs**: JavaScript/TypeScript (@curs3d/sdk), Python (curs3d), Rust contract SDK with 5 examples
 - **Block explorer** web UI with live dashboard
 - **Benchmarks** (criterion) and **fuzzing** targets (cargo-fuzz)
 - **Docker** multi-stage build + docker-compose + nginx TLS + systemd
-- **CI/CD** pipeline (check, test, clippy 0 warnings, fmt)
-- **129 tests** across 15 modules
+- **CI/CD** pipeline on Rust nightly (check, test, clippy 0 warnings, fmt, cargo audit)
+- **150 tests** across 15 modules
 
 ### What Remains for Mainnet
 
@@ -196,6 +211,11 @@ website/           Documentation site (6 pages)
 ```
 
 ## REST API
+
+The full machine-readable contract is the OpenAPI 3.1 spec at
+[`website/api/openapi.json`](website/api/openapi.json) (also live at
+https://curs3d.fr/api/openapi.json). It currently documents **27 endpoints**.
+The table below is the headline subset.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -256,9 +276,9 @@ CURS3D runs WebAssembly contracts via Wasmer 5 with Cranelift. The VM injects fu
 ## Testing
 
 ```bash
-cargo test
-cargo clippy         # 0 warnings (CI enforces -D warnings)
-cargo fmt --check    # Enforced formatting
+RUSTUP_TOOLCHAIN=nightly cargo test --lib                # 150 tests
+RUSTUP_TOOLCHAIN=nightly cargo clippy --lib -- -D warnings   # 0 warnings (CI enforces)
+RUSTUP_TOOLCHAIN=nightly cargo fmt --check                # Enforced formatting
 ```
 
 Coverage: cryptographic operations, block validation, transaction flow (all 6 types), staking/unstaking, slashing with evidence, BFT finality threshold, fork choice, block tree pruning, wallet encryption/decryption, storage persistence, WASM VM execution, gas metering, state sync snapshots, epoch management.

@@ -1,6 +1,24 @@
 # CURS3D Public VPS Deployment
 
+Last updated: **2026-05-04**.
+
 This guide is for a single public bootstrap node on a VPS so external users can connect, query the API, and use a faucet backed by a real signed transaction.
+
+## Prerequisites: Rust nightly
+
+The codebase requires the **nightly** Rust toolchain. `multiaddr 0.18.2` (a
+transitive dep of libp2p) fails to compile on stable ≥ 1.94 due to a
+type-inference regression we have not patched out.
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none
+. "$HOME/.cargo/env"
+rustup install nightly --profile minimal
+# Build everything with nightly:
+RUSTUP_TOOLCHAIN=nightly cargo build --release
+```
+
+CI (`.github/workflows/`) also runs on nightly.
 
 ## What This Deploys
 
@@ -33,7 +51,7 @@ chmod 600 deploy/secrets/*.password
 Create the validator and faucet wallets:
 
 ```bash
-cargo build --release
+RUSTUP_TOOLCHAIN=nightly cargo build --release
 ./target/release/curs3d wallet \
   --output deploy/secrets/validator.json \
   --password-file deploy/secrets/validator.password
@@ -42,6 +60,10 @@ cargo build --release
   --output deploy/secrets/faucet.json \
   --password-file deploy/secrets/faucet.password
 ```
+
+> **IMPORTANT:** Argon2id (m=64MB) makes wallet derivation host-specific
+> from a memory-pressure standpoint. Wallets work cross-host, but for
+> production, generate them ON the VPS that will run the validator.
 
 Inspect the wallets:
 
@@ -54,7 +76,11 @@ Inspect the wallets:
 
 ## 2. Generate the Official Public Genesis
 
-Generate a real `genesis.json` from the wallets you will actually operate:
+Generate a real `genesis.json` from the wallets you will actually operate. The
+flags `--validator-wallet`, `--validator-password-file`, `--validator-balance-cur`
+and `--validator-stake-cur` can be repeated in lock-step to seed several
+validators in the same genesis (positional pairing — pass them in the same
+order for each validator):
 
 ```bash
 ./target/release/curs3d genesis \
@@ -65,10 +91,20 @@ Generate a real `genesis.json` from the wallets you will actually operate:
   --validator-password-file deploy/secrets/validator.password \
   --validator-balance-cur 1500000 \
   --validator-stake-cur 50000 \
+  --validator-wallet deploy/secrets/validator2.json \
+  --validator-password-file deploy/secrets/validator2.password \
+  --validator-balance-cur 1500000 \
+  --validator-stake-cur 50000 \
   --faucet-wallet deploy/secrets/faucet.json \
   --faucet-password-file deploy/secrets/faucet.password \
   --faucet-balance-cur 2000000
 ```
+
+> **Caveat (2026-05-04):** the consensus code does not yet implement
+> deterministic slot-leader scheduling. Running ≥2 validators concurrently
+> against this binary forks every 10 s. Until that is fixed (see
+> `CLAUDE.md` → "Known bugs"), keep `--validator-wallet` to a single value
+> in production genesis.
 
 Publish `deploy/genesis.public-testnet.json` somewhere public and keep the exact same file on every node.
 
@@ -83,6 +119,12 @@ Pick the public address you want peers to use:
 ```
 
 This writes the stable address list to `deploy/node-data/bootnode.addrs`. Publish the resulting `/dns4/.../tcp/.../p2p/...` address to users and other nodes.
+
+If you ever need to wipe the persistent libp2p PeerId (e.g. cloning a host
+or recovering from a corrupted `p2p_identity.pb`), pass
+`--reset-p2p-identity` to the `node` subcommand once. The flag deletes the
+existing identity and lets the node regenerate a fresh one on the next
+start. Re-publish the new bootnode address afterwards.
 
 ## 4. Configure Environment
 
@@ -112,6 +154,7 @@ curl http://127.0.0.1:8080/api/metrics
 ```
 
 The validator wallet password is loaded from a file, so restarts are non-interactive.
+The node now fails fast if the validator wallet cannot be loaded or if the P2P stack does not start; `/api/healthz` returns `503` when the node is stale or not network-ready.
 
 ## 6. Nginx + TLS
 
@@ -145,6 +188,7 @@ curl http://127.0.0.1:8080/api/status
 curl http://127.0.0.1:8080/api/validators
 curl http://127.0.0.1:8080/api/healthz
 curl http://127.0.0.1:8080/api/metrics
+sudo tail -20 /var/log/curs3d-healthcheck.log
 ```
 
 Generated files to keep:

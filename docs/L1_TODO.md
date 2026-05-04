@@ -1,25 +1,31 @@
 # CURS3D L1 TODO
 
-Etat: **testnet public live** sur https://api.curs3d.fr. Ce fichier distingue ce qui est execute dans le code et ce qui reste pour approcher un niveau L1 serieux.
+Etat **2026-05-04**: testnet public live sur https://curs3d.fr,
+**1 validateur actif** (node1). Ce fichier distingue ce qui est execute
+dans le code et ce qui reste pour approcher un niveau L1 serieux.
 
 ## Live
 
 - Site: https://curs3d.fr
 - API: https://api.curs3d.fr/api/status
 - Explorer: https://explorer.curs3d.fr
+- Faucet UI: https://curs3d.fr/faucet (Cloudflare Turnstile)
+- API docs (OpenAPI 3.1): https://curs3d.fr/api
 - WebSocket: wss://api.curs3d.fr/ws
-- Faucet: POST https://api.curs3d.fr/api/faucet/request
+- Status (Grafana): https://status.curs3d.fr/
+- Status (Uptime-Kuma): https://status.curs3d.fr/status/
 - P2P Bootnode: 144.24.192.222:4337
-- TLS: Let's Encrypt, auto-renew (api + explorer + curs3d.fr)
-- Hosting: Oracle Cloud ARM Free Tier (2x 1 OCPU, 6 GB RAM, Ubuntu 22.04), eu-marseille-1
-- Node1 (bootstrap+API): 144.24.192.222 — `ssh curs3d-node1` — CURe1Fa551B3f0524EfD8d0673cdBF9fD0e199458c5
-- Node2 (validator): 84.235.238.213 — `ssh curs3d-node2` — CURdC1ecceD4f12Cb3E34BD0d43E72d6D04fC4823dd
-- Faucet: CUR34cafc74B750C0e0150877e99cd27D77C6c4fC44
-- Node3-4: en attente capacite ARM Oracle (wallets a creer sur le serveur)
-- Bootnode PeerId: 12D3KooWGy9BLopUe6CmnxuFgk5pCou8Kj5R1DXa9XLga9MD63va
-- SSH key: id_ed25519_server
-- Runbook complet: deploy/DEPLOY_RUNBOOK.md
-- IMPORTANT: les wallets doivent etre crees sur le serveur (pas cross-compiles) a cause de Argon2id
+- TLS: Let's Encrypt, auto-renew (curs3d.fr + api + explorer + status)
+- Hosting: Oracle Cloud ARM Free Tier (1 OCPU / 6 GB, Ubuntu 22.04), eu-marseille-1
+- Node1 (bootstrap+API): 144.24.192.222 — `ssh curs3d-node1` — `CURe1Fa551B3f0524EfD8d0673cdBF9fD0e199458c5`
+- Node2 (84.235.238.213, validateur `CURdC1ecceD4f12Cb3E34BD0d43E72d6D04fC4823dd`): **arrete** en attendant le fix consensus slot-leader
+- Node3/4: reportes
+- Faucet: `CUR34cafc74B750C0e0150877e99cd27D77C6c4fC44`
+- Chain ID: `curs3d-public-testnet`
+- Genesis hash: `8a58508589b2e0e2caf760eaed18500c262200fbdff3509faedfc1d9589efb18`
+- Runbook complet: `deploy/DEPLOY_RUNBOOK.md`
+- Toolchain: **Rust nightly** requis (multiaddr 0.18.2 vs stable >=1.94)
+- IMPORTANT: les wallets doivent etre crees sur le serveur de production a cause de Argon2id
 
 ## Execute
 
@@ -66,13 +72,19 @@ Etat: **testnet public live** sur https://api.curs3d.fr. Ce fichier distingue ce
   - remplacement strict, gap nonce 32, eviction
   - estimation dry-run via API et RPC
 - Surface operateur:
-  - 20 endpoints HTTP + WebSocket (/ws) avec rate limiting IP (60 GET/min, 10 POST/min)
-  - faucet testnet POST /api/faucet/request (100 CUR, cooldown 1h par adresse, persistant)
+  - **27 endpoints HTTP** + WebSocket (/ws) + Ethereum-compatible JSON-RPC (`POST /eth`),
+    rate limiting IP (60 GET/min, 10 POST/min)
+  - OpenAPI 3.1 publie (`website/api/openapi.json`, rendu Stoplight Elements a `/api`)
+  - faucet POST /api/faucet/request (100 CUR, cooldown 1h address+IP) + UI a `/faucet`
+    avec **Cloudflare Turnstile** (verifier `curs3d-captcha.service`)
   - auth optionnelle sur API (bearer token) et RPC
   - CORS configurable (bloque si absent)
   - body limit 1MB, 128 max connexions HTTP, 64 max WebSocket
-  - CLI complet: node, wallet, info, send, stake, unstake, deploy-token, token-transfer, status, genesis, bootnode-address
-  - SDKs: JavaScript/TypeScript (@curs3d/sdk) et Python (curs3d)
+  - CLI: node (avec `--reset-p2p-identity`), wallet, info, send, stake,
+    unstake, deploy-token, token-transfer, status, genesis (multi
+    `--validator-wallet`), bootnode-address
+  - SDKs: JavaScript/TypeScript (`@curs3d/sdk`), Python (`curs3d`),
+    Rust contract SDK (5 examples)
 - Tokens:
   - Standard CUR-20 natif: deploy, transfer, approve, transferFrom
   - Token registry dans Blockchain struct
@@ -93,17 +105,30 @@ Etat: **testnet public live** sur https://api.curs3d.fr. Ce fichier distingue ce
   - P2P rate limiting par peer avec bans escaladants
   - Peer scoring: reputation comportementale, decay, ban automatique sous seuil
   - WebSocket event broadcast (new_block, new_transaction, finality)
-- Infra:
-  - Multi-node testnet: 4 validateurs BFT sur Oracle Cloud ARM (2 actifs, 2 en attente capacite)
-  - Consensus multi-validateur avec propagation P2P et sync automatique
+- Infra (live sur node1):
+  - Mono-validateur production (cf. "Open" / Known bugs ci-dessous)
   - Docker multi-stage + docker-compose + healthcheck
-  - nginx TLS + WebSocket reverse proxy + website serving
-  - systemd hardened: Restart=always, WatchdogSec=120, StartLimitAction=reboot
-  - Healthcheck cron toutes les 2 min avec auto-restart
-  - Script de deploiement deploy/scripts/deploy.sh + deploy/scripts/add-node.sh
-  - CI GitHub Actions: check, test, clippy (0 warnings), fmt
-  - Benchmarks (criterion) + fuzzing targets (cargo-fuzz, 5 cibles)
-  - Site web: 8 pages (landing, docs, exemples, whitepaper, explorer, governance, tokenomics, stack)
+  - nginx TLS + WebSocket reverse proxy + website serving (TLS Mozilla
+    intermediate, OCSP stapling, headers durcis : CSP, HSTS preload,
+    X-Frame-Options DENY, Referrer-Policy, Permissions-Policy)
+  - systemd hardened (`User=curs3d`, `EnvironmentFile=/etc/curs3d/secrets.env`,
+    `ProtectSystem=full`, `NoNewPrivileges`, `Restart=always`)
+  - Healthcheck v2 cron */2 min avec **alertes Discord** via
+    `/etc/curs3d/alerts.env`
+  - Faucet captcha verifier (`curs3d-captcha.service`, 127.0.0.1:8090)
+  - Backups off-host **restic → Backblaze B2** toutes les 6h
+    (`curs3d-backup.timer`, notifications Discord)
+  - SSH durci (no root, MaxAuthTries 3, key-only), `fail2ban` actif
+  - Stack monitoring Docker a `status.curs3d.fr` : Prometheus +
+    Grafana + Uptime-Kuma + node-exporter (4 services)
+  - Scripts deploy : `deploy.sh`, `add-node.sh`, `setup-node.sh`,
+    `init-localnet.sh`, `curs3d-healthcheck.sh`, `curs3d-backup.sh`,
+    `curs3d-captcha-verify.py`
+  - CI GitHub Actions sur **nightly**: check, test, clippy `-D warnings`,
+    fmt, `cargo audit` (policy `.cargo/audit.toml`)
+  - Benchmarks (criterion, 9 cibles) + fuzzing (cargo-fuzz, 5 cibles)
+  - Site web : landing, docs, examples, whitepaper, explorer,
+    governance, tokenomics, stack, faucet, run-validator, api (Stoplight)
 - Crypto:
   - Domain separation (sha3_hash_domain) pour tous les usages
   - Adresses checksummed EIP-55 (checksum_address, verify_checksum_address)
@@ -111,8 +136,8 @@ Etat: **testnet public live** sur https://api.curs3d.fr. Ce fichier distingue ce
   - Sparse Merkle Trie 256-bit (module pret, preuves O(log n))
   - Epoch settlement: rewards + inactivity penalties appliques a chaque epoch
 - Tests:
-  - 129 tests: consensus (15), block (2), blocktree (6), chain (28), transaction (5), dilithium (2), hash (7), governance (8), light (3), network (9), storage (7), token (10), trie (9), vm (10), wallet (5)
-- Securite (audit interne 2026-04-23, fixes 2026-04-24):
+  - **150 tests**: consensus (15), block (2), blocktree (6), chain (28), transaction (5), dilithium (2), hash (7), governance (8), light (3), network (9), storage (7), token (10), trie (9), vm (10), wallet (5)
+- Securite (audit interne 2026-04-23 + audit pass 2026-05-04 — commit `c015ee3`):
   - Gouvernance: vote par stake snapshot a la creation de la proposition (anti double-vote)
   - Deserialisation bornee sur tous les messages P2P (anti OOM, limite 16 MB)
   - Elimination de tous les Box::leak (zero memory leak)
@@ -123,9 +148,26 @@ Etat: **testnet public live** sur https://api.curs3d.fr. Ce fichier distingue ce
   - Limite de profondeur de reorg: max 64 blocs
   - Validation des index de chunks snapshot (anti storage bloat)
 
+## Bugs ouverts (priorite haute)
+
+- **Consensus slot-leader manquant** — `src/consensus/mod.rs` n'elit
+  pas un proposeur unique par slot ; ajouter
+  `slot_leader(height, validator_set)` deterministe et pondere stake,
+  gater la production dans `src/network/mod.rs`. Bloque le retour de
+  node2 (sinon forks toutes les 10 s).
+- **RequestBlocks sync timeout** — receive loop dans
+  `src/network/mod.rs` time out avant l'arrivee des batches malgre une
+  connectivite peer valide. A investiguer.
+- **State-root divergence apres certains restarts** — logging diagnostique
+  en place (dump des leaves), root cause non identifiee.
+- **Cross-compile Mac → ARM** — `cross` installe, requiert Docker
+  Desktop / OrbStack actif.
+
 ## Priorite 1
 
 - Audit externe: consensus, VM, crypto, reseau
+- Re-activer node2 puis provisionner node3 (Hetzner) une fois le
+  slot-leader fix.
 - ~~Peer scoring, banlist, anti-spam par peer/message~~ FAIT: PeerRateLimiter + PeerScorer avec reputation et bans comportementaux
 - ~~Arbre d etat explicite (MPT ou Verkle)~~ FAIT: SparseMerkleTrie 256-bit (module pret, migration state root planifiee via protocol upgrade)
 - State sync avec reprise partielle et checkpoints connus
