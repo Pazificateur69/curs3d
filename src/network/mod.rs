@@ -22,7 +22,12 @@ use crate::crypto::dilithium::{self, KeyPair, Signature};
 use crate::runtime::SharedRuntimeState;
 use crate::storage::{SnapshotManifest, StateChunk};
 
-const SYNC_TIMEOUT_SECS: u64 = 15;
+/// Per-request sync deadline. A sender that legitimately has 50 blocks to
+/// serialize, sign-verify, JSON-encode and stream over a slow link can take
+/// longer than the historical 15s, especially with state-heavy blocks
+/// (large transactions or receipt logs). 30s gives the realistic worst case
+/// room without making cold-start on a healthy network feel sluggish.
+const SYNC_TIMEOUT_SECS: u64 = 30;
 const MAX_SYNC_RETRIES: u32 = 3;
 const MAX_SEEN_BLOCKS: usize = 1000;
 const SYNC_BATCH_SIZE: u64 = 50;
@@ -1478,19 +1483,59 @@ impl NetworkNode {
         if response_genesis_hash != chain_lock.genesis_hash() {
             return;
         }
-        if from_height != chain_lock.height() + 1 {
+
+        // Previously this matcher rejected anything where
+        // `from_height != chain.height() + 1`. That's too strict: if the
+        // receiver's deadline expired and a retry was issued (now N×15s
+        // later) while the original response was still in flight, the
+        // *original* response arriving with a stale `from_height` was
+        // silently dropped, every retry behaved the same way, and the
+        // sync loop hit `Sync timed out after 3 retries`. Same shape:
+        // a `NewBlock` from another peer advanced our tip during the
+        // round-trip — every block in the response then deserialized
+        // fine but `add_block` rejected the first one as already-known,
+        // we set `accepted = 0`, never reset the deadline, and timed
+        // out anyway.
+        //
+        // The fix: accept any response whose `from_height` is at most
+        // our next expected height. We then walk through the carried
+        // blocks, skip any whose height we already have, and feed the
+        // rest into `add_block` in order. If the response is "ahead"
+        // (`from_height > chain.height() + 1`) it can't be applied
+        // contiguously, so reject it — that case is fed by the
+        // RequestSnapshot path, not RequestBlocks.
+        let next_expected = chain_lock.height().saturating_add(1);
+        if from_height > next_expected {
+            // Stale or future response; can't apply contiguously.
             return;
         }
 
         let mut accepted = 0u64;
+        let mut skipped = 0u64;
         for data in blocks_data {
             match bounded_deserialize::<Block>(data) {
                 Ok(block) => {
-                    let height = block.header.height;
+                    let block_height = block.header.height;
+                    // Skip blocks that arrived after we already advanced
+                    // past them via another path (NewBlock, prior batch).
+                    if block_height <= chain_lock.height() {
+                        skipped += 1;
+                        continue;
+                    }
+                    if block_height != chain_lock.height() + 1 {
+                        // Non-contiguous gap mid-batch: stop, the next
+                        // request will pick up from current height.
+                        warn!(
+                            "Sync: non-contiguous block #{} (we expected #{}). Stopping batch.",
+                            block_height,
+                            chain_lock.height() + 1
+                        );
+                        break;
+                    }
                     match chain_lock.add_block(block) {
                         Ok(()) => accepted += 1,
                         Err(e) => {
-                            warn!("Sync: rejected block #{}: {}", height, e);
+                            warn!("Sync: rejected block #{}: {}", block_height, e);
                             break;
                         }
                     }
@@ -1504,9 +1549,26 @@ impl NetworkNode {
 
         if accepted > 0 {
             info!(
-                "Synced {} blocks. Height: {}",
+                "Synced {} blocks. Height: {} (skipped {} already-known)",
                 accepted,
-                chain_lock.height()
+                chain_lock.height(),
+                skipped,
+            );
+            // Reset sync state on any forward progress. If there are more
+            // blocks to fetch, the next HeightAnnounce (or the deadline
+            // reissue at line 521) will trigger a fresh RequestBlocks
+            // anchored on the new tip.
+            *sync_requested = false;
+            *sync_deadline = None;
+            *sync_retries = 0;
+        } else if skipped as usize == blocks_data.len() && !blocks_data.is_empty() {
+            // Every block in the response was already known. The remote
+            // did its job — we just raced ahead. Treat as success: clear
+            // the in-flight sync so the next announce can drive a fresh
+            // request without paying the retry timeout.
+            tracing::debug!(
+                "Sync: response had {} blocks, all already known. Clearing in-flight sync.",
+                skipped
             );
             *sync_requested = false;
             *sync_deadline = None;
@@ -1673,5 +1735,440 @@ mod tests {
         let huge = vec![0u8; (MAX_DESERIALIZE_SIZE + 1) as usize];
         let result: Result<Vec<u8>, String> = bounded_deserialize(&huge);
         assert!(result.is_err());
+    }
+
+    // ─── Two-node cold-sync regression test ────────────────────────────
+    //
+    // Builds two real `NetworkNode`s on loopback, has node A mine N blocks,
+    // then has node B (fresh, height 0) request them via the
+    // `RequestBlocks` / `BlockResponse` gossipsub flow. Asserts B reaches
+    // height N and every hash matches A within a short bound.
+    //
+    // This is the regression for the `Sync timed out, retry 1/3` symptom:
+    // the receiver's deadline checked `from_height != chain.height() + 1`
+    // *strictly* — if the chain's height advanced for any reason between
+    // request and response (or if the response arrived with from_height
+    // anchored on the original request value), the response was silently
+    // dropped and the matcher kept retrying until exhausted.
+
+    use crate::core::chain::Blockchain;
+    use crate::crypto::dilithium::KeyPair;
+    use libp2p::Multiaddr;
+
+    /// Build a `NetworkNode` listening on an OS-assigned port and return
+    /// the dial multiaddrs once they're known.
+    async fn build_node(bootnodes: Vec<String>, topic: &str) -> (NetworkNode, Vec<Multiaddr>) {
+        let identity = identity::Keypair::generate_ed25519();
+        // port 0 -> let the OS pick a free port
+        let mut node = NetworkNode::new(0, &bootnodes, topic, identity, &[])
+            .await
+            .expect("node init");
+        // Drain swarm until we've observed our bound listen address.
+        let mut listen_addrs: Vec<Multiaddr> = Vec::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while listen_addrs.is_empty() && tokio::time::Instant::now() < deadline {
+            tokio::select! {
+                event = node.swarm.select_next_some() => {
+                    if let SwarmEvent::NewListenAddr { address, .. } = event {
+                        // Skip non-loopback listeners (mDNS may bind multiple
+                        // interfaces); we only want the loopback addr for
+                        // deterministic dial.
+                        let s = address.to_string();
+                        if s.contains("/ip4/127.0.0.1/") || s.contains("/ip4/0.0.0.0/") {
+                            listen_addrs.push(address);
+                        }
+                    }
+                }
+                _ = tokio::time::sleep(Duration::from_millis(50)) => {}
+            }
+        }
+        // Replace 0.0.0.0 with 127.0.0.1 for dialing.
+        let dial_addrs: Vec<Multiaddr> = listen_addrs
+            .into_iter()
+            .map(|addr| {
+                let s = addr.to_string().replace("/ip4/0.0.0.0/", "/ip4/127.0.0.1/");
+                s.parse().unwrap_or(addr)
+            })
+            .collect();
+        (node, dial_addrs)
+    }
+
+    /// Build a chain with `block_count` blocks produced by `validator`.
+    fn build_chain_with_blocks(validator: &KeyPair, block_count: u64) -> Blockchain {
+        let mut chain = Blockchain::new();
+        for _ in 0..block_count {
+            let block = chain
+                .create_block(validator)
+                .expect("create_block on test chain");
+            chain.add_block(block).expect("add_block on test chain");
+        }
+        assert_eq!(chain.height(), block_count);
+        chain
+    }
+
+    /// One iteration over all the cold-sync work: returns true if B caught up.
+    async fn cold_sync_once(target_height: u64) -> bool {
+        let validator = KeyPair::generate();
+        let chain_a = build_chain_with_blocks(&validator, target_height);
+        let chain_b = Blockchain::new();
+        let chain_id = chain_a.chain_id().to_string();
+        // Pin to the same protocol version both sides currently see at tip.
+        let proto_a = chain_a.protocol_version_at_height(chain_a.height());
+        let topic = topic_name(&chain_id, proto_a);
+
+        // Capture A's expected per-height hashes before we move it into the Arc.
+        let expected_hashes: Vec<Vec<u8>> = chain_a.blocks.iter().map(|b| b.hash.clone()).collect();
+        let chain_a = Arc::new(Mutex::new(chain_a));
+        let chain_b = Arc::new(Mutex::new(chain_b));
+
+        // Bring up node A first (the source) so we can dial it from B.
+        let (mut node_a, a_dial_addrs) = build_node(vec![], &topic).await;
+        let bootnodes: Vec<String> = a_dial_addrs
+            .iter()
+            .map(|m| format!("{}/p2p/{}", m, node_a.peer_id))
+            .collect();
+        let (mut node_b, _b_dial) = build_node(bootnodes, &topic).await;
+
+        // Run a bounded driver: alternate polling A and B's swarms, dispatch
+        // the relevant subset of NetworkMessage variants we care about.
+        // We only model NewBlock / RequestBlocks / BlockResponse here —
+        // the bug is in that triplet.
+
+        let b_peer_id = node_b.peer_id;
+        let a_peer_id = node_a.peer_id;
+
+        // Wait for the gossipsub mesh to form. Heartbeat is 10s in prod;
+        // we drive both swarms until both see the other as an explicit
+        // gossipsub peer (subscription event).
+        let mesh_deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+        let mut a_sees_b = false;
+        let mut b_sees_a = false;
+        while (!a_sees_b || !b_sees_a) && tokio::time::Instant::now() < mesh_deadline {
+            tokio::select! {
+                ev = node_a.swarm.select_next_some() => {
+                    if let SwarmEvent::Behaviour(CursBehaviourEvent::Gossipsub(
+                        gossipsub::Event::Subscribed { peer_id, .. }
+                    )) = ev
+                        && peer_id == b_peer_id
+                    {
+                        a_sees_b = true;
+                    }
+                }
+                ev = node_b.swarm.select_next_some() => {
+                    if let SwarmEvent::Behaviour(CursBehaviourEvent::Gossipsub(
+                        gossipsub::Event::Subscribed { peer_id, .. }
+                    )) = ev
+                        && peer_id == a_peer_id
+                    {
+                        b_sees_a = true;
+                    }
+                }
+                _ = tokio::time::sleep(Duration::from_millis(20)) => {}
+            }
+        }
+        if !a_sees_b || !b_sees_a {
+            // Mesh never formed — this is itself a bug, but we don't want
+            // the test to pass silently if the prerequisite failed.
+            eprintln!(
+                "cold_sync_once: mesh never formed (a_sees_b={}, b_sees_a={})",
+                a_sees_b, b_sees_a
+            );
+            return false;
+        }
+
+        // B initiates the sync. Compose a RequestBlocks message identical
+        // to what `run_with_chain` emits on a verified HeightAnnounce.
+        let req = {
+            let chain_lock = chain_b.lock().await;
+            NetworkMessage::RequestBlocks {
+                from_height: chain_lock.height() + 1,
+                requester_peer_id: b_peer_id.to_string(),
+                expected_prev_hash: chain_lock.latest_hash().to_vec(),
+                genesis_hash: chain_lock.genesis_hash().to_vec(),
+            }
+        };
+        node_b.broadcast(&req).expect("broadcast request");
+
+        // Drive both nodes until B reaches target_height or the bounded
+        // deadline elapses. We re-issue RequestBlocks each time B sees a
+        // height advance but is still below target — this models how the
+        // event loop progressively pulls SYNC_BATCH_SIZE windows.
+        let test_deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        let mut last_sent_from_height: u64 = 1;
+
+        while tokio::time::Instant::now() < test_deadline {
+            let height_b = chain_b.lock().await.height();
+            if height_b >= target_height {
+                break;
+            }
+
+            tokio::select! {
+                ev = node_a.swarm.select_next_some() => {
+                    if let SwarmEvent::Behaviour(CursBehaviourEvent::Gossipsub(
+                        gossipsub::Event::Message { message, .. }
+                    )) = ev
+                        && let Ok(NetworkMessage::RequestBlocks {
+                            from_height, requester_peer_id, expected_prev_hash, genesis_hash
+                        }) = serde_json::from_slice::<NetworkMessage>(&message.data)
+                    {
+                        node_a
+                            .handle_block_request(
+                                &chain_a,
+                                from_height,
+                                &requester_peer_id,
+                                &expected_prev_hash,
+                                &genesis_hash,
+                            )
+                            .await;
+                    }
+                }
+                ev = node_b.swarm.select_next_some() => {
+                    if let SwarmEvent::Behaviour(CursBehaviourEvent::Gossipsub(
+                        gossipsub::Event::Message { message, .. }
+                    )) = ev
+                        && let Ok(NetworkMessage::BlockResponse {
+                            from_height, target_peer_id, responder_peer_id: _,
+                            genesis_hash, blocks,
+                        }) = serde_json::from_slice::<NetworkMessage>(&message.data)
+                        && target_peer_id == b_peer_id.to_string()
+                    {
+                        let mut sync_requested = true;
+                        let mut sync_deadline: Option<Instant> = None;
+                        let mut sync_retries: u32 = 0;
+                        NetworkNode::handle_block_response(
+                            &chain_b,
+                            from_height,
+                            &genesis_hash,
+                            &blocks,
+                            &mut sync_requested,
+                            &mut sync_deadline,
+                            &mut sync_retries,
+                        ).await;
+                    }
+                }
+                _ = tokio::time::sleep(Duration::from_millis(50)) => {
+                    // Re-issue RequestBlocks if B has progressed but isn't done.
+                    let height_b = chain_b.lock().await.height();
+                    if height_b > 0 && height_b < target_height
+                        && height_b + 1 != last_sent_from_height
+                    {
+                        last_sent_from_height = height_b + 1;
+                        let req = {
+                            let chain_lock = chain_b.lock().await;
+                            NetworkMessage::RequestBlocks {
+                                from_height: chain_lock.height() + 1,
+                                requester_peer_id: b_peer_id.to_string(),
+                                expected_prev_hash: chain_lock.latest_hash().to_vec(),
+                                genesis_hash: chain_lock.genesis_hash().to_vec(),
+                            }
+                        };
+                        let _ = node_b.broadcast(&req);
+                    }
+                }
+            }
+        }
+
+        let final_height = chain_b.lock().await.height();
+        if final_height != target_height {
+            eprintln!(
+                "cold_sync_once: B reached height {} (expected {})",
+                final_height, target_height
+            );
+            return false;
+        }
+        // Verify every block matches A's chain.
+        let chain_b_lock = chain_b.lock().await;
+        for (i, expected) in expected_hashes.iter().enumerate() {
+            if &chain_b_lock.blocks[i].hash != expected {
+                eprintln!("cold_sync_once: hash mismatch at height {}", i);
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Two-node cold sync via `RequestBlocks`/`BlockResponse`. The gap is
+    /// chosen <= `SYNC_BATCH_SIZE` so we exercise the block-sync code path
+    /// (not the snapshot path). Runs deterministically — invoked once per
+    /// `#[tokio::test]` invocation; the per-rerun stability is asserted by
+    /// the (intentional) repeated CI runs.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_two_node_cold_sync_via_request_blocks() {
+        // 30 blocks fits in one BlockResponse (SYNC_BATCH_SIZE = 50), so a
+        // single round-trip should be enough.
+        assert!(
+            cold_sync_once(30).await,
+            "B failed to cold-sync 30 blocks from A via RequestBlocks/BlockResponse"
+        );
+    }
+
+    /// Larger gap: 100 blocks requires multiple `BlockResponse` rounds
+    /// (SYNC_BATCH_SIZE = 50). This is the production-realistic case
+    /// quoted in the bug report ("a node that joins mid-chain") and is
+    /// the path that empirically misbehaved on the live testnet.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_two_node_cold_sync_100_blocks_multi_batch() {
+        assert!(
+            cold_sync_once(100).await,
+            "B failed to cold-sync 100 blocks across multiple BlockResponse batches"
+        );
+    }
+
+    /// Regression: a `BlockResponse` whose `from_height` is older than
+    /// our current tip used to be silently dropped — the strict
+    /// `from_height != chain.height() + 1` matcher couldn't tell the
+    /// difference between "stale retry response" and "truly mismatched
+    /// response", so we kept retrying until exhaustion. After the fix,
+    /// such a response is accepted: blocks below our tip are skipped,
+    /// blocks at-or-above are applied contiguously, and the in-flight
+    /// sync is cleared so the next announce can drive forward progress.
+    #[tokio::test]
+    async fn test_handle_block_response_tolerates_stale_from_height() {
+        let validator = KeyPair::generate();
+        // Build A first as the source of truth: 10 blocks. Each block's
+        // header timestamp uses wall clock, so we *can't* re-derive A's
+        // hashes by mining the same blocks on a separate chain. Instead
+        // we mine on A, serialize, and replay onto B.
+        let mut chain_a = Blockchain::new();
+        let mut serialized_blocks = Vec::new();
+        for _ in 0..10 {
+            let b = chain_a.create_block(&validator).unwrap();
+            serialized_blocks.push(bincode::serialize(&b).unwrap());
+            chain_a.add_block(b).unwrap();
+        }
+        assert_eq!(chain_a.height(), 10);
+
+        // B already advanced to height 5 via some other path (e.g. a
+        // racing NewBlock gossip). Replay A's blocks 1..=5 onto B so
+        // both chains are byte-identical there.
+        let mut chain_b = Blockchain::new();
+        for ser in serialized_blocks.iter().take(5) {
+            let block = bincode::deserialize::<Block>(ser).unwrap();
+            chain_b.add_block(block).unwrap();
+        }
+        assert_eq!(chain_b.height(), 5);
+        assert_eq!(chain_a.blocks[5].hash, chain_b.blocks[5].hash);
+
+        let chain_b = Arc::new(Mutex::new(chain_b));
+        let genesis_hash = chain_b.lock().await.genesis_hash().to_vec();
+
+        let mut sync_requested = true;
+        let mut sync_deadline: Option<Instant> =
+            Some(Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS));
+        let mut sync_retries: u32 = 1;
+
+        // Stale from_height (1) — pre-fix, this response was dropped
+        // because `1 != chain.height() + 1 (6)`.
+        NetworkNode::handle_block_response(
+            &chain_b,
+            1,
+            &genesis_hash,
+            &serialized_blocks,
+            &mut sync_requested,
+            &mut sync_deadline,
+            &mut sync_retries,
+        )
+        .await;
+
+        let height_b = chain_b.lock().await.height();
+        assert_eq!(
+            height_b, 10,
+            "stale-from_height response must still advance the chain to the response tip"
+        );
+        assert!(
+            !sync_requested,
+            "sync should be cleared on forward progress"
+        );
+        assert!(sync_deadline.is_none());
+        assert_eq!(sync_retries, 0);
+    }
+
+    /// Regression: a response containing only already-known blocks (the
+    /// "race" case where another peer pushed `NewBlock`s while our
+    /// `RequestBlocks` was in flight) used to leave `sync_deadline` set,
+    /// so the next loop iteration tripped a spurious "Sync timeout,
+    /// retry 1/3". After the fix, an all-skipped response clears the
+    /// in-flight sync.
+    #[tokio::test]
+    async fn test_handle_block_response_clears_sync_on_all_skipped() {
+        let validator = KeyPair::generate();
+        let mut chain_b = Blockchain::new();
+        for _ in 0..5 {
+            let b = chain_b.create_block(&validator).unwrap();
+            chain_b.add_block(b).unwrap();
+        }
+        let serialized: Vec<Vec<u8>> = chain_b.blocks[1..=5]
+            .iter()
+            .map(|b| bincode::serialize(b).unwrap())
+            .collect();
+        let chain_b = Arc::new(Mutex::new(chain_b));
+        let genesis_hash = chain_b.lock().await.genesis_hash().to_vec();
+
+        let mut sync_requested = true;
+        let mut sync_deadline: Option<Instant> =
+            Some(Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS));
+        let mut sync_retries: u32 = 0;
+        NetworkNode::handle_block_response(
+            &chain_b,
+            1,
+            &genesis_hash,
+            &serialized,
+            &mut sync_requested,
+            &mut sync_deadline,
+            &mut sync_retries,
+        )
+        .await;
+        assert!(
+            !sync_requested,
+            "all-skipped response must clear sync_requested"
+        );
+        assert!(sync_deadline.is_none());
+    }
+
+    /// Regression: a response whose `from_height` is *ahead* of our tip
+    /// (i.e. would create a non-contiguous gap) must still be rejected.
+    /// This case is fed by RequestSnapshot, not RequestBlocks; if we
+    /// accepted it, `add_block` would later trip on `InvalidPrevHash`
+    /// and the chain would be stuck.
+    #[tokio::test]
+    async fn test_handle_block_response_rejects_future_from_height() {
+        let validator = KeyPair::generate();
+        // Build A as source-of-truth, replay block 1 onto B so genesis
+        // and height-1 match byte-for-byte.
+        let mut chain_a = Blockchain::new();
+        let mut all_serialized: Vec<Vec<u8>> = Vec::new();
+        for _ in 0..7 {
+            let b = chain_a.create_block(&validator).unwrap();
+            all_serialized.push(bincode::serialize(&b).unwrap());
+            chain_a.add_block(b).unwrap();
+        }
+        let mut chain_b = Blockchain::new();
+        let block1: Block = bincode::deserialize(&all_serialized[0]).unwrap();
+        chain_b.add_block(block1).unwrap();
+        // chain_b is at height 1; chain_a is at 7.
+
+        // Ship blocks 5..=7 only — non-contiguous from B's perspective.
+        let serialized: Vec<Vec<u8>> = all_serialized[4..=6].to_vec();
+
+        let chain_b = Arc::new(Mutex::new(chain_b));
+        let genesis_hash = chain_b.lock().await.genesis_hash().to_vec();
+
+        let mut sync_requested = true;
+        let mut sync_deadline: Option<Instant> =
+            Some(Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS));
+        let mut sync_retries: u32 = 0;
+        NetworkNode::handle_block_response(
+            &chain_b,
+            5, // ahead of our height + 1 = 2
+            &genesis_hash,
+            &serialized,
+            &mut sync_requested,
+            &mut sync_deadline,
+            &mut sync_retries,
+        )
+        .await;
+        let height_b = chain_b.lock().await.height();
+        assert_eq!(height_b, 1, "future-anchored response must not advance us");
+        assert!(sync_requested, "sync_requested must remain set");
     }
 }
