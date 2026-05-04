@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CURS3D Solidity Portfolio dApp</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-bg" aria-hidden="true"></div>
+    <main class="app-shell">
+      <aside class="control-plane">
+        <div class="brand-block">
+          <div class="brand-mark">C3D</div>
+          <div>
+            <p class="eyebrow">CURS3D Solidity</p>
+            <h1>Portfolio Console</h1>
+          </div>
+        </div>
+
+        <div class="status-stack" aria-live="polite">
+          <div class="status-card">
+            <span>Wallet</span>
+            <strong id="walletStatus">Not connected</strong>
+          </div>
+          <div class="status-card">
+            <span>Network</span>
+            <strong id="networkStatus">Unknown</strong>
+          </div>
+          <div class="status-card">
+            <span>Balance</span>
+            <strong id="balanceStatus">-</strong>
+          </div>
+        </div>
+
+        <section class="panel compact-panel">
+          <div class="panel-head">
+            <h2>Network</h2>
+          </div>
+          <div class="split-actions">
+            <button id="sepoliaBtn" class="secondary" type="button">Sepolia</button>
+            <button id="baseSepoliaBtn" class="secondary" type="button">Base Sepolia</button>
+          </div>
+          <button id="connectBtn" class="full-button" type="button">Connect wallet</button>
+        </section>
+
+        <section class="panel compact-panel">
+          <div class="panel-head">
+            <h2>Deployment</h2>
+          </div>
+          <label>
+            Deployment JSON
+            <textarea id="deploymentJsonInput" placeholder='{"token":"0x...","faucet":"0x..."}'></textarea>
+          </label>
+          <div class="split-actions">
+            <button id="loadDeploymentBtn" type="button">Load JSON</button>
+            <button id="saveAddressesBtn" class="secondary" type="button">Save</button>
+          </div>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <header class="workspace-header">
+          <div>
+            <div class="proof-strip">
+              <span>Foundry</span>
+              <span>16 tests</span>
+              <span>Fuzz + invariant</span>
+              <span>Base Sepolia ready</span>
+            </div>
+            <h2>Testnet Contract Console</h2>
+          </div>
+          <button id="refreshBtn" class="secondary" type="button">Refresh balance</button>
+        </header>
+
+        <section class="panel address-panel">
+          <div class="panel-head">
+            <h2>Contracts</h2>
+          </div>
+          <div class="address-grid">
+            <label>
+              Token
+              <input id="tokenAddress" placeholder="0x..." autocomplete="off" />
+            </label>
+            <label>
+              Faucet
+              <input id="faucetAddress" placeholder="0x..." autocomplete="off" />
+            </label>
+            <label>
+              Attestations
+              <input id="attestationsAddress" placeholder="0x..." autocomplete="off" />
+            </label>
+            <label>
+              Staking
+              <input id="stakingAddress" placeholder="0x..." autocomplete="off" />
+            </label>
+            <label>
+              Governance
+              <input id="governanceAddress" placeholder="0x..." autocomplete="off" />
+            </label>
+            <label>
+              Escrow
+              <input id="escrowAddress" placeholder="0x..." autocomplete="off" />
+            </label>
+          </div>
+        </section>
+
+        <section class="tool-grid">
+          <article class="panel tool-card hero-tool accent-attestation">
+            <div class="tool-topline">
+              <span class="module-index">01</span>
+              <h2>Attestation Studio</h2>
+            </div>
+            <div class="wide-form">
+              <label>
+                Subject address
+                <input id="subjectInput" placeholder="0x..." autocomplete="off" />
+              </label>
+              <label>
+                Data to hash
+                <input id="dataInput" placeholder="certificate:alice:2026" autocomplete="off" />
+              </label>
+              <label>
+                URI
+                <input id="uriInput" placeholder="ipfs://..." autocomplete="off" />
+              </label>
+            </div>
+            <div class="actions">
+              <button id="issueBtn" type="button">Issue attestation</button>
+            </div>
+          </article>
+
+          <article class="panel tool-card accent-faucet">
+            <div class="tool-topline">
+              <span class="module-index">02</span>
+              <h2>Token Faucet</h2>
+            </div>
+            <button id="claimBtn" class="full-button" type="button">Claim test tokens</button>
+          </article>
+
+          <article class="panel tool-card accent-read">
+            <div class="tool-topline">
+              <span class="module-index">03</span>
+              <h2>Registry Reader</h2>
+            </div>
+            <label>
+              Attestation id
+              <input id="attestationIdInput" placeholder="0x..." autocomplete="off" />
+            </label>
+            <button id="readBtn" class="full-button" type="button">Read attestation</button>
+            <pre id="attestationOutput">No attestation loaded.</pre>
+          </article>
+
+          <article class="panel tool-card accent-staking">
+            <div class="tool-topline">
+              <span class="module-index">04</span>
+              <h2>Staking</h2>
+            </div>
+            <label>
+              Amount
+              <input id="stakeAmountInput" placeholder="100" autocomplete="off" />
+            </label>
+            <div class="actions">
+              <button id="approveStakeBtn" type="button">Approve</button>
+              <button id="stakeBtn" class="secondary" type="button">Stake</button>
+              <button id="claimRewardsBtn" class="secondary" type="button">Claim rewards</button>
+            </div>
+          </article>
+
+          <article class="panel tool-card accent-governance">
+            <div class="tool-topline">
+              <span class="module-index">05</span>
+              <h2>Governance</h2>
+            </div>
+            <label>
+              Proposal description
+              <input id="proposalInput" placeholder="Fund testnet hardening" autocomplete="off" />
+            </label>
+            <label>
+              Proposal id
+              <input id="proposalIdInput" placeholder="1" autocomplete="off" />
+            </label>
+            <div class="actions">
+              <button id="createProposalBtn" type="button">Create</button>
+              <button id="voteForBtn" class="secondary" type="button">Vote for</button>
+              <button id="executeProposalBtn" class="secondary" type="button">Execute</button>
+            </div>
+          </article>
+
+          <article class="panel tool-card accent-escrow">
+            <div class="tool-topline">
+              <span class="module-index">06</span>
+              <h2>Escrow Desk</h2>
+            </div>
+            <label>
+              Item text
+              <input id="escrowItemInput" placeholder="certificate.pdf" autocomplete="off" />
+            </label>
+            <label>
+              URI
+              <input id="escrowUriInput" placeholder="ipfs://..." autocomplete="off" />
+            </label>
+            <div class="pair-grid">
+              <label>
+                Price ETH
+                <input id="escrowPriceInput" placeholder="0.001" autocomplete="off" />
+              </label>
+              <label>
+                Listing id
+                <input id="listingIdInput" placeholder="1" autocomplete="off" />
+              </label>
+            </div>
+            <div class="actions">
+              <button id="listEscrowBtn" type="button">List</button>
+              <button id="buyEscrowBtn" class="secondary" type="button">Buy</button>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel tx-panel">
+          <div class="panel-head">
+            <h2>Recent Transactions</h2>
+          </div>
+          <ul id="txList" class="tx-list">
+            <li class="empty-state">No transactions yet.</li>
+          </ul>
+        </section>
+      </section>
+    </main>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script
+      src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"
+      integrity="sha384-NRAZj94DQk3dgtsOZzVYHbYVV1DFkF5QhL5RRxF0ILZLi6OQ7CsMlun748D42JbO"
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    ></script>
+    <script src="./app.js" defer></script>
+  </body>
+</html>

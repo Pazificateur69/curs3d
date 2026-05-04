@@ -439,7 +439,7 @@ when editing):
 - `tokenomics.html` — Token economics.
 - `stack.html` — Technical stack deep-dive.
 - `faucet.html` — Faucet UI behind Cloudflare Turnstile.
-- **`wallet.html` + `wallet.js` — Browser wallet UI (read-only, see Known issues #1).**
+- **`wallet.html` + `wallet.js` — Browser wallet UI (write-capable since v5: ML-DSA-87 signatures match what the node verifies, via the `curs3d-wallet-wasm` bundle).**
 - **`developers.html` — Developers hub (SDKs, MetaMask config, sample contracts).**
 - **`security.html` — Threat model, audit log, bug-bounty path.**
 - **`community.html` — GitHub / Discord / X / newsletter.**

@@ -20,6 +20,7 @@ Contenu:
 - [`09-social-community.md`](./09-social-community.md): présence sociale, communauté, réputation
 - [`10-brand-guardrails.md`](./10-brand-guardrails.md): garde-fous pour éviter la dilution de marque
 - [`11-launch-checklist.md`](./11-launch-checklist.md): checklist de déploiement de marque
+- [`12-founder-investor-speech.md`](./12-founder-investor-speech.md): discours fondateur, qualification honnête du projet et pitch angel investor
 
 Principe directeur:
 

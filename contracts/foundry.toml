@@ -1,0 +1,33 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.26"
+optimizer = true
+optimizer_runs = 200
+via_ir = false
+fs_permissions = [{access = "read-write", path = "./deployments"}]
+remappings = [
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "forge-std/=lib/forge-std/src/",
+]
+# Fuzz / invariant defaults — stronger than forge defaults for portfolio quality.
+fuzz = {runs = 256}
+invariant = {runs = 32, depth = 128, fail_on_revert = false}
+
+[profile.ci]
+fuzz = {runs = 2048}
+invariant = {runs = 64, depth = 512}
+
+[fmt]
+line_length = 100
+tab_width = 4
+bracket_spacing = false
+
+# Forge lint — keep ERC4626/ERC20 conventional lowercase naming for public storage
+# variables (`asset`, `token`, `vm` etc). Renaming them would break the dApp ABI and
+# diverge from OZ/Aave/Compound conventions.
+[lint]
+exclude_lints = ["screaming-snake-case-immutable", "screaming-snake-case-const"]

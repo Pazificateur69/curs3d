@@ -58,6 +58,29 @@ Le message doit être:
 
 `ce n'est pas seulement une idée, c'est un protocole qui se structure en produit`
 
+## Slide 5 bis: Current Status
+
+Objectif:
+- être crédible
+- éviter de laisser croire que le réseau est déjà production-ready
+- montrer que le projet est early mais réel
+
+À afficher:
+- pre-mainnet
+- experimental public testnet
+- Rust protocol codebase
+- post-quantum signature direction
+- API/RPC available
+- explorer available
+- SDKs available
+- EVM compatibility work in progress
+- external audit not yet completed
+- production readiness not yet claimed
+
+Message:
+
+`CURS3D is early, but it is not empty: the next phase is hardening, audit preparation, reliability, and ecosystem proof.`
+
 ## Slide 6: Market
 
 Segmentation prioritaire:
@@ -123,6 +146,22 @@ Exemple:
 - devtools
 - bizdev écosystème
 - juridique et structuration
+
+Formulation recommandée au stade actuel:
+
+`We are opening a small technical angel round to fund 3 to 6 months of protocol hardening, external audit preparation, wallet interop, developer tooling, and early ecosystem pilots.`
+
+Positionnement:
+- technical angel
+- pre-seed exploration
+- infrastructure risk
+- category creation
+
+Ne pas positionner comme:
+- growth round
+- mainnet expansion round
+- token sale
+- public fundraising campaign
 
 ## Règles de crédibilité du deck
 

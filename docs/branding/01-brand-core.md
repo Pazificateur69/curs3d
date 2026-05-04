@@ -27,6 +27,29 @@ Recommandation:
 - une marque "cyberpunk générique"
 - une blockchain opportuniste "AI + chain + quantum" sans thèse
 
+## Statut de maturité
+
+Qualification actuelle recommandée:
+
+`Advanced post-quantum Layer 1 prototype with an experimental public testnet.`
+
+Version française:
+
+`Prototype avancé de Layer 1 post-quantique avec testnet public expérimental.`
+
+Ce statut doit rester clair dans la communication tant que le projet n'a pas:
+- testnet stable sur la durée
+- finalité et monitoring robustes
+- wallet interop complète
+- audit externe
+- trajectoire mainnet documentée
+- premiers usages crédibles
+
+Posture:
+- ambitieux sur la thèse
+- prudent sur la maturité
+- transparent sur les étapes restantes
+
 ## Catégorie de marché
 
 Catégorie revendiquée:

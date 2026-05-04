@@ -74,8 +74,8 @@
     <div class="wrap" style="padding-top:18px;">
       <div role="note" style="border:1px solid var(--line); border-left:3px solid #d4af37; background:rgba(212,175,55,0.06); padding:14px 18px; font-family:var(--mono); font-size:12px; line-height:1.55; color:var(--fg-1); letter-spacing:.02em;">
         <strong style="color:#d4af37; font-family:var(--mono); letter-spacing:.12em;">STATUS // EXPERIMENTAL DEVNET.</strong>
-        <span data-lang="en" class="lang-show"> Public testnet for development and testing. <strong>Not production.</strong> Tokens have <strong>no monetary value</strong>. The chain may be reset without notice. The browser wallet currently runs <strong>read-only</strong> (signing requires the CLI — see <a href="https://github.com/Pazificateur69/curs3d/blob/main/CLAUDE.md" target="_blank" rel="noopener noreferrer" style="color:#d4af37;">Known issues</a>).</span>
-        <span data-lang="fr"> Testnet public pour développement et test. <strong>Pas de production.</strong> Les tokens n'ont <strong>aucune valeur monétaire</strong>. La chaîne peut être réinitialisée sans préavis. Le wallet navigateur fonctionne aujourd'hui <strong>en lecture seule</strong> (la signature passe par le CLI — voir <a href="https://github.com/Pazificateur69/curs3d/blob/main/CLAUDE.md" target="_blank" rel="noopener noreferrer" style="color:#d4af37;">Limites connues</a>).</span>
+        <span data-lang="en" class="lang-show"> Public testnet for development and testing. <strong>Not production.</strong> Tokens have <strong>no monetary value</strong>. The chain may be reset without notice. The browser wallet is <strong>write-capable</strong> since v5: ML-DSA-87 keys generated and transactions signed in the browser via the WASM crypto bundle.</span>
+        <span data-lang="fr"> Testnet public pour développement et test. <strong>Pas de production.</strong> Les tokens n'ont <strong>aucune valeur monétaire</strong>. La chaîne peut être réinitialisée sans préavis. Le wallet navigateur signe <strong>directement</strong> depuis v5 : clés ML-DSA-87 générées et transactions signées dans le navigateur via le bundle WASM.</span>
       </div>
     </div>
 
@@ -273,10 +273,10 @@
           </div>
           <div class="stack-cell">
             <div class="stack-cell-num">03 / CRYPTOGRAPHY</div>
-            <div class="stack-cell-title">Dilithium-L5 + SHA-3</div>
+            <div class="stack-cell-title">ML-DSA-87 + SHA-3</div>
             <div class="stack-cell-tech">FIPS 204 · FIPS 202 · NIST PQC</div>
-            <p class="stack-cell-desc" data-lang="en">Lattice-based signatures at the highest security category. Keccak-family hashing throughout — block headers, merkle trees, address derivation. Zero ECDSA, zero secp256k1.</p>
-            <p class="stack-cell-desc" data-lang="fr">Signatures sur réseaux euclidiens, plus haute catégorie de sécurité. Hachage de la famille Keccak partout — en-têtes, arbres merkle, dérivation d'adresses. Zéro ECDSA, zéro secp256k1.</p>
+            <p class="stack-cell-desc" data-lang="en">Lattice-based post-quantum signatures (FIPS-204, the finalised version of CRYSTALS-Dilithium-L5) for native CURS3D transactions. Keccak/SHA-3 hashing throughout — headers, merkle trees, address derivation. EVM transactions still use secp256k1 ECDSA by design (MetaMask compatibility); both sit in the same chain.</p>
+            <p class="stack-cell-desc" data-lang="fr">Signatures post-quantiques sur réseaux euclidiens (FIPS-204, version finalisée de CRYSTALS-Dilithium-L5) pour les transactions natives CURS3D. Hachage Keccak/SHA-3 partout — en-têtes, arbres merkle, dérivation d'adresses. Les transactions EVM utilisent secp256k1 ECDSA par conception (compatibilité MetaMask) ; les deux cohabitent sur la même chaîne.</p>
           </div>
           <div class="stack-cell">
             <div class="stack-cell-num">04 / NETWORKING</div>
@@ -330,19 +330,19 @@
           </div>
           <div class="perf-side">
             <h3>
-              <span data-lang="en" class="lang-show">Numbers from a real testnet, not a benchmark suite.</span>
-              <span data-lang="fr">Des chiffres d'un vrai testnet, pas d'un benchmark.</span>
+              <span data-lang="en" class="lang-show">Real testnet, real network. Live numbers when reachable, demo placeholders otherwise.</span>
+              <span data-lang="fr">Vrai testnet, vrai réseau. Chiffres en direct quand l'API répond, placeholders DEMO sinon.</span>
             </h3>
             <p>
-              <span data-lang="en" class="lang-show">Every metric below is measured on the live public testnet. Currently a single validator is producing — multi-validator support is gated on a consensus fix. No optimisation tricks, no localhost runs.</span>
-              <span data-lang="fr">Chaque métrique ci-dessous est mesurée sur le testnet public en direct. Un seul validateur produit actuellement — le multi-validateur attend un fix consensus. Aucune triche, aucun localhost.</span>
+              <span data-lang="en" class="lang-show">2 validators are producing and finalizing every slot via the deterministic stake-weighted slot-leader. The chart auto-pulls live values when the API is reachable; if it is not, the bars stay greyed out and labelled "DEMO" so you never see fake numbers.</span>
+              <span data-lang="fr">2 validateurs produisent et finalisent chaque slot via le slot-leader stake-weighted déterministe. Le graphique récupère les valeurs en direct quand l'API répond ; sinon les barres restent grisées et étiquetées « DEMO » pour ne jamais montrer de chiffres truqués.</span>
             </p>
             <ul>
-              <li><span data-lang="en" class="lang-show">Block time</span><span data-lang="fr">Temps de bloc</span><b>1.0s</b></li>
-              <li><span data-lang="en" class="lang-show">Median finality</span><span data-lang="fr">Finalité médiane</span><b>1.18s</b></li>
-              <li><span data-lang="en" class="lang-show">P99 finality</span><span data-lang="fr">Finalité P99</span><b>1.46s</b></li>
-              <li><span data-lang="en" class="lang-show">Theoretical TPS</span><span data-lang="fr">TPS théorique</span><b>4,200</b></li>
-              <li><span data-lang="en" class="lang-show">Validator RTT (P50)</span><span data-lang="fr">RTT validateur (P50)</span><b>84ms</b></li>
+              <li><span data-lang="en" class="lang-show">Slot duration</span><span data-lang="fr">Durée du slot</span><b>10s</b></li>
+              <li><span data-lang="en" class="lang-show">Active validators</span><span data-lang="fr">Validateurs actifs</span><b data-stat="validators">—</b></li>
+              <li><span data-lang="en" class="lang-show">Latest height</span><span data-lang="fr">Dernier bloc</span><b data-stat="block">—</b></li>
+              <li><span data-lang="en" class="lang-show">Tests passing</span><span data-lang="fr">Tests verts</span><b>173</b></li>
+              <li><span data-lang="en" class="lang-show">Protocol version</span><span data-lang="fr">Version protocole</span><b data-stat="version">—</b></li>
             </ul>
           </div>
         </div>

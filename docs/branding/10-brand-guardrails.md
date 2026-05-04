@@ -13,6 +13,11 @@ Dire souvent:
 - `post-quantum Layer 1`
 - `long-duration digital assets`
 
+Au stade actuel, ajouter régulièrement:
+- `experimental public testnet`
+- `advanced prototype`
+- `pre-mainnet`
+
 ### 2. Toujours relier la marque à une preuve
 
 Chaque grande promesse doit renvoyer à:
@@ -59,3 +64,4 @@ Le moat de marque vient de:
 - ne jamais promettre l'invulnérabilité
 - ne jamais laisser la marque être définie uniquement par la spéculation token
 - ne jamais sacrifier la crédibilité pour le buzz
+- ne jamais dire `production ready`, `mainnet ready`, `fully audited` ou `ready for user funds` tant que ce n'est pas strictement vrai

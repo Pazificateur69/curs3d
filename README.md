@@ -20,14 +20,14 @@
 >
 > This is an **experimental developer testnet** for development and testing. **It is not production.**
 > Funds on this chain have **no monetary value**. The chain may be reset without notice.
-> The browser wallet UI currently runs in **read-only** mode — signing transactions still requires the CLI (see [Known Issues](#known-issues)).
+> The browser wallet UI is **write-capable** since the v5 hardfork: create or import a wallet, sign and send transactions, all from the browser via the embedded WASM crypto. The private key never leaves your device.
 > External security audit is **not yet started**. Do not use CURS3D for anything you cannot afford to lose.
 
-CURS3D is a **Layer 1 blockchain written from scratch in Rust**, designed to resist quantum computing attacks. It uses NIST-standardized post-quantum cryptography (CRYSTALS-Dilithium 5), BFT Proof of Stake consensus with explicit 2/3 finality, deterministic stake-weighted slot-leader scheduling, an EIP-1559 dynamic fee market, and a **dual-VM execution layer**: a native WASM engine (Wasmer 5) and an Ethereum-compatible VM (revm 38) sharing the same state trie. Every native component is original — no fork of Ethereum, Cosmos, or Substrate.
+CURS3D is a **Layer 1 blockchain written from scratch in Rust**, designed to resist quantum computing attacks. It uses **NIST FIPS-204 ML-DSA-87** (final standardised version of CRYSTALS-Dilithium-L5) for native signatures, BFT Proof of Stake consensus with explicit 2/3 finality, deterministic stake-weighted slot-leader scheduling, an EIP-1559 dynamic fee market, and a **dual-VM execution layer**: a native WASM engine (Wasmer 5) and an Ethereum-compatible VM (revm 38) sharing the same state trie. Every native component is original — no fork of Ethereum, Cosmos, or Substrate.
 
-> **MetaMask works.** Point your wallet at `https://api.curs3d.fr/eth`, chain ID `1800329576`, and you can deploy Solidity, send ETH-style txs, sign with ethers.js / wagmi, and use Hardhat / Foundry against the live testnet. Native CURS3D txs (Dilithium-signed) keep going through `POST /api/tx/submit`. Both transaction families produce blocks on the same chain.
+> **MetaMask works.** Point your wallet at `https://api.curs3d.fr/eth`, chain ID `1800329576`, and you can deploy Solidity, send ETH-style txs, sign with ethers.js / wagmi, and use Hardhat / Foundry against the live testnet. EVM transactions are signed with secp256k1 ECDSA (standard Ethereum) and accepted by design — that's how MetaMask compat works. Native CURS3D transactions (Stake / governance / native deploy) sign with ML-DSA-87 and go through `POST /api/tx/submit`. Both families produce blocks on the same chain.
 
-> **Status (2026-05-04 afternoon — protocol v4 live):** public testnet is live at https://curs3d.fr with **2 active validators** (node1 + node2, both producing and finalizing thanks to the new slot-leader). 164 tests pass on `cargo test --lib`. Browser wallet UI ([curs3d.fr/wallet](https://curs3d.fr/wallet)) is currently **read-only** — see [`CLAUDE.md`](CLAUDE.md) → "Known bugs / open issues" for the Dilithium dialect mismatch we have to resolve before browser-signed txs land.
+> **Status (2026-05-04 — protocol v5 live):** public testnet is live at https://curs3d.fr with **2 active validators** (node1 + node2 producing and finalizing every slot via the slot-leader). 173 tests pass (`cargo test --lib`), 0 clippy warnings, 0 unallowed `cargo audit` advisories. Browser wallet UI ([curs3d.fr/wallet](https://curs3d.fr/wallet)) signs ML-DSA-87 transactions natively via the WASM bundle.
 
 ### MetaMask / Hardhat / Foundry network config
 
@@ -118,7 +118,7 @@ The CURS3D public testnet is running and accessible:
 | **API** | https://api.curs3d.fr/api/status |
 | **Ethereum-compatible JSON-RPC** | `https://api.curs3d.fr/eth` |
 | **Explorer** | https://explorer.curs3d.fr |
-| **Browser Wallet UI** (read-only today, see Known issues) | https://curs3d.fr/wallet |
+| **Browser Wallet UI** (write-capable since v5: ML-DSA-87 in-browser signing) | https://curs3d.fr/wallet |
 | **Developers hub** | https://curs3d.fr/developers |
 | **Security (threat model + audit log + bounty)** | https://curs3d.fr/security |
 | **Community** | https://curs3d.fr/community |
@@ -196,28 +196,29 @@ CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technicall
 - **Persistent storage** (sled, 10 trees, schema v4 with auto-migration)
 - **REST API** (27 endpoints, OpenAPI 3.1 at https://curs3d.fr/api) + WebSocket + **Ethereum-compatible JSON-RPC** (`POST https://api.curs3d.fr/eth`, full `eth_sendRawTransaction` + log/receipt/block reads) + TCP RPC + CLI
 - **SDKs**: JavaScript/TypeScript (@curs3d/sdk), Python (curs3d), Rust contract SDK with 5 examples, **`sdk/wasm` browser-side crypto bundle** (24 KB JS + 236 KB WASM, ML-DSA-87 + Argon2id + AES-GCM)
-- **Browser Wallet UI** at [curs3d.fr/wallet](https://curs3d.fr/wallet) — keypair gen, encrypted local storage, balance / nonce / staked / tx history (read-only signing today, see Known issues)
+- **Browser Wallet UI** at [curs3d.fr/wallet](https://curs3d.fr/wallet) — keypair gen, encrypted local storage (Argon2id+AES-GCM), balance / nonce / staked / tx history, **and full signing** (ML-DSA-87 in-browser via the WASM crypto bundle, byte-compatible with the node since v5)
 - **Block explorer** web UI with live dashboard
 - **Static site additions:** [/developers](https://curs3d.fr/developers), [/security](https://curs3d.fr/security), [/community](https://curs3d.fr/community), 404 page, sitemap (hreflang en/fr), security.txt (RFC 9116), OG card
 - **Benchmarks** (criterion) and **fuzzing** targets (cargo-fuzz)
 - **Docker** multi-stage build + docker-compose + nginx TLS + systemd
 - **CI/CD** pipeline on Rust nightly (check, test, clippy 0 warnings, fmt, cargo audit)
-- **164 tests** passing on `cargo test --lib`
+- **173 tests** passing on `cargo test --lib`
 
 ### What Remains for Mainnet
 
-- Migrate the node's Dilithium implementation from `pqcrypto-dilithium` (NIST round 3) to `pqcrypto-mldsa` / `ml-dsa` (FIPS-204 final) so browser-signed wallet transactions verify (today the wallet UI is read-only because the dialects don't match — see [`CLAUDE.md`](CLAUDE.md))
 - External security audit (consensus, native VM, EVM, crypto)
 - Migrate state root to Sparse Merkle Trie (protocol upgrade)
 - Long-run soak tests + partition testing
 - Contract SDK (Rust + AssemblyScript)
+- Tokenomics finalisation (issuance schedule, fee market parameters, validator program)
 
 ## Known Issues
 
 These are tracked in [`CLAUDE.md`](CLAUDE.md) and reproduced here so anyone running a node, building against the API, or evaluating CURS3D sees them up front. None block the public 2-validator testnet, but they do shape what is and isn't safe to rely on today.
 
-- **Browser wallet is read-only.** Dilithium-L5 (NIST round 3, used by the node via `pqcrypto-dilithium 0.5`) is not byte-compatible with FIPS-204 ML-DSA-87 (used by the WASM bundle in `sdk/wasm`). Public-key and signature sizes match, but the message framing differs (FIPS-204 prepends `0x00 || ctx_len || ctx`). Browser-signed txs are silently rejected by `/api/tx/submit`. Until the node migrates to `ml-dsa`, the wallet UI displays balance / nonce / staked / tx history but **cannot sign or send**. Signing still works through the CLI (`./target/release/curs3d send …`).
-- **Recurring `invalid state root` after some restarts.** Root cause not yet identified. Diagnostic logging is in place — when divergence is detected, the node dumps each account leaf so the offending account can be isolated. Rare in practice. If you hit it, please open an issue with the dump.
+- **External security audit not yet performed.** Internal audit cycles (3-AI council 2026-04, Codex passes 2026-05) have closed many findings, but no third-party firm has reviewed the codebase. Treat this testnet accordingly.
+- **State-root divergence at epoch boundaries — fixed in `f461aa4`.** Root cause: epoch settlement applied at block-apply time but skipped at boot replay; identical helper now runs in both paths. Regression test added (`test_restart_across_epoch_boundary`).
+- **Wallet read-only — fixed in `59694cb` (v5 hardfork).** Node migrated from `pqcrypto-dilithium 0.5` (NIST round 3) to `ml-dsa = 0.1.0-rc.9` (FIPS-204), the same crate the browser wallet uses. Signatures are byte-compatible across both sides; the wallet UI signs and sends transactions natively.
 - **`RequestBlocks` sync timeout.** A latent bug in the network-module receive loop times out before block batches arrive. Deterministic stake-weighted slot-leader scheduling (commit `343a7a1`) means this no longer triggers in normal operation, but a node joining mid-chain can fail to catch up cleanly. Workaround: bootstrap from a recent snapshot.
 - **No PGP key for security disclosures yet.** A signed contact channel is a TODO. Until then, please report security issues privately via GitHub security advisories on `Pazificateur69/curs3d`.
 - **No external audit.** All cryptography, consensus, and VM code is implemented in-house and reviewed only internally. Please treat this accordingly.

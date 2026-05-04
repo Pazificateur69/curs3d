@@ -1,0 +1,24 @@
+# Foundry build artifacts
+out/
+cache/
+broadcast/
+forge-cache/
+
+# Foundry dependencies (installed via `forge install` / `make install`)
+lib/
+
+# Local deployment artifacts (per-chain). Real testnet/mainnet
+# deployment files (e.g. baseSepolia.json, sepolia.json) MUST be
+# committed once produced — they are the canonical record.
+deployments/local.json
+deployments/anvil.json
+deployments/latest.json
+
+# Environment & secrets
+.env
+.env.local
+
+# Editors / OS
+node_modules/
+*.swp
+.DS_Store
