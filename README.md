@@ -16,6 +16,13 @@
 
 ---
 
+> ## :warning: Status: experimental devnet
+>
+> This is an **experimental developer testnet** for development and testing. **It is not production.**
+> Funds on this chain have **no monetary value**. The chain may be reset without notice.
+> The browser wallet UI currently runs in **read-only** mode — signing transactions still requires the CLI (see [Known Issues](#known-issues)).
+> External security audit is **not yet started**. Do not use CURS3D for anything you cannot afford to lose.
+
 CURS3D is a **Layer 1 blockchain written from scratch in Rust**, designed to resist quantum computing attacks. It uses NIST-standardized post-quantum cryptography (CRYSTALS-Dilithium 5), BFT Proof of Stake consensus with explicit 2/3 finality, deterministic stake-weighted slot-leader scheduling, an EIP-1559 dynamic fee market, and a **dual-VM execution layer**: a native WASM engine (Wasmer 5) and an Ethereum-compatible VM (revm 38) sharing the same state trie. Every native component is original — no fork of Ethereum, Cosmos, or Substrate.
 
 > **MetaMask works.** Point your wallet at `https://api.curs3d.fr/eth`, chain ID `1800329576`, and you can deploy Solidity, send ETH-style txs, sign with ethers.js / wagmi, and use Hardhat / Foundry against the live testnet. Native CURS3D txs (Dilithium-signed) keep going through `POST /api/tx/submit`. Both transaction families produce blocks on the same chain.
@@ -204,6 +211,16 @@ CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technicall
 - Migrate state root to Sparse Merkle Trie (protocol upgrade)
 - Long-run soak tests + partition testing
 - Contract SDK (Rust + AssemblyScript)
+
+## Known Issues
+
+These are tracked in [`CLAUDE.md`](CLAUDE.md) and reproduced here so anyone running a node, building against the API, or evaluating CURS3D sees them up front. None block the public 2-validator testnet, but they do shape what is and isn't safe to rely on today.
+
+- **Browser wallet is read-only.** Dilithium-L5 (NIST round 3, used by the node via `pqcrypto-dilithium 0.5`) is not byte-compatible with FIPS-204 ML-DSA-87 (used by the WASM bundle in `sdk/wasm`). Public-key and signature sizes match, but the message framing differs (FIPS-204 prepends `0x00 || ctx_len || ctx`). Browser-signed txs are silently rejected by `/api/tx/submit`. Until the node migrates to `ml-dsa`, the wallet UI displays balance / nonce / staked / tx history but **cannot sign or send**. Signing still works through the CLI (`./target/release/curs3d send …`).
+- **Recurring `invalid state root` after some restarts.** Root cause not yet identified. Diagnostic logging is in place — when divergence is detected, the node dumps each account leaf so the offending account can be isolated. Rare in practice. If you hit it, please open an issue with the dump.
+- **`RequestBlocks` sync timeout.** A latent bug in the network-module receive loop times out before block batches arrive. Deterministic stake-weighted slot-leader scheduling (commit `343a7a1`) means this no longer triggers in normal operation, but a node joining mid-chain can fail to catch up cleanly. Workaround: bootstrap from a recent snapshot.
+- **No PGP key for security disclosures yet.** A signed contact channel is a TODO. Until then, please report security issues privately via GitHub security advisories on `Pazificateur69/curs3d`.
+- **No external audit.** All cryptography, consensus, and VM code is implemented in-house and reviewed only internally. Please treat this accordingly.
 
 ## Architecture
 

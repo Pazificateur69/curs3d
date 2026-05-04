@@ -891,7 +891,7 @@ mod tests {
                 .unwrap();
         let from_addr = signer.address();
 
-        let mut tx = TxEip1559 {
+        let tx = TxEip1559 {
             chain_id: 1,
             nonce: 0,
             max_fee_per_gas: 100_000,

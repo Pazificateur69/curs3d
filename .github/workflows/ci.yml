@@ -48,7 +48,9 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --lib -- -D warnings
+      # NOTE: --all-targets covers lib + tests + benches + examples.
+      # Local pre-commit must run the same: `cargo clippy --all-targets -- -D warnings`.
+      - run: cargo clippy --all-targets -- -D warnings
 
   fmt:
     name: Formatting
@@ -72,6 +74,8 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
       - name: Run audit
+        # cargo-audit auto-loads .cargo/audit.toml from the repo root.
+        # Documented ignores (transitive deps that don't affect us) live there.
         run: cargo audit
 
   release-build:

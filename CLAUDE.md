@@ -117,6 +117,13 @@ the public 2-validator testnet, but they affect specific surfaces.
    Root cause not yet identified. Rare in practice.
 6. **Cross-compile from Mac** — `cross` is installed but needs Docker
    Desktop / OrbStack running. Today, builds happen on the ARM VPSes.
+7. **No PGP key for security disclosures yet.** A signed contact channel
+   is a TODO. Until it is published, security issues are reported privately
+   via GitHub security advisories on `Pazificateur69/curs3d`. The plan is to
+   publish a long-lived PGP key under `/.well-known/security.txt`.
+8. **No external security audit.** All cryptography, consensus and VM code
+   is implemented in-house and reviewed only internally. External audit is
+   a prerequisite to mainnet, not to the public testnet.
 
 ## Project Structure
 

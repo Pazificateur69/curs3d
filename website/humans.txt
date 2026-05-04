@@ -15,4 +15,4 @@ Standards: HTML5, CSS3, ES2020
 Components: hand-written; no framework
 Fonts: Space Grotesk, IBM Plex Sans, JetBrains Mono
 Backend: Rust (nightly), libp2p, hyper, wasmer
-License: Apache-2.0
+License: MIT

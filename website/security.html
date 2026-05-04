@@ -231,23 +231,33 @@
             <section class="doc-section" id="known-limits">
               <h2><span data-lang="en" class="lang-show">Known limitations</span><span data-lang="fr">Limites connues</span></h2>
               <div class="prose">
-                <p data-lang="en" class="lang-show">The following are documented in the project <code>CLAUDE.md</code>. None block the single-validator testnet, but they gate further multi-node rollout.</p>
-                <p data-lang="fr">Les éléments suivants sont documentés dans le <code>CLAUDE.md</code> du projet. Aucun ne bloque le testnet à validateur unique, mais ils conditionnent un déploiement multi-nœud.</p>
+                <p data-lang="en" class="lang-show">The following are documented in the project <code>CLAUDE.md</code> and reproduced here for transparency. None of them block the public 2-validator testnet, but they shape what is and isn't safe to rely on today.</p>
+                <p data-lang="fr">Les éléments suivants sont documentés dans le <code>CLAUDE.md</code> du projet et reproduits ici par souci de transparence. Aucun ne bloque le testnet public à 2 validateurs, mais ils conditionnent ce sur quoi il est sûr de s'appuyer aujourd'hui.</p>
                 <ol>
                   <li>
-                    <strong><span data-lang="en" class="lang-show">Slot-leader scheduling missing.</span><span data-lang="fr">Planification de slot-leader manquante.</span></strong>
-                    <span data-lang="en" class="lang-show">With &ge;2 validators, each one currently produces a block every 10&nbsp;s, leading to permanent forks. Multi-validator rollout waits on a deterministic, stake-weighted slot-leader function.</span>
-                    <span data-lang="fr">Avec &ge;2 validateurs, chacun produit pour l'instant un bloc toutes les 10&nbsp;s, ce qui crée des forks permanents. Le déploiement multi-validateur attend une fonction slot-leader déterministe pondérée par stake.</span>
+                    <strong><span data-lang="en" class="lang-show">Browser wallet is read-only.</span><span data-lang="fr">Wallet navigateur en lecture seule.</span></strong>
+                    <span data-lang="en" class="lang-show">Dilithium-L5 (NIST round 3, used by the node) and FIPS-204 ML-DSA-87 (used by the WASM bundle) are not byte-compatible — public-key and signature sizes match, but the message framing differs. Browser-signed transactions are rejected by <code>/api/tx/submit</code>. The wallet UI displays balance, nonce, staked balance and history; signing still requires the CLI. Migration to <code>ml-dsa</code> on the node is a planned crypto-core hardfork.</span>
+                    <span data-lang="fr">Dilithium-L5 (NIST round 3, utilisé par le nœud) et FIPS-204 ML-DSA-87 (utilisé par le bundle WASM) ne sont pas compatibles octet-à-octet — les tailles de clé publique et de signature correspondent, mais le framing du message diffère. Les transactions signées dans le navigateur sont rejetées par <code>/api/tx/submit</code>. L'UI wallet affiche solde, nonce, stake et historique ; la signature passe par le CLI. La migration du nœud vers <code>ml-dsa</code> est un hardfork crypto-core planifié.</span>
                   </li>
                   <li>
-                    <strong><span data-lang="en" class="lang-show">RequestBlocks sync timeout.</span><span data-lang="fr">Timeout sync RequestBlocks.</span></strong>
-                    <span data-lang="en" class="lang-show">Even with valid peer connectivity, the receive loop in the network module times out before block batches arrive. Under investigation.</span>
-                    <span data-lang="fr">Même avec une connectivité valide, la boucle de réception du module réseau expire avant que les lots de blocs n'arrivent. En cours d'analyse.</span>
+                    <strong><span data-lang="en" class="lang-show">Recurring <code>invalid state root</code> at epoch boundaries.</span><span data-lang="fr">Erreur récurrente <code>invalid state root</code> aux frontières d'époque.</span></strong>
+                    <span data-lang="en" class="lang-show">Root cause not yet identified. Diagnostic logging is in place — when divergence is detected, the node dumps each account leaf so the offending account can be isolated. Rare in practice.</span>
+                    <span data-lang="fr">Cause racine non identifiée. Un logging de diagnostic est en place — lors d'une divergence, le nœud dumpe chaque feuille de compte pour isoler la cellule fautive. Rare en pratique.</span>
                   </li>
                   <li>
-                    <strong><span data-lang="en" class="lang-show">Persisted state-root divergence after some restarts.</span><span data-lang="fr">Divergence de state-root persistée après certains redémarrages.</span></strong>
-                    <span data-lang="en" class="lang-show">Diagnostic logging now dumps each account leaf when divergence is detected. Root cause not yet identified.</span>
-                    <span data-lang="fr">Un logging de diagnostic dumpe désormais chaque feuille de compte lors d'une divergence. Cause racine non identifiée.</span>
+                    <strong><span data-lang="en" class="lang-show"><code>RequestBlocks</code> sync timeout.</span><span data-lang="fr">Timeout sync <code>RequestBlocks</code>.</span></strong>
+                    <span data-lang="en" class="lang-show">A latent bug in the network-module receive loop times out before block batches arrive. Deterministic stake-weighted slot-leader scheduling (commit <code>343a7a1</code>) means this no longer triggers in normal operation, but a node joining mid-chain can fail to catch up cleanly. Workaround: bootstrap from a recent snapshot.</span>
+                    <span data-lang="fr">Un bug latent dans la boucle de réception du module réseau expire avant l'arrivée des lots de blocs. Le slot-leader déterministe pondéré par stake (commit <code>343a7a1</code>) fait que cela ne se déclenche plus en fonctionnement normal, mais un nœud qui rejoint la chaîne en cours peut ne pas rattraper proprement. Contournement : bootstrap depuis un snapshot récent.</span>
+                  </li>
+                  <li>
+                    <strong><span data-lang="en" class="lang-show">No PGP key for security disclosures yet.</span><span data-lang="fr">Pas encore de clé PGP pour les divulgations sécurité.</span></strong>
+                    <span data-lang="en" class="lang-show">A signed contact channel is a TODO. Until it is published, please report security issues privately via GitHub security advisories on <code>Pazificateur69/curs3d</code>.</span>
+                    <span data-lang="fr">Un canal signé est en TODO. En attendant sa publication, merci de signaler les problèmes de sécurité de manière privée via les security advisories GitHub sur <code>Pazificateur69/curs3d</code>.</span>
+                  </li>
+                  <li>
+                    <strong><span data-lang="en" class="lang-show">No external audit.</span><span data-lang="fr">Aucun audit externe.</span></strong>
+                    <span data-lang="en" class="lang-show">All cryptography, consensus and VM code is implemented in-house and reviewed only internally. An external audit is a prerequisite to mainnet, not to the public testnet.</span>
+                    <span data-lang="fr">Toute la cryptographie, le consensus et le code VM sont implémentés en interne et revus uniquement en interne. Un audit externe est un prérequis pour le mainnet, pas pour le testnet public.</span>
                   </li>
                 </ol>
                 <p data-lang="en" class="lang-show">Mainnet will not ship while any of the above remains open.</p>
@@ -276,7 +286,7 @@
         <div class="footer-col"><h4>Project</h4><ul><li><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener noreferrer">GitHub</a></li><li><a href="/governance">Governance</a></li><li><a href="/security">Security</a></li><li><a href="/community">Community</a></li></ul></div>
       </div>
       <div class="footer-bottom">
-        <span>&copy; 2026 CURS3D PROTOCOL · APACHE-2.0</span>
+        <span>&copy; 2026 CURS3D PROTOCOL · MIT</span>
         <span class="hash">CHAIN-ID <b style="color:var(--fg)" data-stat="chainid">curs3d-public-testnet</b></span>
       </div>
     </div>

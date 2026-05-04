@@ -1892,4 +1892,42 @@ body::before {
   color: var(--fg-1);
 }
 .explorer-feed-item .ts { color: var(--mute); font-size: 10px; flex: 0 0 auto; }
+
+/* ---------------------------------------------------------
+   DEMO MODE — visible difference vs LIVE
+   landing.js sets body.stats-demo when the API is unreachable.
+   We grey out [data-stat] values, dim the stats containers,
+   and make the [data-live-source] toggle pop in gold so it is
+   unmistakable that the displayed numbers are simulated.
+   --------------------------------------------------------- */
+body.stats-demo [data-stat],
+body.stats-demo .hero-stats,
+body.stats-demo .statusbar {
+  opacity: 0.62;
+  filter: grayscale(0.55);
+}
+body.stats-demo [data-live-source] {
+  color: #d4af37 !important;
+  background: rgba(212, 175, 55, 0.10);
+  padding: 0 6px;
+  border-radius: 3px;
+  letter-spacing: 0.12em;
+  cursor: help;
+}
+body.stats-live [data-live-source] {
+  color: #22d3ee;
+}
+body.stats-demo .hero-stat-value {
+  text-decoration: line-through;
+  text-decoration-color: rgba(212, 175, 55, 0.35);
+  text-decoration-thickness: 1px;
+}
+body.stats-demo .hero-stats-head .live::before {
+  content: 'OFFLINE — DEMO ';
+  color: #d4af37;
+  margin-right: 6px;
+}
+body.stats-demo .hero-stats-head .live {
+  color: #d4af37;
+}
 .explorer-feed-item .label { color: var(--accent); font-size: 10px; flex: 0 0 auto; letter-spacing: .12em; }

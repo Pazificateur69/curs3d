@@ -97,61 +97,123 @@
   }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
   document.querySelectorAll('.reveal, [data-stagger]').forEach(el => io.observe(el));
 
-  /* ---------- 4. Live stats ---------- */
-  // Try the real API; fall back to a deterministic-but-live mock.
+  /* ---------- 4. Live stats ----------
+     Tries the real API. If it answers, we paint LIVE numbers.
+     If not, we DO NOT show fake numbers as if they were real:
+     - statusbar / hero stats stay as "—"
+     - <b data-live-source> flips to "DEMO" with a clear tooltip
+     - any element marked .stat-num gets a .sim-mode class so CSS
+       can grey them out and add a "(simulated)" cue
+     The simulated counter is still shown for visual life — but it is
+     unmistakably labelled and visibly different from real data.
+  */
   const ENDPOINTS = [
-    'https://api.curs3d.fr/v1/status',
-    'https://curs3d.fr/api/v1/status',
+    'https://api.curs3d.fr/api/status',
+    'https://curs3d.fr/api/status',
   ];
+  // Initial display values are dashes — never seed with fake data.
+  const PLACEHOLDER = '—';
+  // Internal state used only AFTER we either confirmed LIVE or fell back to DEMO.
   const stats = {
-    block: 184_726,
-    epoch: 412,
-    validators: 4,
-    txTotal: 2_184_902,
-    tps: 18.4,
-    finality: 1.2,        // s
-    chainId: 'curs3d-testnet-1',
-    version: 'v0.9.4-rc2',
+    block: null,
+    epoch: null,
+    validators: null,
+    validatorsTotal: null,
+    txTotal: null,
+    tps: null,
+    finality: null,
+    chainId: 'curs3d-public-testnet',
+    version: PLACEHOLDER,
   };
+  let mode = 'init'; // 'init' | 'live' | 'demo'
 
   function fmt(n) {
+    if (n === null || n === undefined) return PLACEHOLDER;
     return Number(n).toLocaleString('en-US');
   }
   function setStat(id, value) {
-    const el = document.querySelector(`[data-stat="${id}"]`);
-    if (!el) return;
-    el.textContent = value;
+    document.querySelectorAll(`[data-stat="${id}"]`).forEach(el => {
+      el.textContent = value;
+    });
+  }
+
+  function applyModeClass() {
+    // Toggle a body-level class so CSS can grey out simulated values.
+    document.body.classList.toggle('stats-demo', mode === 'demo');
+    document.body.classList.toggle('stats-live', mode === 'live');
+    // Update every <b data-live-source> with the right label and tooltip.
+    document.querySelectorAll('[data-live-source]').forEach(e => {
+      if (mode === 'live') {
+        e.textContent = 'LIVE';
+        e.title = 'Live data from https://api.curs3d.fr/api/status';
+        e.style.color = '';
+      } else if (mode === 'demo') {
+        e.textContent = 'DEMO';
+        e.title = 'API unreachable — these numbers are simulated, not real chain state.';
+        e.style.color = '#d4af37';
+      } else {
+        e.textContent = '—';
+        e.title = 'Connecting to the chain…';
+      }
+    });
   }
 
   function paintStats() {
     setStat('block', fmt(stats.block));
     setStat('epoch', fmt(stats.epoch));
-    setStat('validators', `${stats.validators}/${stats.validators}`);
-    setStat('tps', stats.tps.toFixed(1));
-    setStat('finality', stats.finality.toFixed(1) + 's');
+    if (stats.validators !== null) {
+      const total = stats.validatorsTotal ?? stats.validators;
+      setStat('validators', `${stats.validators}/${total}`);
+    } else {
+      setStat('validators', PLACEHOLDER);
+    }
+    setStat('tps', stats.tps !== null ? stats.tps.toFixed(1) : PLACEHOLDER);
+    setStat('finality', stats.finality !== null ? stats.finality.toFixed(1) + 's' : PLACEHOLDER);
     setStat('txtotal', fmt(stats.txTotal));
     setStat('chainid', stats.chainId);
     setStat('version', stats.version);
   }
+  // Initial paint = all dashes, mode = init.
   paintStats();
+  applyModeClass();
 
-  // Try real endpoints (silent on failure — CORS/offline are expected)
+  // Try real endpoints (silent on failure — CORS/offline are expected).
   (async () => {
     for (const url of ENDPOINTS) {
       try {
         const res = await fetch(url, { mode: 'cors', cache: 'no-store' });
         if (!res.ok) continue;
-        const j = await res.json();
-        if (j.block_height) stats.block = j.block_height;
-        if (j.epoch) stats.epoch = j.epoch;
-        if (j.validators_active) stats.validators = j.validators_active;
-        if (j.tps) stats.tps = j.tps;
+        const body = await res.json();
+        // CURS3D wraps responses as {ok, data}. Be tolerant of either shape.
+        const j = (body && body.data) ? body.data : body;
+        if (typeof j.height === 'number') stats.block = j.height;
+        else if (typeof j.block_height === 'number') stats.block = j.block_height;
+        if (typeof j.epoch === 'number') stats.epoch = j.epoch;
+        if (typeof j.validators_active === 'number') stats.validators = j.validators_active;
+        else if (Array.isArray(j.validators)) stats.validators = j.validators.length;
+        if (typeof j.validators_total === 'number') stats.validatorsTotal = j.validators_total;
+        if (typeof j.tps === 'number') stats.tps = j.tps;
+        if (typeof j.protocol_version !== 'undefined') stats.version = 'v' + j.protocol_version;
+        if (typeof j.chain_id === 'string') stats.chainId = j.chain_id;
+        mode = 'live';
         paintStats();
-        document.querySelectorAll('[data-live-source]').forEach(e => e.textContent = 'LIVE');
+        applyModeClass();
         return;
       } catch (_) { /* swallow */ }
     }
-    // Otherwise: simulate ticking activity
+    // API unreachable — switch to DEMO mode. Numbers will be simulated,
+    // CSS will grey them out, and data-live-source will read "DEMO".
+    mode = 'demo';
+    stats.block = 184_726;
+    stats.epoch = 412;
+    stats.validators = 2;
+    stats.validatorsTotal = 2;
+    stats.txTotal = 2_184_902;
+    stats.tps = 18.4;
+    stats.finality = 1.2;
+    stats.version = 'v4 (DEMO)';
+    paintStats();
+    applyModeClass();
     setInterval(() => {
       stats.block += 1;
       stats.txTotal += Math.floor(Math.random() * 8) + 1;

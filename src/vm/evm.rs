@@ -754,19 +754,20 @@ mod tests {
         // PUSH1 len, PUSH1 0, RETURN
         // We set init prefix size = 12 bytes.
         let runtime_len = runtime.len() as u8;
-        let mut init = Vec::new();
-        init.push(0x60); // PUSH1
-        init.push(runtime_len); // length
-        init.push(0x60); // PUSH1
-        init.push(0x0c); // offset of runtime within full init code
-        init.push(0x60); // PUSH1
-        init.push(0x00); // dest mem
-        init.push(0x39); // CODECOPY
-        init.push(0x60); // PUSH1
-        init.push(runtime_len);
-        init.push(0x60); // PUSH1
-        init.push(0x00);
-        init.push(0xf3); // RETURN
+        let mut init = vec![
+            0x60,
+            runtime_len, // PUSH1 length
+            0x60,
+            0x0c, // PUSH1 offset of runtime within full init code
+            0x60,
+            0x00, // PUSH1 dest mem
+            0x39, // CODECOPY
+            0x60,
+            runtime_len, // PUSH1 length
+            0x60,
+            0x00, // PUSH1 src
+            0xf3, // RETURN
+        ];
         // pad if needed
         while init.len() < 12 {
             init.push(0x00);

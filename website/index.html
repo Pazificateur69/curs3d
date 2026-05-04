@@ -70,14 +70,23 @@
 
   <main id="top">
 
+    <!-- ========== EXPERIMENTAL DEVNET DISCLAIMER ========== -->
+    <div class="wrap" style="padding-top:18px;">
+      <div role="note" style="border:1px solid var(--line); border-left:3px solid #d4af37; background:rgba(212,175,55,0.06); padding:14px 18px; font-family:var(--mono); font-size:12px; line-height:1.55; color:var(--fg-1); letter-spacing:.02em;">
+        <strong style="color:#d4af37; font-family:var(--mono); letter-spacing:.12em;">STATUS // EXPERIMENTAL DEVNET.</strong>
+        <span data-lang="en" class="lang-show"> Public testnet for development and testing. <strong>Not production.</strong> Tokens have <strong>no monetary value</strong>. The chain may be reset without notice. The browser wallet currently runs <strong>read-only</strong> (signing requires the CLI — see <a href="https://github.com/Pazificateur69/curs3d/blob/main/CLAUDE.md" target="_blank" rel="noopener noreferrer" style="color:#d4af37;">Known issues</a>).</span>
+        <span data-lang="fr"> Testnet public pour développement et test. <strong>Pas de production.</strong> Les tokens n'ont <strong>aucune valeur monétaire</strong>. La chaîne peut être réinitialisée sans préavis. Le wallet navigateur fonctionne aujourd'hui <strong>en lecture seule</strong> (la signature passe par le CLI — voir <a href="https://github.com/Pazificateur69/curs3d/blob/main/CLAUDE.md" target="_blank" rel="noopener noreferrer" style="color:#d4af37;">Limites connues</a>).</span>
+      </div>
+    </div>
+
     <!-- ========== HERO ========== -->
     <section class="hero">
       <div class="hero-canvas-wrap"><canvas id="hero-canvas"></canvas></div>
       <div class="wrap hero-content">
         <div class="reveal" data-stagger>
           <div class="eyebrow">
-            <span data-lang="en" class="lang-show">CURS3D // POST-QUANTUM L1</span>
-            <span data-lang="fr">CURS3D // L1 POST-QUANTIQUE</span>
+            <span data-lang="en" class="lang-show">CURS3D // POST-QUANTUM L1 // DEVNET</span>
+            <span data-lang="fr">CURS3D // L1 POST-QUANTIQUE // DEVNET</span>
           </div>
           <h1>
             <span data-lang="en" class="lang-show">
@@ -106,9 +115,9 @@
             </a>
           </div>
           <div class="hero-meta-row">
-            <span>VERSION <b data-stat="version">v0.9.4-rc2</b></span>
-            <span>CHAIN-ID <b data-stat="chainid">curs3d-testnet-1</b></span>
-            <span>LICENSE <b>Apache-2.0</b></span>
+            <span>VERSION <b data-stat="version">—</b></span>
+            <span>CHAIN-ID <b data-stat="chainid">curs3d-public-testnet</b></span>
+            <span>LICENSE <b>MIT</b></span>
           </div>
         </div>
         <aside class="hero-stats reveal">
@@ -122,23 +131,23 @@
           <div class="hero-stats-grid">
             <div class="hero-stat">
               <div class="hero-stat-label"><span data-lang="en" class="lang-show">BLOCK HEIGHT</span><span data-lang="fr">HAUTEUR DE BLOC</span></div>
-              <div class="hero-stat-value cyan" data-stat="block">184,726</div>
-              <div class="hero-stat-sub"><span data-lang="en" class="lang-show">last 1.2s</span><span data-lang="fr">il y a 1.2s</span></div>
+              <div class="hero-stat-value cyan" data-stat="block">—</div>
+              <div class="hero-stat-sub"><span data-lang="en" class="lang-show">~10s slot</span><span data-lang="fr">slot ~10s</span></div>
             </div>
             <div class="hero-stat">
               <div class="hero-stat-label">EPOCH</div>
-              <div class="hero-stat-value" data-stat="epoch">412</div>
-              <div class="hero-stat-sub">256 blocks/epoch</div>
+              <div class="hero-stat-value" data-stat="epoch">—</div>
+              <div class="hero-stat-sub">32 blocks/epoch</div>
             </div>
             <div class="hero-stat">
               <div class="hero-stat-label"><span data-lang="en" class="lang-show">VALIDATORS</span><span data-lang="fr">VALIDATEURS</span></div>
-              <div class="hero-stat-value" data-stat="validators">2/2</div>
+              <div class="hero-stat-value" data-stat="validators">—</div>
               <div class="hero-stat-sub"><span data-lang="en" class="lang-show">active</span><span data-lang="fr">actif</span></div>
             </div>
             <div class="hero-stat">
               <div class="hero-stat-label"><span data-lang="en" class="lang-show">FINALITY</span><span data-lang="fr">FINALITÉ</span></div>
-              <div class="hero-stat-value" data-stat="finality">1.2s</div>
-              <div class="hero-stat-sub"><span data-lang="en" class="lang-show">single-slot</span><span data-lang="fr">slot unique</span></div>
+              <div class="hero-stat-value" data-stat="finality">—</div>
+              <div class="hero-stat-sub"><span data-lang="en" class="lang-show">2/3 BFT</span><span data-lang="fr">2/3 BFT</span></div>
             </div>
           </div>
         </aside>
@@ -151,19 +160,19 @@
         <span class="marquee-item">DILITHIUM-L5 <b>FIPS 204</b></span>
         <span class="marquee-item">SHA3-256 <b>FIPS 202</b></span>
         <span class="marquee-item">BFT <b>2/3 QUORUM</b></span>
-        <span class="marquee-item">WASM <b>WASMER 4</b></span>
-        <span class="marquee-item">QUIC <b>RFC 9000</b></span>
+        <span class="marquee-item">WASM <b>WASMER 5</b></span>
+        <span class="marquee-item">EVM <b>REVM 38</b></span>
         <span class="marquee-item">LIBP2P <b>GOSSIPSUB-V1.1</b></span>
-        <span class="marquee-item">KYBER-1024 <b>NIST-PQC</b></span>
-        <span class="marquee-item">SLOT FINALITY <b>1.2s</b></span>
+        <span class="marquee-item">SLOT-LEADER <b>STAKE-WEIGHTED</b></span>
+        <span class="marquee-item">SLOT FINALITY <b>~10s</b></span>
         <span class="marquee-item">DILITHIUM-L5 <b>FIPS 204</b></span>
         <span class="marquee-item">SHA3-256 <b>FIPS 202</b></span>
         <span class="marquee-item">BFT <b>2/3 QUORUM</b></span>
-        <span class="marquee-item">WASM <b>WASMER 4</b></span>
-        <span class="marquee-item">QUIC <b>RFC 9000</b></span>
+        <span class="marquee-item">WASM <b>WASMER 5</b></span>
+        <span class="marquee-item">EVM <b>REVM 38</b></span>
         <span class="marquee-item">LIBP2P <b>GOSSIPSUB-V1.1</b></span>
-        <span class="marquee-item">KYBER-1024 <b>NIST-PQC</b></span>
-        <span class="marquee-item">SLOT FINALITY <b>1.2s</b></span>
+        <span class="marquee-item">SLOT-LEADER <b>STAKE-WEIGHTED</b></span>
+        <span class="marquee-item">SLOT FINALITY <b>~10s</b></span>
       </div>
     </div>
 
@@ -258,7 +267,7 @@
           <div class="stack-cell">
             <div class="stack-cell-num">02 / EXECUTION</div>
             <div class="stack-cell-title">WASM virtual machine</div>
-            <div class="stack-cell-tech">Wasmer · sandboxed · metered</div>
+            <div class="stack-cell-tech">Wasmer 5 · sandboxed · metered</div>
             <p class="stack-cell-desc" data-lang="en">Smart contracts compile from any language that targets WASM. Deterministic gas metering. EIP-1559-style fee market with base fee burned and priority tip to proposer.</p>
             <p class="stack-cell-desc" data-lang="fr">Les smart contracts compilent depuis tout langage ciblant WASM. Gas metering déterministe. Marché de fees EIP-1559 avec base fee brûlée et pourboire au proposeur.</p>
           </div>
@@ -272,9 +281,9 @@
           <div class="stack-cell">
             <div class="stack-cell-num">04 / NETWORKING</div>
             <div class="stack-cell-title">libp2p + gossipsub</div>
-            <div class="stack-cell-tech">QUIC · noise-pq · kad-dht</div>
-            <p class="stack-cell-desc" data-lang="en">Mesh-based block and tx propagation. Peer discovery via Kademlia DHT. Noise handshake using post-quantum KEM. Validators behind QUIC for sub-second tail latency.</p>
-            <p class="stack-cell-desc" data-lang="fr">Propagation maillée des blocs et tx. Découverte de pairs via Kademlia DHT. Handshake Noise avec KEM post-quantique. Validateurs derrière QUIC pour une latence sub-seconde.</p>
+            <div class="stack-cell-tech">TCP · noise · yamux · mDNS</div>
+            <p class="stack-cell-desc" data-lang="en">Mesh-based block and transaction propagation over libp2p 0.54: TCP transport, Noise handshake (X25519, classical), yamux multiplexing, gossipsub-v1.1, and mDNS for local-network discovery. A post-quantum KEM at the transport layer is on the roadmap, not the current state.</p>
+            <p class="stack-cell-desc" data-lang="fr">Propagation maillée des blocs et transactions via libp2p 0.54 : transport TCP, handshake Noise (X25519, classique), multiplexage yamux, gossipsub-v1.1, et mDNS pour la découverte sur réseau local. Un KEM post-quantique au niveau transport est sur la roadmap, pas dans l'état actuel.</p>
           </div>
         </div>
       </div>
@@ -504,14 +513,14 @@ console.<span class="c-fn">log</span>(tx.hash);</pre>
         <div class="state-grid" style="margin-top:60px;">
           <div class="reveal">
             <div class="state-table">
-              <div class="state-row"><span class="state-key">CHAIN-ID</span><span class="state-val" data-stat="chainid">curs3d-testnet-1</span></div>
-              <div class="state-row"><span class="state-key">VERSION</span><span class="state-val" data-stat="version">v0.9.4-rc2</span></div>
-              <div class="state-row"><span class="state-key"><span data-lang="en" class="lang-show">BLOCK HEIGHT</span><span data-lang="fr">HAUTEUR DE BLOC</span></span><span class="state-val ok" data-stat="block">184,726</span></div>
-              <div class="state-row"><span class="state-key">EPOCH</span><span class="state-val" data-stat="epoch">412</span></div>
-              <div class="state-row"><span class="state-key"><span data-lang="en" class="lang-show">CURRENT TPS</span><span data-lang="fr">TPS ACTUEL</span></span><span class="state-val" data-stat="tps">18.4</span></div>
-              <div class="state-row"><span class="state-key"><span data-lang="en" class="lang-show">FINALITY (median)</span><span data-lang="fr">FINALITÉ (médiane)</span></span><span class="state-val ok" data-stat="finality">1.2s</span></div>
-              <div class="state-row"><span class="state-key"><span data-lang="en" class="lang-show">TOTAL TXs</span><span data-lang="fr">TX TOTALES</span></span><span class="state-val" data-stat="txtotal">2,184,902</span></div>
-              <div class="state-row"><span class="state-key"><span data-lang="en" class="lang-show">EXTERNAL AUDITS</span><span data-lang="fr">AUDITS EXTERNES</span></span><span class="state-val warn"><span data-lang="en" class="lang-show">SCHEDULED</span><span data-lang="fr">PLANIFIÉS</span></span></div>
+              <div class="state-row"><span class="state-key">CHAIN-ID</span><span class="state-val" data-stat="chainid">curs3d-public-testnet</span></div>
+              <div class="state-row"><span class="state-key">VERSION</span><span class="state-val" data-stat="version">—</span></div>
+              <div class="state-row"><span class="state-key"><span data-lang="en" class="lang-show">BLOCK HEIGHT</span><span data-lang="fr">HAUTEUR DE BLOC</span></span><span class="state-val ok" data-stat="block">—</span></div>
+              <div class="state-row"><span class="state-key">EPOCH</span><span class="state-val" data-stat="epoch">—</span></div>
+              <div class="state-row"><span class="state-key"><span data-lang="en" class="lang-show">CURRENT TPS</span><span data-lang="fr">TPS ACTUEL</span></span><span class="state-val" data-stat="tps">—</span></div>
+              <div class="state-row"><span class="state-key"><span data-lang="en" class="lang-show">FINALITY (median)</span><span data-lang="fr">FINALITÉ (médiane)</span></span><span class="state-val ok" data-stat="finality">—</span></div>
+              <div class="state-row"><span class="state-key"><span data-lang="en" class="lang-show">TOTAL TXs</span><span data-lang="fr">TX TOTALES</span></span><span class="state-val" data-stat="txtotal">—</span></div>
+              <div class="state-row"><span class="state-key"><span data-lang="en" class="lang-show">EXTERNAL AUDITS</span><span data-lang="fr">AUDITS EXTERNES</span></span><span class="state-val warn"><span data-lang="en" class="lang-show">NOT YET STARTED</span><span data-lang="fr">PAS ENCORE LANCÉS</span></span></div>
             </div>
           </div>
           <div class="reveal">
@@ -648,8 +657,8 @@ console.<span class="c-fn">log</span>(tx.hash);</pre>
         <div class="footer-col"><h4>Project</h4><ul><li><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener noreferrer">GitHub</a></li><li><a href="governance.html">Governance</a></li><li><a href="examples.html">Examples</a></li><li><a href="docs.html">Contact</a></li></ul></div>
       </div>
       <div class="footer-bottom">
-        <span>© 2026 CURS3D PROTOCOL · APACHE-2.0</span>
-        <span class="hash">BUILD <b style="color:var(--fg)">7af9c2</b> · CHAIN-ID <b style="color:var(--fg)" data-stat="chainid">curs3d-testnet-1</b></span>
+        <span>© 2026 CURS3D PROTOCOL · MIT</span>
+        <span class="hash">CHAIN-ID <b style="color:var(--fg)" data-stat="chainid">curs3d-public-testnet</b></span>
       </div>
     </div>
   </footer>

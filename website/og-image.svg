@@ -84,7 +84,7 @@
     <text x="700" y="596" font-size="20" fill="#e8e4d8">WASM (Wasmer 5)</text>
 
     <text x="970" y="572">LICENSE</text>
-    <text x="970" y="596" font-size="20" fill="#e8e4d8">Apache-2.0</text>
+    <text x="970" y="596" font-size="20" fill="#e8e4d8">MIT</text>
   </g>
 
   <!-- Decorative cyan accent line -->

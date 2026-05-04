@@ -4,7 +4,11 @@
 # ============================================
 
 # --- Builder Stage ---
-FROM rust:1.94 AS builder
+# CURS3D requires Rust nightly. multiaddr 0.18.2 has type-inference issues
+# on stable >= 1.94 that we have not patched out (CLAUDE.md "Build & Test").
+# CI also pins nightly. If you change this tag, also update CLAUDE.md and
+# .github/workflows/ci.yml.
+FROM rustlang/rust:nightly AS builder
 
 WORKDIR /usr/src/curs3d
 

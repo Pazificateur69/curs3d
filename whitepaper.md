@@ -3,6 +3,8 @@
 Version: 1.0  
 Date: April 14, 2026
 
+> **Status: experimental devnet.** This document describes the long-term direction of CURS3D. Today, CURS3D runs as a **public 2-validator testnet** with no monetary value. The chain may be reset without notice. The browser wallet UI is read-only (signing requires the CLI — see Known Issues in `README.md` and `CLAUDE.md`). External security audit is **not yet started**.
+
 ## Abstract
 
 `CURS3D` is a post-quantum Layer 1 blockchain built for digital assets and on-chain systems that must remain credible over a long time horizon.

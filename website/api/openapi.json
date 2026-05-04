@@ -6,7 +6,7 @@
     "summary": "Public REST + WebSocket + Ethereum-compatible JSON-RPC for the CURS3D Layer 1.",
     "description": "CURS3D is a quantum-resistant Layer 1 blockchain. Every endpoint returns `{ok: bool, data: any, error: string|null}`. Per-IP rate limits: 60 GET/min, 10 POST/min. Optional bearer auth via `CURS3D_API_TOKEN`.",
     "license": {
-      "name": "Apache-2.0",
+      "name": "MIT",
       "url": "https://github.com/Pazificateur69/curs3d/blob/main/LICENSE"
     },
     "contact": {

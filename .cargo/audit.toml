@@ -37,6 +37,18 @@ ignore = [
     # lru 0.12 IterMut Stacked Borrows soundness — Miri-only diagnostic,
     # not exploitable at runtime; pulled transitively by libp2p-swarm.
     "RUSTSEC-2026-0002",
+
+    # tracing-subscriber 0.2.25 — ANSI-escape log poisoning. Pulled
+    # transitively via revm-precompile 34 → ark-bn254 0.5 →
+    # ark-r1cs-std 0.5 → ark-relations 0.5.1 → tracing-subscriber 0.2.x.
+    # Our binary uses tracing-subscriber 0.3.x for its own logs; the 0.2.x
+    # copy is only built into ark-relations, which sits behind revm's
+    # bn254 precompile and never receives untrusted user input via tracing
+    # macros. `cargo tree -i tracing-subscriber@0.2.25` confirms nothing
+    # we control selects this version directly. No patched 0.2.x is
+    # published; the upstream chain has not yet bumped to 0.3.x. Re-evaluate
+    # when ark-relations / arkworks updates its tracing dependency.
+    "RUSTSEC-2025-0055",
 ]
 
 informational_warnings = ["unmaintained", "notice", "unsound"]
