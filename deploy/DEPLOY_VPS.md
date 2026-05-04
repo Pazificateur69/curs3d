@@ -1,8 +1,8 @@
 # CURS3D Public VPS Deployment
 
-Last updated: **2026-05-04**.
+Last updated: **2026-05-04 (afternoon — protocol v4)**.
 
-This guide is for a single public bootstrap node on a VPS so external users can connect, query the API, and use a faucet backed by a real signed transaction.
+This guide is for a public bootstrap node on a VPS so external users can connect, query the API (REST + WebSocket + **`/eth` Ethereum-compatible JSON-RPC**), and use a faucet backed by a real signed transaction. From v4 onwards, the same node also serves MetaMask / Hardhat / Foundry traffic via revm 38.
 
 ## Prerequisites: Rust nightly
 
@@ -20,14 +20,21 @@ RUSTUP_TOOLCHAIN=nightly cargo build --release
 
 CI (`.github/workflows/`) also runs on nightly.
 
+> **Build-time heads-up (v4):** revm 38 was added in commit `c34b366` and
+> brings ~200 transitive crates with it. On Oracle ARM Free Tier
+> (`VM.Standard.A1.Flex`, 1 OCPU, 6 GB RAM) the **first clean release
+> build takes 5–8 minutes**. Subsequent incremental builds are ~1 minute.
+> Plan accordingly if you build directly on the VPS.
+
 ## What This Deploys
 
 - Persistent P2P identity stored in the node data directory
 - Bootstrap validator wallet loaded non-interactively from a password file
 - Public bootnode addresses generated from `--public-addr`
-- HTTP API behind Nginx + TLS
-- RPC kept private on localhost by default
+- HTTP API behind Nginx + TLS (REST + WebSocket + `/eth` JSON-RPC)
+- TCP RPC kept private on localhost by default
 - Optional faucet backed by a real wallet and signed transfer transactions
+- Optional browser wallet bundle served from `/wallet-wasm/` (built via `wasm-pack`)
 
 ## Ports
 
@@ -100,11 +107,11 @@ order for each validator):
   --faucet-balance-cur 2000000
 ```
 
-> **Caveat (2026-05-04):** the consensus code does not yet implement
-> deterministic slot-leader scheduling. Running ≥2 validators concurrently
-> against this binary forks every 10 s. Until that is fixed (see
-> `CLAUDE.md` → "Known bugs"), keep `--validator-wallet` to a single value
-> in production genesis.
+> **Note (2026-05-04, v4):** deterministic stake-weighted slot-leader
+> scheduling is now implemented in `src/consensus/mod.rs` (commit
+> `343a7a1`), so multi-validator genesis is supported in production. The
+> current public testnet runs 2 validators (node1 + node2) on this binary
+> with finalized height matching the tip.
 
 Publish `deploy/genesis.public-testnet.json` somewhere public and keep the exact same file on every node.
 
@@ -165,6 +172,70 @@ Recommended exposure:
 - Public: `4337`, `80`, `443`
 - Private or localhost only: `8080`, `9545`
 
+The `api.curs3d.fr` vhost MUST proxy three locations to the node:
+
+```nginx
+location /api/ { proxy_pass http://127.0.0.1:8080/api/; ... }
+location /ws   { proxy_pass http://127.0.0.1:8080/ws;   proxy_http_version 1.1;
+                 proxy_set_header Upgrade $http_upgrade;
+                 proxy_set_header Connection "upgrade"; ... }
+# v4: Ethereum-compatible JSON-RPC, used by MetaMask / Hardhat / Foundry / ethers.js
+location /eth  { proxy_pass http://127.0.0.1:8080/eth; }
+```
+
+Do not require `Authorization: Bearer ...` on `/eth` — external EVM
+wallets cannot send a custom auth header. Keep `/eth` rate-limited the
+same way `/api/` is.
+
+If you serve the static site (`curs3d.fr`) from the same nginx, the
+Content-Security-Policy on that vhost needs `wasm-unsafe-eval` in
+`script-src` so the browser wallet bundle (`/wallet-wasm/...`) can
+instantiate.
+
+## 6b. (Optional) Build and ship the browser wallet bundle
+
+The browser wallet UI (`website/wallet.html` + `wallet.js`) loads a WASM
+crypto bundle from `/wallet-wasm/`. The bundle lives in the standalone
+crate `sdk/wasm` (excluded from the root workspace).
+
+```bash
+rustup target add wasm32-unknown-unknown   # one-off
+cargo install wasm-pack                    # one-off (if missing)
+brew install binaryen                      # macOS — provides wasm-opt
+# or: apt install binaryen                  # Debian/Ubuntu
+
+cd sdk/wasm
+wasm-pack build --target web --release
+# Output:
+#   sdk/wasm/pkg/curs3d_wallet_wasm.js          (~24 KB)
+#   sdk/wasm/pkg/curs3d_wallet_wasm_bg.wasm     (~100 KB optimized,
+#                                                ~236 KB if wasm-opt fails)
+#   sdk/wasm/pkg/curs3d_wallet_wasm.d.ts        TypeScript types
+```
+
+If `wasm-opt` is missing, `wasm-pack` will warn and emit an unoptimised
+bundle; that's the current production state. Either install `binaryen`,
+or set `wasm-opt = false` in
+`sdk/wasm/Cargo.toml [package.metadata.wasm-pack.profile.release]` to
+silence the warning.
+
+Deploy the two output files under the public site:
+
+```bash
+# Replace with your nginx site root
+sudo mkdir -p /var/www/curs3d/wallet-wasm
+sudo cp sdk/wasm/pkg/curs3d_wallet_wasm.js \
+       sdk/wasm/pkg/curs3d_wallet_wasm_bg.wasm \
+       /var/www/curs3d/wallet-wasm/
+```
+
+> **Read-only today.** ML-DSA-87 (FIPS-204, in this bundle) is not
+> byte-compatible with `pqcrypto-dilithium 0.5.0` (NIST round 3, in the
+> node). Browser-signed txs are silently rejected by `/api/tx/submit`.
+> The wallet UI displays balance / nonce / staked / history but cannot
+> send. See `CLAUDE.md` → "Known bugs / open issues" for the migration
+> path (node side switches to `pqcrypto-mldsa` or `ml-dsa`).
+
 ## 7. Firewall
 
 Example UFW rules:
@@ -189,6 +260,17 @@ curl http://127.0.0.1:8080/api/validators
 curl http://127.0.0.1:8080/api/healthz
 curl http://127.0.0.1:8080/api/metrics
 sudo tail -20 /var/log/curs3d-healthcheck.log
+
+# v4: smoke-test the EVM JSON-RPC
+curl -s -X POST http://127.0.0.1:8080/eth \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"eth_chainId","id":1}'
+# Expect: {"jsonrpc":"2.0","result":"0x6b4ed968","id":1}
+
+# Public: same call but through TLS / nginx
+curl -s -X POST https://api.curs3d.fr/eth \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"eth_blockNumber","id":1}'
 ```
 
 Generated files to keep:

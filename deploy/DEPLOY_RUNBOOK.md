@@ -1,6 +1,6 @@
 # CURS3D — Runbook ops du testnet public
 
-Derniere mise a jour: **2026-05-04**
+Derniere mise a jour: **2026-05-04 (apres-midi — hardfork v4 deploye)**
 
 ## Architecture (etat actuel)
 
@@ -12,28 +12,41 @@ Derniere mise a jour: **2026-05-04**
                   [node1 — bootstrap + API + site + status]
                   144.24.192.222 (Oracle ARM Free Tier, eu-marseille-1)
                   nginx + TLS Let's Encrypt
-                          |
-                  curs3d.service (systemd, validateur unique)
-                  curs3d-captcha.service (port 127.0.0.1:8090)
-                  curs3d-backup.timer (restic → B2, /6h)
-                  curs3d-healthcheck.cron (*/2 min, alertes Discord)
+                          |              \
+                  curs3d.service          [node2 — validateur]
+                  curs3d-captcha.service  84.235.238.213
+                  curs3d-backup.timer     curs3d.service
+                  curs3d-healthcheck.cron (slot-leader v4)
                   Docker stack: prometheus + grafana + uptime-kuma + node-exporter
 ```
 
-- **1 seul validateur actif** (node1). Le validateur secondaire (node2,
-  84.235.238.213) est provisionne mais reste hors-ligne tant que le
-  scheduling slot-leader n'est pas implemente dans `src/consensus/mod.rs`
-  (cf. CLAUDE.md → "Known bugs"). Re-activer node2 sans ce fix entraine
-  des forks permanents.
-- node3/4 : reportes (capacite ARM Oracle a re-evaluer apres le fix
-  consensus).
+- **2 validateurs actifs** (node1 + node2) depuis le hardfork v4. Le
+  scheduling slot-leader deterministe (`343a7a1`) elimine les forks
+  multi-validateurs. La finalite progresse a la meme hauteur que le tip.
+- node3/4 : reportes (capacite ARM Oracle a re-evaluer plus tard).
+
+## Protocol v4 (current)
+
+Le hardfork v4 ajoute :
+
+1. **EVM dispatch** (revm 38, alongside Wasmer 5) — Solidity / MetaMask /
+   Hardhat / Foundry. Endpoint `POST https://api.curs3d.fr/eth`.
+2. **Slot-leader stake-weighted scheduling** dans `src/consensus/mod.rs`.
+3. **Transactions EVM-flavored** : RLP, secp256k1, recovery du sender,
+   nouveaux variants `TransactionKind::DeployEvmContract` /
+   `CallEvmContract` (appendus en fin d'enum, bincode-compat).
+
+Le genesis n'inclut pas d'`upgrades` explicite : tout le monde demarre
+directement en `protocol_version = 4`. Une chain DB pre-v4 est
+**incompatible** : wipe `/var/lib/curs3d/` requis lors de la migration
+(garder `validator.json` + `validator.password` + `p2p_identity.pb`).
 
 ## Nodes
 
 | Node | IP | Role | Validateur | Etat | SSH |
 |------|-----|------|------------|------|-----|
-| node1 | 144.24.192.222 | Bootstrap + API + site + status | `CURe1Fa551B3f0524EfD8d0673cdBF9fD0e199458c5` | actif | `ssh curs3d-node1` |
-| node2 | 84.235.238.213 | Validateur (desactive) | `CURdC1ecceD4f12Cb3E34BD0d43E72d6D04fC4823dd` | **arret** | `ssh curs3d-node2` |
+| node1 | 144.24.192.222 | Bootstrap + API + site + status | `CURe1Fa551B3f0524EfD8d0673cdBF9fD0e199458c5` | **actif** | `ssh curs3d-node1` |
+| node2 | 84.235.238.213 | Validateur | `CURdC1ecceD4f12Cb3E34BD0d43E72d6D04fC4823dd` | **actif** | `ssh curs3d-node2` |
 | Faucet | — | Wallet faucet | `CUR34cafc74B750C0e0150877e99cd27D77C6c4fC44` | — | — |
 
 ## Endpoints publics
@@ -42,16 +55,26 @@ Derniere mise a jour: **2026-05-04**
 |---------|-----|
 | Site | https://curs3d.fr |
 | API | https://api.curs3d.fr/api/status |
+| **Ethereum-compatible JSON-RPC** | **https://api.curs3d.fr/eth** |
 | Explorer | https://explorer.curs3d.fr |
+| Wallet UI (read-only — voir Known issues #1) | https://curs3d.fr/wallet |
+| Bundle WASM wallet | https://curs3d.fr/wallet-wasm/curs3d_wallet_wasm.js |
+| Developers hub | https://curs3d.fr/developers |
+| Security | https://curs3d.fr/security |
+| Community | https://curs3d.fr/community |
 | Faucet UI | https://curs3d.fr/faucet (Cloudflare Turnstile) |
 | OpenAPI 3.1 / Stoplight | https://curs3d.fr/api |
 | WebSocket | wss://api.curs3d.fr/ws |
 | Status (Grafana) | https://status.curs3d.fr/ |
 | Status (Uptime-Kuma) | https://status.curs3d.fr/status/ |
+| Sitemap | https://curs3d.fr/sitemap.xml |
+| security.txt (RFC 9116) | https://curs3d.fr/.well-known/security.txt |
 | P2P Bootnode | 144.24.192.222:4337 |
 
-Chain ID: `curs3d-public-testnet`
-Genesis hash: `8a58508589b2e0e2caf760eaed18500c262200fbdff3509faedfc1d9589efb18`
+Chain ID (string): `curs3d-public-testnet`
+Chain ID (EVM, decimal): `1800329576`  ·  hex: `0x6b4ed968`  ·  Symbol: `CUR`
+Genesis hash (v4): `daeb2e6ac802c182ab737d11211339a3d8c3a8da8f2dfd56595e319dbc938b23`
+Protocol version: `v4`
 
 ## Infra (node1)
 
@@ -109,11 +132,34 @@ Genesis hash: `8a58508589b2e0e2caf760eaed18500c262200fbdff3509faedfc1d9589efb18`
 
 /var/lib/curs3d/                            # data dir (sled, p2p_identity.pb)
 /var/log/curs3d-healthcheck.log
-/var/www/curs3d/                            # site statique (index, faucet, api docs, ...)
+/var/www/curs3d/                            # site statique (index, faucet, api docs, wallet, ...)
+/var/www/curs3d/wallet-wasm/                # bundle wasm-pack (curs3d_wallet_wasm.js + .wasm)
 /etc/nginx/sites-available/
-  curs3d.conf                               # site + api + explorer
+  curs3d.conf                               # site (curs3d.fr) + api (api.curs3d.fr/api/, /eth, /ws) + explorer
   curs3d-status                             # status.curs3d.fr (grafana + uptime-kuma)
 ```
+
+## nginx — endpoints critiques (api.curs3d.fr)
+
+`/etc/nginx/sites-available/curs3d.conf` doit exposer **deux** locations
+qui proxifient vers le node :
+
+```nginx
+# REST + WebSocket existants
+location /api/ { proxy_pass http://127.0.0.1:8080/api/; ... }
+location /ws   { proxy_pass http://127.0.0.1:8080/ws;  proxy_http_version 1.1; Upgrade ...; }
+
+# Ethereum-compatible JSON-RPC (v4) — MetaMask / Hardhat / Foundry / ethers.js
+location /eth  { proxy_pass http://127.0.0.1:8080/eth; }
+```
+
+CORS / rate-limit suivent les memes regles que `/api/`. La location `/eth`
+est requise par MetaMask : ne jamais la fermer derriere auth Bearer
+(les wallets externes ne savent pas l'envoyer).
+
+Sur le vhost `curs3d.fr`, la `Content-Security-Policy` autorise
+`wasm-unsafe-eval` dans `script-src` pour permettre l'instanciation du
+bundle WASM du wallet.
 
 ## Monitoring
 
@@ -264,23 +310,61 @@ sudo systemctl restart curs3d
 curl -s http://localhost:8080/api/status | jq .data.height
 ```
 
-Mettre a jour le site web :
+> **Heads-up build time :** depuis le hardfork v4, `revm 38` ajoute ~200
+> deps. Premier build clean sur Oracle ARM Free Tier : 5–8 min ;
+> incrementaux : ~1 min.
+
+Mettre a jour le site web (statique + bundle WASM wallet) :
 
 ```bash
+# Site statique
 ssh curs3d-node1 "sudo cp -r /home/ubuntu/curs3d/website/* /var/www/curs3d/"
+
+# Bundle wallet WASM — uniquement quand sdk/wasm a change
+cd ~/curs3d/sdk/wasm
+wasm-pack build --target web --release   # voir Known issues #2 si wasm-opt manque
+ssh curs3d-node1 "sudo mkdir -p /var/www/curs3d/wallet-wasm"
+scp pkg/curs3d_wallet_wasm.js pkg/curs3d_wallet_wasm_bg.wasm \
+    curs3d-node1:/tmp/wallet-wasm/
+ssh curs3d-node1 "sudo mv /tmp/wallet-wasm/* /var/www/curs3d/wallet-wasm/"
 ```
 
-## Re-activer node2 (apres fix consensus)
+## Hardfork v3 → v4 (procedure deja jouee, pour reference)
 
-1. Implementer `slot_leader(height, validator_set)` dans
-   `src/consensus/mod.rs` ; gater la production de bloc dans
-   `src/network/mod.rs`.
-2. Regenerer le genesis avec deux `--validator-wallet` (validator + node2).
-3. Synchroniser `genesis.public-testnet.json` sur node1 et node2.
-4. Wipe `/var/lib/curs3d/` sur node1 (la chain doit redemarrer du
-   nouveau genesis), garder `validator.json` + `p2p_identity.pb`.
-5. Demarrer node2 ; verifier que les deux nodes signent en
-   alternance et que la finalite progresse.
+1. **Coordonner l'arret simultane des deux nodes** (peers en versions
+   melangees divergent silencieusement).
+2. Compiler le binaire v4 sur chaque node :
+   `RUSTUP_TOOLCHAIN=nightly cargo build --release` (5–8 min en clean).
+3. Regenerer le genesis avec **les deux** `--validator-wallet` :
+   ```bash
+   ./target/release/curs3d genesis \
+     --output deploy/genesis.public-testnet.json \
+     --chain-id curs3d-public-testnet \
+     --chain-name "CURS3D Public Testnet" \
+     --validator-wallet deploy/secrets/validator.json \
+     --validator-password-file deploy/secrets/validator.password \
+     --validator-wallet deploy/secrets/validator2.json \
+     --validator-password-file deploy/secrets/validator2.password \
+     --faucet-wallet deploy/secrets/faucet.json \
+     --faucet-password-file deploy/secrets/faucet.password
+   ```
+4. **Wipe `/var/lib/curs3d/`** sur node1 et node2 (chain DB pre-v4
+   incompatible). **Conserver** `validator.json`, `validator.password`,
+   `p2p_identity.pb`. Push le nouveau `genesis.public-testnet.json` sur
+   les deux machines (meme bytes).
+5. Deployer le binaire v4 et redemarrer les deux nodes.
+6. Verifier :
+   ```bash
+   curl -s https://api.curs3d.fr/api/status | jq '.data | {protocol_version, active_validators, height, finalized_height, genesis_hash}'
+   # protocol_version=4, active_validators=2, finalized_height ~= height
+   ```
+7. Tester `/eth` :
+   ```bash
+   curl -s -X POST https://api.curs3d.fr/eth \
+     -H 'Content-Type: application/json' \
+     -d '{"jsonrpc":"2.0","method":"eth_chainId","id":1}'
+   # -> {"jsonrpc":"2.0","result":"0x6b4ed968","id":1}
+   ```
 
 ## Troubleshooting
 
@@ -295,8 +379,27 @@ ssh curs3d-node1 "sudo journalctl -u curs3d --since '10 min ago' --no-pager | ta
 - `CURS3D_FAUCET_CAPTCHA_SECRET` desynchronise entre nginx et node.
 
 ### Sync timeout (RequestBlocks)
-Bug connu — `src/network/mod.rs` BlockResponse path. Pas de workaround
-ops, fix code requis.
+Bug connu — `src/network/mod.rs` BlockResponse path. Plus declenche en
+operation normale depuis le slot-leader v4 (`343a7a1`), mais le code
+sous-jacent n'est pas corrige.
+
+### MetaMask refuse la chain
+- Verifier `curl -s -X POST https://api.curs3d.fr/eth -d '{"jsonrpc":"2.0","method":"eth_chainId","id":1}'` retourne bien `0x6b4ed968`.
+- Si `502/504` : la location nginx `/eth` n'est pas configuree (cf. section nginx ci-dessus) ou le node ecoute sur autre chose que `127.0.0.1:8080`.
+- CORS : la reponse doit inclure `Access-Control-Allow-Origin` (`CURS3D_API_ALLOW_ORIGIN`).
+
+### Wallet UI affiche "signature rejected"
+Comportement attendu aujourd'hui — la wallet UI est read-only tant que la
+migration `pqcrypto-dilithium` -> `ml-dsa` cote node n'est pas faite.
+Voir `CLAUDE.md` -> Known issues #1.
+
+### `wasm-opt` manquant (build du bundle wallet)
+`brew install binaryen` (macOS) / `apt install binaryen` (Debian/Ubuntu),
+ou ajouter dans `sdk/wasm/Cargo.toml` :
+```toml
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+```
 
 ### Disque plein
 ```bash

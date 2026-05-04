@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Context for CURS3D
 
-State as of: **2026-05-04**
+State as of: **2026-05-04** (afternoon — protocol v4 hardfork live)
 
 ## What is this project?
 
@@ -8,30 +8,58 @@ CURS3D is a quantum-resistant Layer 1 blockchain written in Rust from scratch.
 It is **not** a fork of any existing chain. Every component — consensus, crypto,
 networking, storage, VM, API — is implemented from zero.
 
+As of protocol **v4**, the chain runs **two VMs side by side**: the native
+quantum-resistant VM (Wasmer 5 WASM, Dilithium-signed transactions) and an
+Ethereum-compatible VM (revm 38, secp256k1-signed RLP transactions, MetaMask
+/ Hardhat / Foundry / ethers.js compatible). Both VMs share the same state
+trie and the same canonical block stream.
+
 ## Production Endpoints (live testnet)
 
 | Surface | URL |
 |---------|-----|
 | Site | https://curs3d.fr |
 | API | https://api.curs3d.fr/api/status |
+| **Ethereum-compatible JSON-RPC (MetaMask, ethers.js, Hardhat, Foundry)** | **https://api.curs3d.fr/eth** |
 | Explorer | https://explorer.curs3d.fr |
+| Browser Wallet UI (read-only, see Known issues) | https://curs3d.fr/wallet |
+| Wallet WASM bundle (24 KB JS shim + 236 KB WASM) | https://curs3d.fr/wallet-wasm/curs3d_wallet_wasm.js |
+| Developers hub | https://curs3d.fr/developers |
+| Security (threat model + audit log + bounty) | https://curs3d.fr/security |
+| Community | https://curs3d.fr/community |
 | Faucet UI (Cloudflare Turnstile) | https://curs3d.fr/faucet |
 | API docs (OpenAPI 3.1, Stoplight Elements) | https://curs3d.fr/api |
 | OpenAPI spec | https://curs3d.fr/api/openapi.json |
 | WebSocket | wss://api.curs3d.fr/ws |
 | Status (Grafana) | https://status.curs3d.fr/ |
 | Status (Uptime-Kuma) | https://status.curs3d.fr/status/ |
+| Sitemap (14 URLs, hreflang en/fr) | https://curs3d.fr/sitemap.xml |
+| security.txt (RFC 9116) | https://curs3d.fr/.well-known/security.txt |
+| 404 page | https://curs3d.fr/404.html |
+| OG social card (1200×630) | https://curs3d.fr/og-image.svg |
 | P2P bootnode | 144.24.192.222:4337 |
 
 - **Chain ID:** `curs3d-public-testnet`
-- **Genesis hash:** `8a58508589b2e0e2caf760eaed18500c262200fbdff3509faedfc1d9589efb18`
-- **Active validators:** **1** (node1 only — see "Known bugs")
+- **Protocol version:** **v4** (added EVM dispatch + slot-leader scheduling)
+- **Genesis hash (v4 redeploy):** `daeb2e6ac802c182ab737d11211339a3d8c3a8da8f2dfd56595e319dbc938b23`
+- **Active validators:** **2** (node1 + node2 — both producing and finalizing thanks to slot-leader)
 - **Validator (node1):** `CURe1Fa551B3f0524EfD8d0673cdBF9fD0e199458c5`
+- **Validator (node2):** `CURdC1ecceD4f12Cb3E34BD0d43E72d6D04fC4823dd`
 - **Faucet:** `CUR34cafc74B750C0e0150877e99cd27D77C6c4fC44` (100 CUR, 1 h cooldown per address+IP, captcha-gated)
 
 The HTTP API exposes **27 endpoints** (REST + WS + `/eth` JSON-RPC) — see
 `/api/openapi.json` for the canonical list. Stoplight Elements renders it at
 https://curs3d.fr/api.
+
+### MetaMask / Hardhat / Foundry network config
+
+| Field | Value |
+|-------|-------|
+| RPC URL | `https://api.curs3d.fr/eth` |
+| Chain ID (decimal) | `1800329576` |
+| Chain ID (hex) | `0x6b4ed968` |
+| Symbol | `CUR` |
+| Block explorer | `https://explorer.curs3d.fr` |
 
 ## Build & Test
 
@@ -42,10 +70,14 @@ rustup install nightly --profile minimal
 RUSTUP_TOOLCHAIN=nightly cargo build --release
 
 # Tests, lint, format
-RUSTUP_TOOLCHAIN=nightly cargo test --lib       # 150 tests across 15 modules
+RUSTUP_TOOLCHAIN=nightly cargo test --lib       # 164 tests, all green
 RUSTUP_TOOLCHAIN=nightly cargo clippy --lib -- -D warnings
 RUSTUP_TOOLCHAIN=nightly cargo fmt --check
 ```
+
+> **Note:** revm 38 (added in `c34b366`) pulls ~200 new transitive crates.
+> First clean build on Oracle ARM Free Tier takes 5–8 minutes; subsequent
+> incremental builds are ~1 minute.
 
 `cargo audit` policy lives in `.cargo/audit.toml` — 0 critical findings,
 transitive advisories are ignored with per-crate justification.
@@ -55,24 +87,35 @@ Edition: 2024.
 ## Known bugs / open issues
 
 These are documented to spare the next session a re-discovery. None block
-the single-validator testnet, but they gate further multi-node rollout.
+the public 2-validator testnet, but they affect specific surfaces.
 
-1. **Consensus slot-leader missing** — `src/consensus/mod.rs` does not
-   schedule a single proposer per height. With ≥2 validators running, each
-   one produces a block every 10 s, leading to permanent forks. Fix:
-   introduce `slot_leader(height, validator_set) -> Address` (deterministic,
-   stake-weighted, e.g. `sha3(height || prev_hash)` mod stake-weight) and
-   gate block production in `network/mod.rs` on
-   `self.address == slot_leader(next_height, ...)`. node2 stays disabled
-   until this lands.
-2. **RequestBlocks sync timeout** — even with valid peer connectivity, the
-   receive loop in `src/network/mod.rs` (BlockResponse path) times out
-   before block batches arrive. Investigate the channel/select path and
-   per-peer timeouts.
-3. **Persisted state-root divergence after some restarts** — diagnostic
+1. **Browser wallet UI is read-only.** ML-DSA-87 (FIPS-204 finalized, used in
+   the wasm bundle, RustCrypto `ml-dsa` crate) is **not** byte-compatible
+   with `pqcrypto-dilithium 0.5.0` (NIST round 3, used by the node). Public
+   key and signature sizes match exactly (PK 2592 B, sig 4627 B) but the
+   challenge sampling and message framing differ (FIPS-204 uses
+   `M' = 0x00 || ctx_len || ctx || M`, round-3 doesn't). Signatures produced
+   in the browser are silently rejected by `/api/tx/submit`. The wallet
+   therefore displays balance / nonce / staked / tx history but **cannot
+   sign or send**. Fix path: migrate the node from `pqcrypto-dilithium` to
+   `pqcrypto-mldsa` or `ml-dsa` (RustCrypto). That migration is itself a
+   crypto-core hardfork.
+2. **`wasm-opt` failed during `wasm-pack build`** on the build host (no
+   recent binaryen). The deployed bundle is 236 KB instead of ~100 KB
+   optimized. Workaround: `brew install binaryen` (or `apt install
+   binaryen`) and rerun, OR set `wasm-opt = false` in
+   `sdk/wasm/Cargo.toml [package.metadata.wasm-pack.profile.release]` to
+   silence the warning.
+3. **HTML/CSS/JS a11y + SEO polish on existing pages** was prototyped in a
+   worktree but not merged due to conflicts with the wallet-nav additions.
+   Will be reapplied in a follow-up pass.
+4. **RequestBlocks sync timeout** — `src/network/mod.rs` BlockResponse path.
+   The bug is still in the code but no longer triggers in normal operation
+   thanks to deterministic slot-leader scheduling (commit `343a7a1`).
+5. **Persisted state-root divergence after some restarts** — diagnostic
    logging now dumps each account leaf when a divergence is detected.
-   Root cause not yet identified.
-4. **Cross-compile from Mac** — `cross` is installed but needs Docker
+   Root cause not yet identified. Rare in practice.
+6. **Cross-compile from Mac** — `cross` is installed but needs Docker
    Desktop / OrbStack running. Today, builds happen on the ARM VPSes.
 
 ## Project Structure
@@ -96,22 +139,25 @@ src/
                        - Hash → height + tx_hash → location indexes for O(1) hash lookups
                        - WebSocket events: new_block, new_header (signed), new_transaction, finality
                        - eth_subscribe over WS: newHeads + logs (Metamask, ethers.js compatible)
-  api/eth_rpc.rs       Ethereum-compatible JSON-RPC subset (Metamask, ethers.js, wagmi):
-                       eth_chainId, eth_blockNumber, eth_gasPrice, eth_getBalance,
-                       eth_getTransactionCount, eth_getCode, eth_getStorageAt,
-                       eth_getBlockByNumber/Hash, eth_getTransactionByHash,
+  api/eth_rpc.rs       Ethereum-compatible JSON-RPC (Metamask, ethers.js, wagmi, Hardhat,
+                       Foundry). Read methods: eth_chainId, eth_blockNumber, eth_gasPrice,
+                       eth_getBalance, eth_getTransactionCount, eth_getCode,
+                       eth_getStorageAt, eth_getBlockByNumber/Hash, eth_getTransactionByHash,
                        eth_getTransactionReceipt, eth_getLogs, eth_feeHistory,
                        eth_estimateGas, net_version, web3_clientVersion, web3_sha3.
-                       Send-transaction methods reject (ECDSA RLP not supported);
-                       use POST /api/tx/submit for native Dilithium-signed txs.
+                       **Write method (v4):** eth_sendRawTransaction now accepts RLP-
+                       encoded secp256k1-signed transactions, decodes the legacy/EIP-1559
+                       payload, recovers the sender via secp256k1, and dispatches to the
+                       EVM via TransactionKind::DeployEvmContract / CallEvmContract.
+                       POST /api/tx/submit remains the path for native Dilithium-signed txs.
   consensus/mod.rs     BFT PoS, FinalityVote, FinalityTracker, EquivocationEvidence,
-                       slashing, epoch rewards, inactivity penalties.
-                       NOTE: slot-leader scheduling not implemented — see Known bugs.
+                       slashing, epoch rewards, inactivity penalties,
+                       deterministic stake-weighted slot-leader scheduling (v4 — commit 343a7a1).
   core/
     block.rs           BlockHeader, Block, genesis, signatures, verification
     blocktree.rs       BlockTree, fork choice (heaviest chain), pruning
     chain.rs           Blockchain struct, state management, validation, reorg, fee market, snapshots, token/governance dispatch
-    transaction.rs     Transaction, 12 types: Transfer, Stake, Unstake, Coinbase, DeployContract, CallContract, DeployToken, TokenTransfer, TokenApprove, TokenTransferFrom, SubmitProposal, GovernanceVote
+    transaction.rs     Transaction, 14 types: Transfer, Stake, Unstake, Coinbase, DeployContract, CallContract, DeployToken, TokenTransfer, TokenApprove, TokenTransferFrom, SubmitProposal, GovernanceVote, **DeployEvmContract**, **CallEvmContract** (last two appended at end of enum for bincode compat). Adds `evm_raw_tx: Vec<u8>` field carrying the original RLP payload for EVM dispatch.
     receipt.rs         Receipt with gas details, LogEntry, IndexedReceipt, LogFilter
     state_proof.rs     AccountProof, StorageProof (Merkle inclusion)
     mod.rs
@@ -127,7 +173,8 @@ src/
   token/mod.rs         CUR-20 token standard: deploy, transfer, approve, transferFrom, registry
   trie/mod.rs          Sparse Merkle Trie: 256-bit key space, O(log n) proofs, incremental updates
   vm/
-    mod.rs             Wasmer 5 WASM execution, Cranelift, fuel middleware, 11 host functions
+    mod.rs             Wasmer 5 WASM execution, Cranelift, fuel middleware, 11 host functions (native CURS3D contracts)
+    evm.rs             revm 38 integration (~1066 LOC) — Solidity / MetaMask compat. Shares the same state trie as the native VM. Activated in v4 hardfork (commit c34b366).
     gas.rs             Gas cost schedule
     state.rs           ContractState (code, storage, owner)
   wallet/mod.rs        Wallet with AES-256-GCM + Argon2id encryption (m=64MB, t=3, p=4), auto-migration
@@ -135,12 +182,26 @@ src/
   main.rs              CLI entry point (clap 4, includes --reset-p2p-identity flag,
                        genesis subcommand accepts repeated --validator-wallet for multi-validator genesis)
 
-website/               Static site (no style.css/script.js anymore — see Website section)
+website/               Static site (no style.css/script.js anymore — see Website section).
+                       wallet.html (37 KB) + wallet.js (38 KB) — browser wallet UI.
+                       New SEO/utility pages: developers.html, security.html,
+                       community.html, 404.html, og-image.svg, sitemap.xml,
+                       robots.txt, .well-known/security.txt (all linked at top).
 sdk/
   rust/                  curs3d-contract Rust SDK for writing smart contracts.
                          Compiles to wasm32-unknown-unknown. Bundles a heap-base
                          bump allocator + panic handler. 5 examples:
                          counter, erc20-token, multisig, nft, vesting.
+  wasm/                  curs3d-wallet-wasm — browser-side crypto bundle (commit b896ede).
+                         Standalone crate, EXCLUDED from the root workspace
+                         (no top-level [workspace] table at the repo root, so
+                         `cargo build` from root won't try to host-build it).
+                         Uses `ml-dsa` (FIPS-204 ML-DSA-87) + `argon2` (Argon2id
+                         m=64MiB, t=3, p=4) + `aes-gcm` (AES-256-GCM) + `sha3`.
+                         Output bundle: 24 KB JS shim + 236 KB WASM (no wasm-opt;
+                         see Known issues #2). 12 native Rust tests, all green.
+                         Powers https://curs3d.fr/wallet. **Read-only** today
+                         (Dilithium dialect mismatch — see Known issues #1).
   javascript/            JS SDK
   python/                Python SDK
 deploy/
@@ -204,7 +265,11 @@ deploy/
 - Slashing penalty: 33% of staked balance + jail
 - Inactivity: grace period of 2 epochs, then escalating stake penalties
 - Epoch reward rate: 100 microtokens per CUR staked per block produced
-- **MISSING:** deterministic slot-leader / per-height proposer election (see Known bugs).
+- **Slot-leader (v4):** `slot_leader(height, validator_set) -> Address` —
+  deterministic, stake-weighted, derived from `sha3(height || prev_hash)`
+  modulo cumulative stake. Block production in `network/mod.rs` is gated on
+  `self.address == slot_leader(next_height, ...)`. Multi-validator forks at
+  every height are eliminated. Commit `343a7a1`.
 
 ### crypto/hash.rs
 - `ADDRESS_LEN = 20` bytes
@@ -218,10 +283,12 @@ deploy/
 - `PeerRateLimiter` — Per-peer message rate limiting with escalating bans
 - `PeerScorer` — Reputation system: score decay, behavior-based scoring, automatic ban below threshold
 - Block acceptance → positive score, block rejection → negative score, rate limit → penalty
-- Block production: every 10 seconds (every active validator — should be slot-gated, see Known bugs)
+- Block production: every 10 seconds, gated by `slot_leader(next_height, ...)` (v4)
 - Height announce: every 30 seconds (signed by validators)
-- Sync: batch of 50 blocks, 15s timeout, 3 retries (timeout currently unreliable, see Known bugs)
-- Network topic: derived from chain_id + protocol_version
+- Sync: batch of 50 blocks, 15s timeout, 3 retries (latent bug, see Known bugs #4)
+- Network topic: derived from chain_id + protocol_version. Commit `6dcafbf`
+  pins `protocol_version_at_height(0)` to the active baseline so the gossipsub
+  topic is stable from genesis instead of churning on the first upgrade boundary.
 
 ### vm/mod.rs
 - Wasmer 5 with Cranelift backend
@@ -272,7 +339,11 @@ deploy/
 
 ## Tests
 
-**150 tests across 15 modules** (post audit hardening 2026-05-04):
+**164 tests, all green** (2026-05-04 afternoon, post v4 hardfork). Breakdown
+below is approximate — the +14 tests since the previous 150-test baseline
+mostly cover EVM dispatch (revm 38 integration), slot-leader determinism, and
+EVM transaction encode/decode round-trips. Run `cargo test --lib --no-run` and
+read the binary output for the canonical per-module count.
 - consensus: 15 (validators, selection, slashing, equivocation, finality votes, dedup, jailing, epochs, epoch rewards, inactivity penalty, grace period, apply settlement)
 - core/block: 2 (genesis, new block)
 - core/blocktree: 6 (basic, fork choice, common ancestor, reject below finalized, pruning, branch rejection)
@@ -293,21 +364,27 @@ Run a specific test: `RUSTUP_TOOLCHAIN=nightly cargo test test_name --lib`
 
 ## Recent commits (newest first)
 
-- `6ca7603` fix: captcha verifier accepts GET (nginx auth_request default)
-- `bbb1443` ops: simplify healthcheck cron — script reads alerts env itself
-- `f3e6f98` fix: track src/api/eth_rpc.rs (was untracked, broke clean builds)
-- `953eff5` ops: include rest of monitoring stack files
-- `2f999d7` ops: cargo audit policy, CI nightly, infra scripts, faucet UI
-- `c015ee3` security: fix 11 audit findings (Rust core)
+- `9000b1b` fix(main): set `evm_raw_tx: Vec::new()` on remaining Transaction literals
+- `a1a4a16` website: SEO + new pages (developers / security / community / 404)
+- `b896ede` sdk/wasm: browser-side crypto bundle (Dilithium / ML-DSA + AES-GCM + Argon2id)
+- `a26c4bb` website: browser wallet UI (locked / unlocked / send / history)
+- `c34b366` vm/evm: integrate revm 38 as second VM (Solidity / MetaMask compat) — **v4 hardfork**
+- `6dcafbf` fix(consensus): return current protocol version at height 0 too — stable gossipsub topic
+- `343a7a1` consensus: deterministic stake-weighted slot-leader scheduling
+- `e547331` ops: misc deploy improvements (start-limit, --http-addr, init helper)
+- `b4e9de6` site+sdk: track production assets (was rsynced to prod, never in git)
+- `7c6f2d9` docs: full sync to 2026-05-04 production state (previous baseline)
 
 ## Dependencies (key ones)
 
-- `pqcrypto-dilithium` — Post-quantum signatures (Dilithium Level 5)
+- `pqcrypto-dilithium` — Post-quantum signatures, Dilithium Level 5 (NIST round 3)
 - `sha3` — Keccak hashing
 - `sled` — Embedded key-value database
 - `libp2p` 0.54 — P2P networking (Gossipsub + mDNS + noise + yamux)
 - `hyper` 1.x — HTTP server
-- `wasmer` 5 + `wasmer-types` 5 — WASM VM with Cranelift
+- `wasmer` 5 + `wasmer-types` 5 — Native CURS3D WASM VM with Cranelift
+- `revm` 38 — Ethereum VM (Solidity / MetaMask), v4 hardfork
+- `secp256k1` + `rlp` — EVM transaction recovery and decoding
 - `aes-gcm` + `argon2` — Wallet encryption
 - `clap` 4 — CLI parsing
 - `tokio` — Async runtime
@@ -315,6 +392,10 @@ Run a specific test: `RUSTUP_TOOLCHAIN=nightly cargo test test_name --lib`
 - `chrono` — Timestamps
 - `thiserror` — Error types
 - `tracing` — Logging
+
+`sdk/wasm/Cargo.toml` (separate crate, wasm32-unknown-unknown target):
+- `ml-dsa` 0.1.0-rc.9 — RustCrypto FIPS-204 ML-DSA-87
+- `argon2`, `aes-gcm`, `sha3`, `bincode`, `wasm-bindgen`
 
 ## Environment Variables
 
@@ -342,7 +423,8 @@ Discord webhooks for ops alerts live in `/etc/curs3d/alerts.env`.
 The site is a static bundle in `website/`. The legacy `style.css` / `script.js`
 have been removed; the design system is now `landing.css` + `landing.js`.
 
-Pages (bilingual EN/FR):
+Pages (bilingual EN/FR via `data-lang` blocks — do not strip the structure
+when editing):
 - `index.html` — Landing page with hero stats and metric strip.
 - `run-validator.html` — 10-step guide to operate a validator.
 - `docs.html` — Full developer documentation.
@@ -353,6 +435,38 @@ Pages (bilingual EN/FR):
 - `tokenomics.html` — Token economics.
 - `stack.html` — Technical stack deep-dive.
 - `faucet.html` — Faucet UI behind Cloudflare Turnstile.
+- **`wallet.html` + `wallet.js` — Browser wallet UI (read-only, see Known issues #1).**
+- **`developers.html` — Developers hub (SDKs, MetaMask config, sample contracts).**
+- **`security.html` — Threat model, audit log, bug-bounty path.**
+- **`community.html` — GitHub / Discord / X / newsletter.**
+- **`404.html` — Branded 404 page.**
 - `api.html` + `api/openapi.json` — Stoplight Elements rendering of the OpenAPI 3.1 spec (27 endpoints).
+- `sitemap.xml` (14 URLs, hreflang en/fr), `robots.txt` (allow-all),
+  `og-image.svg` (1200×630 social card), `.well-known/security.txt` (RFC 9116).
+
+Wallet WASM bundle is served from `/var/www/curs3d/wallet-wasm/` via nginx.
+The wallet's CSP needs `wasm-unsafe-eval` in `script-src` for instantiate;
+the `curs3d.fr` vhost was updated accordingly.
 
 Serve locally: `cd website && python3 -m http.server 3000`.
+
+## Hardfork procedure (v3 → v4 and future protocol bumps)
+
+The v4 hardfork bundles three breaking changes:
+
+1. **EVM dispatch** (revm 38 alongside Wasmer)
+2. **Slot-leader stake-weighted scheduling**
+3. **EVM-flavored transactions** (RLP-signed, secp256k1 sender recovery)
+
+Procedural notes:
+
+- The genesis itself does **not** include explicit upgrades — chains are
+  generated with `protocol_version_at_height(0) = 4` uniformly. Mixed-version
+  peers diverge silently. Coordinate restarts.
+- Chain DBs from v3 or earlier are **not** forwards-compatible; full wipe of
+  `/var/lib/curs3d/` is required. Validator wallet, faucet wallet,
+  `p2p_identity.pb`, and password files must be preserved.
+- `TransactionKind::DeployEvmContract` and `CallEvmContract` are appended at
+  the end of the enum so bincode discriminants for older variants are
+  preserved (forward-compatible bincode payloads, but the *content* of an
+  EVM tx requires v4 to apply).

@@ -77,10 +77,20 @@ sdk/wasm/pkg/
 ### Size
 
 `opt-level = "z" + lto + codegen-units = 1 + panic = abort + strip` keeps the
-release `.wasm` lean. The actual gzipped size produced on this machine
-(stable rustc 1.94 + wasm-pack 0.13) is logged in the commit message; we aim
-for **&lt; 800 KB gzipped**. Expect ~400–600 KB given that ml-dsa pulls in
-SHAKE / SHA-3 plus AES-GCM, Argon2id, and bincode.
+release `.wasm` lean. As deployed today
+(`https://curs3d.fr/wallet-wasm/curs3d_wallet_wasm_bg.wasm`):
+
+| Artifact | Size |
+|----------|------|
+| `curs3d_wallet_wasm.js` (ES module shim) | ~24 KB |
+| `curs3d_wallet_wasm_bg.wasm` (no `wasm-opt`) | ~236 KB |
+
+`wasm-opt` (binaryen) was missing on the build host so the WASM is
+unoptimised; with `wasm-opt -Oz` the bundle drops to ~100 KB. To enable:
+`brew install binaryen` (macOS) or `apt install binaryen`. To suppress the
+warning instead, set
+`wasm-opt = false` under
+`[package.metadata.wasm-pack.profile.release]` in `Cargo.toml`.
 
 ## API (TypeScript-ish)
 

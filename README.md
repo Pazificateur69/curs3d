@@ -16,9 +16,21 @@
 
 ---
 
-CURS3D is a **Layer 1 blockchain written from scratch in Rust**, designed to resist quantum computing attacks. It uses NIST-standardized post-quantum cryptography (CRYSTALS-Dilithium 5), BFT Proof of Stake consensus with explicit 2/3 finality, a WASM smart contract engine with instruction-level gas metering, and an EIP-1559 dynamic fee market. Every component is original — no fork of Ethereum, Cosmos, or Substrate.
+CURS3D is a **Layer 1 blockchain written from scratch in Rust**, designed to resist quantum computing attacks. It uses NIST-standardized post-quantum cryptography (CRYSTALS-Dilithium 5), BFT Proof of Stake consensus with explicit 2/3 finality, deterministic stake-weighted slot-leader scheduling, an EIP-1559 dynamic fee market, and a **dual-VM execution layer**: a native WASM engine (Wasmer 5) and an Ethereum-compatible VM (revm 38) sharing the same state trie. Every native component is original — no fork of Ethereum, Cosmos, or Substrate.
 
-> **Status (2026-05-04):** public testnet is live at https://curs3d.fr with **1 active validator** (node1). A second validator is provisioned but disabled until the consensus slot-leader scheduling is implemented (see [`CLAUDE.md`](CLAUDE.md) → "Known bugs"). 150 tests pass on `cargo test --lib`.
+> **MetaMask works.** Point your wallet at `https://api.curs3d.fr/eth`, chain ID `1800329576`, and you can deploy Solidity, send ETH-style txs, sign with ethers.js / wagmi, and use Hardhat / Foundry against the live testnet. Native CURS3D txs (Dilithium-signed) keep going through `POST /api/tx/submit`. Both transaction families produce blocks on the same chain.
+
+> **Status (2026-05-04 afternoon — protocol v4 live):** public testnet is live at https://curs3d.fr with **2 active validators** (node1 + node2, both producing and finalizing thanks to the new slot-leader). 164 tests pass on `cargo test --lib`. Browser wallet UI ([curs3d.fr/wallet](https://curs3d.fr/wallet)) is currently **read-only** — see [`CLAUDE.md`](CLAUDE.md) → "Known bugs / open issues" for the Dilithium dialect mismatch we have to resolve before browser-signed txs land.
+
+### MetaMask / Hardhat / Foundry network config
+
+| Field | Value |
+|-------|-------|
+| RPC URL | `https://api.curs3d.fr/eth` |
+| Chain ID (decimal) | `1800329576` |
+| Chain ID (hex) | `0x6b4ed968` |
+| Symbol | `CUR` |
+| Block explorer | `https://explorer.curs3d.fr` |
 
 ## Why CURS3D?
 
@@ -26,11 +38,14 @@ CURS3D is a **Layer 1 blockchain written from scratch in Rust**, designed to res
 
 | What | How |
 |------|-----|
-| **Signatures** | CRYSTALS-Dilithium Level 5 (NIST FIPS 204) |
+| **Native signatures** | CRYSTALS-Dilithium Level 5 (NIST round 3, `pqcrypto-dilithium`) |
+| **EVM signatures** | secp256k1 ECDSA (RLP, MetaMask, Hardhat, Foundry) — non-quantum-resistant by design, gated to the EVM surface |
 | **Hashing** | SHA-3 Keccak-256, double-hash blocks, Merkle trees |
-| **Wallet encryption** | AES-256-GCM + Argon2 KDF |
+| **Wallet encryption** | AES-256-GCM + Argon2 KDF (m=64MiB, t=3, p=4) |
 | **Consensus** | BFT Proof of Stake, 2/3 stake-weighted finality |
-| **Smart contracts** | WASM VM (Wasmer 5 + Cranelift), per-instruction fuel metering |
+| **Slot leader** | Deterministic stake-weighted, `sha3(height \|\| prev_hash) % cumulative_stake` |
+| **Native VM** | WASM (Wasmer 5 + Cranelift), per-instruction fuel metering |
+| **EVM** | revm 38, shares the same state trie as the native VM (v4 hardfork) |
 | **Fee market** | EIP-1559 dynamic base fee, priority fees, gas refunds |
 | **Fork choice** | Heaviest chain by cumulative proposer stake |
 | **Slashing** | Cryptographic equivocation proof, 33% penalty, 64-block jail |
@@ -94,15 +109,24 @@ The CURS3D public testnet is running and accessible:
 |---------|-----|
 | **Site** | https://curs3d.fr |
 | **API** | https://api.curs3d.fr/api/status |
+| **Ethereum-compatible JSON-RPC** | `https://api.curs3d.fr/eth` |
 | **Explorer** | https://explorer.curs3d.fr |
+| **Browser Wallet UI** (read-only today, see Known issues) | https://curs3d.fr/wallet |
+| **Developers hub** | https://curs3d.fr/developers |
+| **Security (threat model + audit log + bounty)** | https://curs3d.fr/security |
+| **Community** | https://curs3d.fr/community |
 | **Faucet UI** | https://curs3d.fr/faucet (Cloudflare Turnstile, 100 CUR, 1 h cooldown) |
 | **API docs (OpenAPI 3.1)** | https://curs3d.fr/api |
 | **WebSocket** | `wss://api.curs3d.fr/ws` |
 | **Status (Grafana)** | https://status.curs3d.fr/ |
 | **Status (Uptime-Kuma)** | https://status.curs3d.fr/status/ |
 | **P2P Bootnode** | `144.24.192.222:4337` |
-| **Chain ID** | `curs3d-public-testnet` |
-| **Genesis hash** | `8a58508589b2e0e2caf760eaed18500c262200fbdff3509faedfc1d9589efb18` |
+| **Chain ID (string)** | `curs3d-public-testnet` |
+| **Chain ID (EVM, decimal)** | `1800329576` |
+| **Chain ID (EVM, hex)** | `0x6b4ed968` |
+| **Genesis hash (v4)** | `daeb2e6ac802c182ab737d11211339a3d8c3a8da8f2dfd56595e319dbc938b23` |
+| **Protocol version** | `v4` (EVM + slot-leader) |
+| **Active validators** | 2 (node1 + node2) |
 
 ```bash
 # Request testnet tokens
@@ -140,10 +164,10 @@ Use the deployment assets in [`deploy/`](deploy/):
 
 CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technically substantial. Here's what exists in the codebase today, all tested:
 
-- **BFT PoS consensus** with epoch-frozen validator sets and 2/3 finality threshold
-- **WASM smart contracts** with Wasmer 5, Cranelift backend, 11 host functions, instruction-level fuel metering
+- **BFT PoS consensus** with epoch-frozen validator sets, deterministic stake-weighted slot-leader, and 2/3 finality threshold
+- **Dual VM**: native WASM (Wasmer 5 + Cranelift, 11 host functions, instruction-level fuel) **and** Ethereum (revm 38, MetaMask / Solidity / Hardhat / Foundry) sharing the same state trie
 - **EIP-1559 fee market** with dynamic base fee, separate max/priority fees, gas refunds, mempool pressure management
-- **12 transaction types**: native transfers/staking, WASM contracts, CUR-20 token ops, governance
+- **14 transaction types**: native transfers/staking, native WASM contracts, CUR-20 token ops, governance, **EVM deploy / call** (last two appended at the end of the enum to preserve bincode discriminants)
 - **CUR-20 token standard**: deploy, transfer, approve, transferFrom with native registry
 - **On-chain governance**: validator proposals, stake-weighted voting, automatic execution
 - **Light client** module with header-only sync and Merkle proof verification
@@ -163,17 +187,20 @@ CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technicall
 - **Checksummed addresses** (EIP-55 style, detects typos)
 - **Rate-limit headers** (X-RateLimit-Limit/Remaining/Window) on all API responses
 - **Persistent storage** (sled, 10 trees, schema v4 with auto-migration)
-- **REST API** (27 endpoints, OpenAPI 3.1 at https://curs3d.fr/api) + WebSocket + Ethereum-compatible JSON-RPC (`POST /eth`) + TCP RPC + CLI
-- **SDKs**: JavaScript/TypeScript (@curs3d/sdk), Python (curs3d), Rust contract SDK with 5 examples
+- **REST API** (27 endpoints, OpenAPI 3.1 at https://curs3d.fr/api) + WebSocket + **Ethereum-compatible JSON-RPC** (`POST https://api.curs3d.fr/eth`, full `eth_sendRawTransaction` + log/receipt/block reads) + TCP RPC + CLI
+- **SDKs**: JavaScript/TypeScript (@curs3d/sdk), Python (curs3d), Rust contract SDK with 5 examples, **`sdk/wasm` browser-side crypto bundle** (24 KB JS + 236 KB WASM, ML-DSA-87 + Argon2id + AES-GCM)
+- **Browser Wallet UI** at [curs3d.fr/wallet](https://curs3d.fr/wallet) — keypair gen, encrypted local storage, balance / nonce / staked / tx history (read-only signing today, see Known issues)
 - **Block explorer** web UI with live dashboard
+- **Static site additions:** [/developers](https://curs3d.fr/developers), [/security](https://curs3d.fr/security), [/community](https://curs3d.fr/community), 404 page, sitemap (hreflang en/fr), security.txt (RFC 9116), OG card
 - **Benchmarks** (criterion) and **fuzzing** targets (cargo-fuzz)
 - **Docker** multi-stage build + docker-compose + nginx TLS + systemd
 - **CI/CD** pipeline on Rust nightly (check, test, clippy 0 warnings, fmt, cargo audit)
-- **150 tests** across 15 modules
+- **164 tests** passing on `cargo test --lib`
 
 ### What Remains for Mainnet
 
-- External security audit (consensus, VM, crypto)
+- Migrate the node's Dilithium implementation from `pqcrypto-dilithium` (NIST round 3) to `pqcrypto-mldsa` / `ml-dsa` (FIPS-204 final) so browser-signed wallet transactions verify (today the wallet UI is read-only because the dialects don't match — see [`CLAUDE.md`](CLAUDE.md))
+- External security audit (consensus, native VM, EVM, crypto)
 - Migrate state root to Sparse Merkle Trie (protocol upgrade)
 - Long-run soak tests + partition testing
 - Contract SDK (Rust + AssemblyScript)
@@ -188,7 +215,7 @@ src/
     block.rs         BlockHeader, Block, genesis, signatures, verification
     blocktree.rs     BlockTree, fork choice (heaviest chain), pruning
     chain.rs         Blockchain state, validation, reorg, fee market, snapshots
-    transaction.rs   12 types: Transfer, Stake, Unstake, Coinbase, DeployContract, CallContract, DeployToken, TokenTransfer, TokenApprove, TokenTransferFrom, SubmitProposal, GovernanceVote
+    transaction.rs   14 types: Transfer, Stake, Unstake, Coinbase, DeployContract, CallContract, DeployToken, TokenTransfer, TokenApprove, TokenTransferFrom, SubmitProposal, GovernanceVote, DeployEvmContract, CallEvmContract
     receipt.rs       Execution receipts with gas details and logs
     state_proof.rs   AccountProof, StorageProof (Merkle inclusion)
   crypto/
@@ -201,21 +228,36 @@ src/
   storage/         sled DB (10 trees, schema v4, snapshots, migration)
   token/           CUR-20 token standard: deploy, transfer, approve, transferFrom
   vm/
-    mod.rs           Wasmer WASM execution, host functions, fuel middleware
+    mod.rs           Wasmer 5 WASM execution, host functions, fuel middleware (native CURS3D contracts)
+    evm.rs           revm 38 (Solidity / MetaMask) — v4 hardfork
     gas.rs           Gas cost schedule
     state.rs         ContractState (code, storage, owner)
   wallet/          Encrypted wallet (AES-256-GCM + Argon2)
   main.rs          CLI entry point (clap 4)
 
-website/           Documentation site (6 pages)
+website/           Static site (landing, docs, wallet UI, developers, security, community, ...)
+sdk/wasm/          Browser-side crypto bundle (ML-DSA-87 + Argon2id + AES-GCM); standalone crate, excluded from the root workspace
 ```
 
-## REST API
+## REST API + Ethereum-compatible JSON-RPC
 
 The full machine-readable contract is the OpenAPI 3.1 spec at
 [`website/api/openapi.json`](website/api/openapi.json) (also live at
 https://curs3d.fr/api/openapi.json). It currently documents **27 endpoints**.
-The table below is the headline subset.
+
+The Ethereum-compatible JSON-RPC is exposed at `POST /eth` (live at
+`https://api.curs3d.fr/eth`) and supports MetaMask, ethers.js, wagmi, viem,
+Hardhat, and Foundry. Read methods cover `eth_chainId`, `eth_blockNumber`,
+`eth_gasPrice`, `eth_getBalance`, `eth_getTransactionCount`, `eth_getCode`,
+`eth_getStorageAt`, `eth_getBlockByNumber`/`Hash`, `eth_getTransactionByHash`,
+`eth_getTransactionReceipt`, `eth_getLogs`, `eth_feeHistory`,
+`eth_estimateGas`, `net_version`, `web3_clientVersion`, `web3_sha3`.
+**Write method:** `eth_sendRawTransaction` accepts RLP-encoded
+secp256k1-signed transactions, recovers the sender, and dispatches to the
+EVM. WebSocket subscriptions (`eth_subscribe newHeads` + `logs`) are
+exposed on `wss://api.curs3d.fr/ws`.
+
+The headline native subset:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -265,23 +307,23 @@ CURS3D runs WebAssembly contracts via Wasmer 5 with Cranelift. The VM injects fu
 
 ## Consensus
 
-1. **Validator Selection** — Deterministic, stake-weighted using `SHA-3(height || prev_hash)`
-2. **Block Production** — Selected validator signs blocks every 10 seconds
+1. **Slot-leader scheduling (v4)** — `slot_leader(height, validator_set) = SHA-3(height || prev_hash) % cumulative_stake`. Deterministic, stake-weighted, single proposer per height. Block production in `network/mod.rs` is gated on `self.address == slot_leader(next_height, ...)`.
+2. **Block Production** — Slot-leader signs the block every 10 seconds
 3. **Finality Votes** — Validators sign attestations (`block_hash || height || epoch`)
 4. **Finalization** — Block irreversible when votes representing >= 2/3 total stake are collected
-5. **Slashing** — Dual-signed block headers at same height = cryptographic proof. 33% stake penalty + jail
+5. **Slashing** — Dual-signed block headers at same height = cryptographic proof. 33% stake penalty + 64-block jail
 6. **Epochs** — Validator set frozen per epoch (default 32 blocks). No mid-epoch manipulation
 7. **Fork Choice** — Heaviest cumulative proposer-stake wins. Finality boundary prevents deep reorgs
 
 ## Testing
 
 ```bash
-RUSTUP_TOOLCHAIN=nightly cargo test --lib                # 150 tests
+RUSTUP_TOOLCHAIN=nightly cargo test --lib                    # 164 tests, all green
 RUSTUP_TOOLCHAIN=nightly cargo clippy --lib -- -D warnings   # 0 warnings (CI enforces)
-RUSTUP_TOOLCHAIN=nightly cargo fmt --check                # Enforced formatting
+RUSTUP_TOOLCHAIN=nightly cargo fmt --check                   # Enforced formatting
 ```
 
-Coverage: cryptographic operations, block validation, transaction flow (all 6 types), staking/unstaking, slashing with evidence, BFT finality threshold, fork choice, block tree pruning, wallet encryption/decryption, storage persistence, WASM VM execution, gas metering, state sync snapshots, epoch management.
+Coverage: cryptographic operations, block validation, native + EVM transaction flow, staking/unstaking, slashing with evidence, BFT finality threshold, slot-leader determinism, fork choice, block tree pruning, wallet encryption/decryption, storage persistence, native WASM + revm VM execution, gas metering, state sync snapshots, epoch management.
 
 ## Genesis Configuration
 
