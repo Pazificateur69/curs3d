@@ -1,0 +1,45 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    network: curs3d-testnet
+
+scrape_configs:
+  # Node-level Prometheus self-scrape
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090
+
+  # CURS3D validators — each /api/metrics endpoint is scraped over HTTPS via the public domain.
+  # Add or remove targets as the validator set grows.
+  - job_name: curs3d_validators
+    metrics_path: /api/metrics
+    scheme: https
+    static_configs:
+      - targets:
+          - api.curs3d.fr
+        labels:
+          node: node1
+          role: bootstrap
+      # Node2-4 only have direct IP API exposure today; either expose api2.curs3d.fr ... or
+      # tunnel them via the bootstrap node. Update once additional validators are reachable.
+      # - targets: ["api2.curs3d.fr"]
+      #   labels: { node: node2, role: validator }
+      # - targets: ["api3.curs3d.fr"]
+      #   labels: { node: node3, role: validator }
+      # - targets: ["api4.curs3d.fr"]
+      #   labels: { node: node4, role: validator }
+
+  # Blackbox-style HTTPS uptime probe via simple HTTP scrape against /api/healthz.
+  # If you want richer probing (TLS expiry, response body), deploy blackbox_exporter.
+  - job_name: curs3d_healthz
+    metrics_path: /api/healthz
+    scheme: https
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - api.curs3d.fr
+        labels:
+          probe: healthz
+          node: node1

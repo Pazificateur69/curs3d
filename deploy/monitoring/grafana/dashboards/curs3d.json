@@ -1,0 +1,125 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "graphTooltip": 1,
+  "id": null,
+  "title": "CURS3D Testnet",
+  "tags": ["curs3d", "blockchain"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "node",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(curs3d_chain_height, node)",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "current": { "selected": true, "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Chain height",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "targets": [{ "expr": "max(curs3d_chain_height{node=~\"$node\"})", "refId": "A" }],
+      "options": { "colorMode": "value", "graphMode": "area" }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Finalized height",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "targets": [{ "expr": "max(curs3d_finalized_height{node=~\"$node\"})", "refId": "A" }],
+      "options": { "colorMode": "value", "graphMode": "area" }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Active validators",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "targets": [{ "expr": "max(curs3d_active_validators{node=~\"$node\"})", "refId": "A" }],
+      "options": { "colorMode": "value" }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Pending txs",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "targets": [{ "expr": "max(curs3d_pending_transactions{node=~\"$node\"})", "refId": "A" }],
+      "options": { "colorMode": "value" }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Block height over time",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "curs3d_chain_height{node=~\"$node\"}", "refId": "A", "legendFormat": "{{node}} height" },
+        { "expr": "curs3d_finalized_height{node=~\"$node\"}", "refId": "B", "legendFormat": "{{node}} finalized" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Block production rate (per minute)",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        { "expr": "rate(curs3d_chain_height{node=~\"$node\"}[5m]) * 60", "refId": "A", "legendFormat": "{{node}}" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Pending transactions",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 6 },
+      "targets": [
+        { "expr": "curs3d_pending_transactions{node=~\"$node\"}", "refId": "A", "legendFormat": "{{node}}" }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Total receipts / logs",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 6 },
+      "targets": [
+        { "expr": "curs3d_receipts_total{node=~\"$node\"}", "refId": "A", "legendFormat": "{{node}} receipts" },
+        { "expr": "curs3d_logs_total{node=~\"$node\"}", "refId": "B", "legendFormat": "{{node}} logs" }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Uptime (seconds)",
+      "gridPos": { "x": 0, "y": 18, "w": 12, "h": 6 },
+      "targets": [
+        { "expr": "curs3d_uptime_seconds{node=~\"$node\"}", "refId": "A", "legendFormat": "{{node}}" }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "API reachability (last scrape)",
+      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 6 },
+      "targets": [
+        { "expr": "up{job=\"curs3d_validators\"}", "refId": "A", "legendFormat": "{{node}}" }
+      ],
+      "options": { "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ]
+        }
+      }
+    }
+  ]
+}
