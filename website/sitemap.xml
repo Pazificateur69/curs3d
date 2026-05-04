@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://curs3d.fr/</loc>
+    <lastmod>2026-05-04</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://curs3d.fr/"/>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://curs3d.fr/"/>
+  </url>
+  <url>
+    <loc>https://curs3d.fr/docs</loc>
+    <lastmod>2026-05-04</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://curs3d.fr/docs"/>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://curs3d.fr/docs"/>
+  </url>
+  <url>
+    <loc>https://curs3d.fr/api</loc>
+    <lastmod>2026-05-04</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://curs3d.fr/api"/>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://curs3d.fr/api"/>
+  </url>
+  <url>
+    <loc>https://curs3d.fr/whitepaper</loc>
+    <lastmod>2026-05-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://curs3d.fr/whitepaper"/>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://curs3d.fr/whitepaper"/>
+  </url>
+  <url>
+    <loc>https://curs3d.fr/stack</loc>
+    <lastmod>2026-05-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://curs3d.fr/stack"/>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://curs3d.fr/stack"/>
+  </url>
+  <url>
+    <loc>https://curs3d.fr/governance</loc>
+    <lastmod>2026-05-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://curs3d.fr/governance"/>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://curs3d.fr/governance"/>
+  </url>
+  <url>
+    <loc>https://curs3d.fr/tokenomics</loc>
+    <lastmod>2026-05-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://curs3d.fr/tokenomics"/>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://curs3d.fr/tokenomics"/>
+  </url>
+  <url>
+    <loc>https://curs3d.fr/run-validator</loc>
+    <lastmod>2026-05-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://curs3d.fr/run-validator"/>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://curs3d.fr/run-validator"/>
+  </url>
+  <url>
+    <loc>https://curs3d.fr/examples</loc>
+    <lastmod>2026-05-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://curs3d.fr/examples"/>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://curs3d.fr/examples"/>
+  </url>
+  <url>
+    <loc>https://curs3d.fr/explorer</loc>
+    <lastmod>2026-05-04</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://curs3d.fr/explorer"/>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://curs3d.fr/explorer"/>
+  </url>
+  <url>
+    <loc>https://curs3d.fr/faucet</loc>
+    <lastmod>2026-05-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://curs3d.fr/faucet"/>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://curs3d.fr/faucet"/>
+  </url>
+  <url>
+    <loc>https://curs3d.fr/developers</loc>
+    <lastmod>2026-05-04</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://curs3d.fr/developers"/>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://curs3d.fr/developers"/>
+  </url>
+  <url>
+    <loc>https://curs3d.fr/security</loc>
+    <lastmod>2026-05-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://curs3d.fr/security"/>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://curs3d.fr/security"/>
+  </url>
+  <url>
+    <loc>https://curs3d.fr/community</loc>
+    <lastmod>2026-05-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://curs3d.fr/community"/>
+    <xhtml:link rel="alternate" hreflang="fr" href="https://curs3d.fr/community"/>
+  </url>
+</urlset>

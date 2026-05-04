@@ -1,0 +1,8 @@
+# RFC 9116 — security disclosure for curs3d.fr
+Contact: mailto:security@curs3d.fr
+Expires: 2027-05-04T00:00:00.000Z
+Encryption: https://curs3d.fr/security
+Acknowledgments: https://curs3d.fr/security
+Preferred-Languages: en, fr
+Canonical: https://curs3d.fr/.well-known/security.txt
+Policy: https://curs3d.fr/security

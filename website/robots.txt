@@ -1,0 +1,15 @@
+# https://curs3d.fr robots.txt
+# CURS3D — quantum-resistant L1
+
+User-agent: *
+Allow: /
+Disallow: /api/openapi.json
+
+# Slow down a few crawlers known to hammer
+User-agent: AhrefsBot
+Crawl-delay: 10
+
+User-agent: SemrushBot
+Crawl-delay: 10
+
+Sitemap: https://curs3d.fr/sitemap.xml

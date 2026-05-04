@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CURS3D — 404 Not Found</title>
+  <meta name="description" content="The page you requested does not exist on curs3d.fr." />
+  <meta name="robots" content="noindex" />
+  <link rel="canonical" href="https://curs3d.fr/404.html" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/landing.css?v=6" />
+  <style>
+    .err-shell {
+      min-height: 70vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: clamp(60px, 12vh, 140px) 0;
+      text-align: center;
+    }
+    .err-code {
+      font-family: var(--display);
+      font-size: clamp(96px, 22vw, 220px);
+      font-weight: 600;
+      line-height: 1;
+      letter-spacing: -0.04em;
+      color: var(--fg);
+      margin-bottom: 12px;
+      background: linear-gradient(180deg, var(--fg) 0%, var(--mute) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .err-eyebrow {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .18em;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 28px;
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .err-eyebrow::before {
+      content: ""; width: 24px; height: 1px; background: var(--accent);
+    }
+    .err-title {
+      font-family: var(--display);
+      font-size: clamp(28px, 4vw, 44px);
+      font-weight: 500;
+      letter-spacing: -.02em;
+      margin-bottom: 16px;
+      max-width: 22ch;
+    }
+    .err-lede {
+      font-size: 17px;
+      color: var(--fg-1);
+      max-width: 50ch;
+      margin: 0 auto 36px;
+      line-height: 1.6;
+    }
+    .err-actions {
+      display: inline-flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="logo" href="/" data-magnetic aria-label="CURS3D — home">
+        <span class="logo-mark" aria-hidden="true"></span>
+        <span>CURS3D <small>L1</small></span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/docs">Docs</a>
+        <a href="/stack">Stack</a>
+        <a href="/run-validator"><span data-lang="en" class="lang-show">Run Validator</span><span data-lang="fr">Validateur</span></a>
+        <a href="/governance"><span data-lang="en" class="lang-show">Governance</span><span data-lang="fr">Gouvernance</span></a>
+        <a href="/tokenomics">Tokenomics</a>
+        <a href="/whitepaper">Whitepaper</a>
+        <a href="/examples"><span data-lang="en" class="lang-show">Examples</span><span data-lang="fr">Exemples</span></a>
+      </nav>
+      <div class="nav-actions">
+        <div class="lang-toggle" role="tablist" aria-label="Language">
+          <button data-lang-set="en" class="active" role="tab" aria-selected="true" aria-label="English">EN</button>
+          <button data-lang-set="fr" role="tab" aria-selected="false" aria-label="Français">FR</button>
+        </div>
+        <a class="btn btn-primary" href="/" data-magnetic>
+          <span data-lang="en" class="lang-show">Home</span>
+          <span data-lang="fr">Accueil</span>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+        <button class="nav-burger" aria-label="Open menu" aria-expanded="false"><span aria-hidden="true"></span></button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="err-shell">
+      <div class="wrap">
+        <div class="err-eyebrow">404 // ORPHAN BLOCK</div>
+        <div class="err-code">404</div>
+        <h1 class="err-title">
+          <span data-lang="en" class="lang-show">This block was <em style="font-style:normal;color:var(--accent)">not finalised</em>.</span>
+          <span data-lang="fr">Ce bloc n'a <em style="font-style:normal;color:var(--accent)">pas été finalisé</em>.</span>
+        </h1>
+        <p class="err-lede">
+          <span data-lang="en" class="lang-show">The page you asked for was not found in the canonical chain. Maybe a typo, maybe an old link, maybe a re-org.</span>
+          <span data-lang="fr">La page demandée n'a pas été trouvée dans la chaîne canonique. Peut-être une faute de frappe, un vieux lien, ou un re-org.</span>
+        </p>
+        <div class="err-actions">
+          <a class="btn btn-primary" href="/" data-magnetic>
+            <span data-lang="en" class="lang-show">Back to home</span>
+            <span data-lang="fr">Retour à l'accueil</span>
+            <span class="arrow" aria-hidden="true">→</span>
+          </a>
+          <a class="btn" href="/docs" data-magnetic>
+            <span data-lang="en" class="lang-show">Read the docs</span>
+            <span data-lang="fr">Lire la documentation</span>
+            <span class="arrow" aria-hidden="true">→</span>
+          </a>
+          <a class="btn" href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer" data-magnetic>
+            <span data-lang="en" class="lang-show">Open explorer</span>
+            <span data-lang="fr">Ouvrir l'explorer</span>
+            <span class="arrow" aria-hidden="true">↗</span>
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div class="footer-bottom" style="padding-top:24px; border-top:1px solid var(--line);">
+        <span>&copy; 2026 CURS3D PROTOCOL · APACHE-2.0</span>
+        <span class="hash">CHAIN-ID <b style="color:var(--fg)">curs3d-public-testnet</b></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/landing.js?v=6" defer></script>
+</body>
+</html>

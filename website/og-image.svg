@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="CURS3D — Quantum-resistant Layer 1">
+  <title>CURS3D — Quantum-resistant Layer 1</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#08090b"/>
+      <stop offset="0.5" stop-color="#0c0e11"/>
+      <stop offset="1" stop-color="#080a0f"/>
+    </linearGradient>
+    <radialGradient id="glow1" cx="950" cy="80" r="500" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="120" cy="600" r="500" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d4af37" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#d4af37" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="markGrad" x1="60" y1="60" x2="180" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3FD0D4"/>
+      <stop offset="0.55" stop-color="#D8E2EC"/>
+      <stop offset="1" stop-color="#C8A96B"/>
+    </linearGradient>
+    <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
+      <path d="M80 0 L0 0 0 80" fill="none" stroke="#ffffff" stroke-opacity="0.03" stroke-width="1"/>
+    </pattern>
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <rect width="1200" height="630" fill="url(#glow1)"/>
+  <rect width="1200" height="630" fill="url(#glow2)"/>
+
+  <!-- Top status strip -->
+  <line x1="80" y1="120" x2="1120" y2="120" stroke="#1c1f25" stroke-width="1"/>
+  <g font-family="ui-monospace, JetBrains Mono, monospace" font-size="14" letter-spacing="2" fill="#7a7d85">
+    <circle cx="92" cy="92" r="5" fill="#4ade80"/>
+    <text x="108" y="97">TESTNET // OPERATIONAL</text>
+    <text x="380" y="97">CHAIN-ID curs3d-public-testnet</text>
+    <text x="900" y="97">DILITHIUM-L5 // FIPS 204</text>
+  </g>
+
+  <!-- Logo mark -->
+  <g transform="translate(80, 200)">
+    <rect x="0" y="0" width="84" height="84" fill="none" stroke="#e8e4d8" stroke-width="3"/>
+    <rect x="14" y="14" width="56" height="56" fill="none" stroke="url(#markGrad)" stroke-width="3" transform="rotate(45 42 42) scale(.7) translate(18 18)"/>
+  </g>
+
+  <!-- Logo text -->
+  <text x="190" y="258" font-family="Space Grotesk, system-ui, sans-serif" font-size="40" font-weight="600" letter-spacing="2" fill="#e8e4d8">CURS3D</text>
+  <text x="396" y="258" font-family="ui-monospace, JetBrains Mono, monospace" font-size="20" letter-spacing="3" fill="#7a7d85">L1</text>
+
+  <!-- Headline -->
+  <g font-family="Space Grotesk, system-ui, sans-serif" fill="#e8e4d8">
+    <text x="80" y="370" font-size="76" font-weight="500" letter-spacing="-2">The chain that <tspan fill="#22d3ee" font-style="italic">survives</tspan></text>
+    <text x="80" y="450" font-size="76" font-weight="500" letter-spacing="-2">the elliptic curve era.</text>
+  </g>
+
+  <!-- Tagline -->
+  <text x="80" y="500" font-family="IBM Plex Sans, system-ui, sans-serif" font-size="22" fill="#b8b5ad" letter-spacing="0.5">
+    Quantum-resistant Layer 1 · Dilithium-L5 · BFT-PoS · WASM
+  </text>
+
+  <!-- Bottom row: stats -->
+  <line x1="80" y1="540" x2="1120" y2="540" stroke="#1c1f25" stroke-width="1"/>
+  <g font-family="ui-monospace, JetBrains Mono, monospace" font-size="13" letter-spacing="2" fill="#7a7d85">
+    <text x="80" y="572">SIG SCHEME</text>
+    <text x="80" y="596" font-size="20" fill="#e8e4d8">Dilithium-L5</text>
+
+    <text x="320" y="572">FINALITY</text>
+    <text x="320" y="596" font-size="20" fill="#e8e4d8">~1.2s</text>
+
+    <text x="500" y="572">CONSENSUS</text>
+    <text x="500" y="596" font-size="20" fill="#e8e4d8">BFT PoS</text>
+
+    <text x="700" y="572">VM</text>
+    <text x="700" y="596" font-size="20" fill="#e8e4d8">WASM (Wasmer 5)</text>
+
+    <text x="970" y="572">LICENSE</text>
+    <text x="970" y="596" font-size="20" fill="#e8e4d8">Apache-2.0</text>
+  </g>
+
+  <!-- Decorative cyan accent line -->
+  <line x1="80" y1="190" x2="160" y2="190" stroke="#22d3ee" stroke-width="2" filter="url(#softGlow)"/>
+</svg>

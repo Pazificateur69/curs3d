@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CURS3D — Security · Threat Model, Audits, Bug Bounty</title>
+  <meta name="description" content="Security at CURS3D: post-quantum threat model, internal and forthcoming external audits, responsible disclosure policy, and known limitations." />
+  <link rel="canonical" href="https://curs3d.fr/security" />
+  <link rel="alternate" hreflang="en" href="https://curs3d.fr/security" />
+  <link rel="alternate" hreflang="fr" href="https://curs3d.fr/security" />
+  <link rel="alternate" hreflang="x-default" href="https://curs3d.fr/security" />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="CURS3D — Security" />
+  <meta property="og:description" content="Threat model, audit log, and responsible disclosure for the CURS3D post-quantum L1." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://curs3d.fr/security" />
+  <meta property="og:image" content="https://curs3d.fr/og-image.svg" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:locale:alternate" content="fr_FR" />
+  <meta property="og:site_name" content="CURS3D" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:site" content="@curs3d" />
+  <meta name="twitter:title" content="CURS3D — Security" />
+  <meta name="twitter:description" content="Threat model, audit log, and responsible disclosure for the CURS3D post-quantum L1." />
+  <meta name="twitter:image" content="https://curs3d.fr/og-image.svg" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://api.curs3d.fr" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="landing.css?v=6" />
+</head>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+  <div class="scroll-progress"></div>
+
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="logo" href="/" data-magnetic aria-label="CURS3D — home">
+        <span class="logo-mark" aria-hidden="true"></span>
+        <span>CURS3D <small>L1</small></span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/docs">Docs</a>
+        <a href="/stack">Stack</a>
+        <a href="/run-validator"><span data-lang="en" class="lang-show">Run Validator</span><span data-lang="fr">Validateur</span></a>
+        <a href="/governance"><span data-lang="en" class="lang-show">Governance</span><span data-lang="fr">Gouvernance</span></a>
+        <a href="/tokenomics">Tokenomics</a>
+        <a href="/whitepaper">Whitepaper</a>
+        <a href="/examples"><span data-lang="en" class="lang-show">Examples</span><span data-lang="fr">Exemples</span></a>
+      </nav>
+      <div class="nav-actions">
+        <div class="lang-toggle" role="tablist" aria-label="Language">
+          <button data-lang-set="en" class="active" role="tab" aria-selected="true" aria-label="English">EN</button>
+          <button data-lang-set="fr" role="tab" aria-selected="false" aria-label="Français">FR</button>
+        </div>
+        <a class="btn" href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer" data-magnetic>
+          <span data-lang="en" class="lang-show">Explorer</span>
+          <span data-lang="fr">Explorateur</span>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="btn btn-primary" href="/run-validator" data-magnetic>
+          <span data-lang="en" class="lang-show">Run a node</span>
+          <span data-lang="fr">Lancer un nœud</span>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+        <button class="nav-burger" aria-label="Open menu" aria-expanded="false"><span aria-hidden="true"></span></button>
+      </div>
+    </div>
+  </header>
+
+  <div class="statusbar" aria-label="Network status">
+    <div class="wrap statusbar-inner">
+      <span class="status-item">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span data-lang="en" class="lang-show">TESTNET</span>
+        <span data-lang="fr">TESTNET</span>
+        <b data-live-source aria-live="polite">SIM</b>
+      </span>
+      <span class="status-item" aria-live="polite">BLOCK <b data-stat="block">—</b></span>
+      <span class="status-item" aria-live="polite">EPOCH <b data-stat="epoch">—</b></span>
+      <span class="status-item" aria-live="polite">VALIDATORS <b data-stat="validators">—</b></span>
+      <span class="statusbar-ticker" aria-hidden="true"><span class="t-dyn">SECURITY // RESPONSIBLE DISCLOSURE</span></span>
+    </div>
+  </div>
+
+  <main id="main">
+    <section class="page-hero">
+      <div class="wrap">
+        <span class="eyebrow"><span data-lang="en" class="lang-show">Security</span><span data-lang="fr">Sécurité</span></span>
+        <h1>
+          <span data-lang="en" class="lang-show">Security at <em>CURS3D</em>.</span>
+          <span data-lang="fr">Sécurité chez <em>CURS3D</em>.</span>
+        </h1>
+        <p class="lede">
+          <span data-lang="en" class="lang-show">CURS3D is built around a single security promise: every cryptographic primitive must remain secure against a sufficiently large quantum adversary. Below, what that means in practice, what we have audited, and how to report something we missed.</span>
+          <span data-lang="fr">CURS3D est conçu autour d'une seule promesse de sécurité : chaque primitive cryptographique doit rester sûre face à un adversaire quantique suffisamment puissant. Ci-dessous, ce que cela signifie en pratique, ce qui a été audité, et comment signaler ce que nous aurions manqué.</span>
+        </p>
+        <div class="page-hero-actions">
+          <a class="btn btn-primary" href="mailto:security@curs3d.fr?subject=CURS3D%20security%20report" data-magnetic>security@curs3d.fr<span class="arrow" aria-hidden="true">→</span></a>
+          <a class="btn" href="https://github.com/Pazificateur69/curs3d/security/advisories" target="_blank" rel="noopener noreferrer" data-magnetic>GitHub advisories<span class="arrow" aria-hidden="true">↗</span></a>
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="wrap">
+        <div class="doc-layout">
+          <aside class="doc-toc">
+            <div class="doc-toc-title">Contents</div>
+            <ul>
+              <li><a href="#threat-model"><span data-lang="en" class="lang-show">Threat model</span><span data-lang="fr">Modèle de menace</span></a></li>
+              <li><a href="#audits"><span data-lang="en" class="lang-show">Audits</span><span data-lang="fr">Audits</span></a></li>
+              <li><a href="#bug-bounty"><span data-lang="en" class="lang-show">Bug bounty</span><span data-lang="fr">Bug bounty</span></a></li>
+              <li><a href="#disclosed"><span data-lang="en" class="lang-show">Disclosed vulnerabilities</span><span data-lang="fr">Vulnérabilités divulguées</span></a></li>
+              <li><a href="#known-limits"><span data-lang="en" class="lang-show">Known limitations</span><span data-lang="fr">Limites connues</span></a></li>
+            </ul>
+          </aside>
+
+          <article class="doc-main">
+            <section class="doc-section" id="threat-model">
+              <h2><span data-lang="en" class="lang-show">Threat model</span><span data-lang="fr">Modèle de menace</span></h2>
+              <div class="prose">
+                <p data-lang="en" class="lang-show">CURS3D defends against three classes of adversary:</p>
+                <p data-lang="fr">CURS3D se défend contre trois classes d'adversaire :</p>
+                <ol>
+                  <li><strong><span data-lang="en" class="lang-show">A cryptographically-relevant quantum computer (CRQC).</span><span data-lang="fr">Un ordinateur quantique cryptographiquement pertinent (CRQC).</span></strong> <span data-lang="en" class="lang-show">All signatures are CRYSTALS-Dilithium Level&nbsp;5 (FIPS&nbsp;204). All hashing is SHA-3 family (FIPS&nbsp;202). No ECDSA, no secp256k1.</span><span data-lang="fr">Toutes les signatures sont CRYSTALS-Dilithium niveau&nbsp;5 (FIPS&nbsp;204). Tous les hachages sont SHA-3 (FIPS&nbsp;202). Aucun ECDSA, aucun secp256k1.</span></li>
+                  <li><strong><span data-lang="en" class="lang-show">Byzantine validators.</span><span data-lang="fr">Validateurs byzantins.</span></strong> <span data-lang="en" class="lang-show">Equivocation triggers a 33% slashing penalty plus jail. Inactivity yields escalating stake penalties after a two-epoch grace period.</span><span data-lang="fr">L'équivocation déclenche une pénalité de slashing de 33&nbsp;% et une mise au cachot. L'inactivité entraîne des pénalités croissantes après deux epochs de grâce.</span></li>
+                  <li><strong><span data-lang="en" class="lang-show">Network-level attackers.</span><span data-lang="fr">Attaquants au niveau réseau.</span></strong> <span data-lang="en" class="lang-show">Per-peer rate limiting, peer-scoring with automatic ban below threshold, signed HeightAnnounce messages, body-size limits, and HTTP/WS connection caps.</span><span data-lang="fr">Rate-limiting par pair, peer-scoring avec ban automatique sous un seuil, messages HeightAnnounce signés, limites de taille de body, plafonds de connexions HTTP/WS.</span></li>
+                </ol>
+
+                <h3><span data-lang="en" class="lang-show">Key cryptographic primitives</span><span data-lang="fr">Primitives cryptographiques clés</span></h3>
+                <table class="data-table">
+                  <caption class="sr-only"><span data-lang="en" class="lang-show">Cryptographic primitives used by CURS3D and their security category.</span><span data-lang="fr">Primitives cryptographiques utilisées par CURS3D et leur catégorie de sécurité.</span></caption>
+                  <thead>
+                    <tr><th scope="col"><span data-lang="en" class="lang-show">Component</span><span data-lang="fr">Composant</span></th><th scope="col"><span data-lang="en" class="lang-show">Algorithm</span><span data-lang="fr">Algorithme</span></th><th scope="col"><span data-lang="en" class="lang-show">Standard</span><span data-lang="fr">Standard</span></th><th scope="col"><span data-lang="en" class="lang-show">Security</span><span data-lang="fr">Sécurité</span></th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><span data-lang="en" class="lang-show">Signatures</span><span data-lang="fr">Signatures</span></td><td>CRYSTALS-Dilithium L5</td><td>FIPS 204 (2024)</td><td><span data-lang="en" class="lang-show">Cat-5 (&ge; AES-256)</span><span data-lang="fr">Cat-5 (&ge; AES-256)</span></td></tr>
+                    <tr><td><span data-lang="en" class="lang-show">Hashing</span><span data-lang="fr">Hachage</span></td><td>SHA-3 / Keccak</td><td>FIPS 202</td><td>256-bit</td></tr>
+                    <tr><td><span data-lang="en" class="lang-show">Wallet KDF</span><span data-lang="fr">KDF wallet</span></td><td>Argon2id (m=64MB, t=3, p=4)</td><td>RFC 9106</td><td>—</td></tr>
+                    <tr><td><span data-lang="en" class="lang-show">Wallet AEAD</span><span data-lang="fr">AEAD wallet</span></td><td>AES-256-GCM</td><td>NIST SP 800-38D</td><td>256-bit</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="doc-section" id="audits">
+              <h2><span data-lang="en" class="lang-show">Audits</span><span data-lang="fr">Audits</span></h2>
+              <div class="prose">
+                <p data-lang="en" class="lang-show">All findings from internal review are tracked in the public repository.</p>
+                <p data-lang="fr">Tous les résultats de revue interne sont suivis dans le dépôt public.</p>
+
+                <table class="data-table">
+                  <caption class="sr-only"><span data-lang="en" class="lang-show">Audit log.</span><span data-lang="fr">Journal d'audits.</span></caption>
+                  <thead>
+                    <tr><th scope="col"><span data-lang="en" class="lang-show">Date</span><span data-lang="fr">Date</span></th><th scope="col"><span data-lang="en" class="lang-show">Auditor</span><span data-lang="fr">Auditeur</span></th><th scope="col"><span data-lang="en" class="lang-show">Scope</span><span data-lang="fr">Périmètre</span></th><th scope="col"><span data-lang="en" class="lang-show">Result</span><span data-lang="fr">Résultat</span></th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>2026-04</td>
+                      <td><span data-lang="en" class="lang-show">3-AI council (Claude, Codex, Gemini)</span><span data-lang="fr">Conseil 3-AI (Claude, Codex, Gemini)</span></td>
+                      <td><span data-lang="en" class="lang-show">Architecture review, threat surface map</span><span data-lang="fr">Revue d'architecture, carte de surface de menace</span></td>
+                      <td><span data-lang="en" class="lang-show">Recommendations applied</span><span data-lang="fr">Recommandations appliquées</span></td>
+                    </tr>
+                    <tr>
+                      <td>2026-05</td>
+                      <td><span data-lang="en" class="lang-show">Internal hardening pass</span><span data-lang="fr">Passe de durcissement interne</span></td>
+                      <td><span data-lang="en" class="lang-show">Rust core: storage, consensus, network, API rate limits</span><span data-lang="fr">Cœur Rust : storage, consensus, réseau, rate limits API</span></td>
+                      <td><span data-lang="en" class="lang-show">11 findings fixed (commit </span><span data-lang="fr">11 problèmes corrigés (commit </span><code>c015ee3</code>)</td>
+                    </tr>
+                    <tr>
+                      <td>2026 H2</td>
+                      <td><em><span data-lang="en" class="lang-show">External audit (TBD)</span><span data-lang="fr">Audit externe (à confirmer)</span></em></td>
+                      <td><span data-lang="en" class="lang-show">Full protocol &amp; node binary</span><span data-lang="fr">Protocole complet &amp; binaire du node</span></td>
+                      <td><span data-lang="en" class="lang-show">Scheduled before mainnet</span><span data-lang="fr">Planifié avant mainnet</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <p data-lang="en" class="lang-show"><code>cargo audit</code> runs in CI on every push. The audit policy lives in <code>.cargo/audit.toml</code> with per-crate justifications for ignored transitive advisories. Zero critical findings.</p>
+                <p data-lang="fr"><code>cargo audit</code> tourne en CI à chaque push. La politique d'audit vit dans <code>.cargo/audit.toml</code> avec des justifications par crate pour les advisories transitifs ignorés. Zéro finding critique.</p>
+              </div>
+            </section>
+
+            <section class="doc-section" id="bug-bounty">
+              <h2><span data-lang="en" class="lang-show">Bug bounty &amp; responsible disclosure</span><span data-lang="fr">Bug bounty &amp; divulgation responsable</span></h2>
+              <div class="prose">
+                <p data-lang="en" class="lang-show">A formal Immunefi-style bug-bounty program is forthcoming. Until then, please report security issues privately by email.</p>
+                <p data-lang="fr">Un programme de bug bounty formel (style Immunefi) est en préparation. En attendant, merci de signaler les problèmes de sécurité par e-mail privé.</p>
+
+                <div class="callout">
+                  <div>
+                    <p><strong>security@curs3d.fr</strong></p>
+                    <p data-lang="en" class="lang-show">Please include: a clear description, reproduction steps, the affected version (commit hash if possible), and your suggested severity. Do <em>not</em> open public GitHub issues for live exploits.</p>
+                    <p data-lang="fr">Merci d'inclure : une description claire, les étapes de reproduction, la version affectée (commit hash si possible) et votre suggestion de sévérité. <em>Ne</em> publiez <em>pas</em> d'issues GitHub publiques pour des exploits actifs.</p>
+                  </div>
+                </div>
+
+                <h3>PGP</h3>
+                <!-- TODO publish PGP key before mainnet — currently no public key is in use; reports may be sent in clear or via signed GitHub Security Advisory. -->
+                <p data-lang="en" class="lang-show">A PGP key for end-to-end-encrypted reports will be published before mainnet. Until then, please use either a private GitHub Security Advisory (preferred) or send your report in clear-text to the address above.</p>
+                <p data-lang="fr">Une clé PGP pour les rapports chiffrés bout-à-bout sera publiée avant le mainnet. En attendant, merci d'utiliser un GitHub Security Advisory privé (préféré) ou d'envoyer votre rapport en clair à l'adresse ci-dessus.</p>
+
+                <h3><span data-lang="en" class="lang-show">Scope</span><span data-lang="fr">Périmètre</span></h3>
+                <p data-lang="en" class="lang-show">In scope: the Rust node binary, the HTTP API, the WebSocket feed, the Ethereum-compatible JSON-RPC subset, the SDKs (Rust / JS / Python), the website (XSS, mixed-content, tokenomics-page math errors).</p>
+                <p data-lang="fr">Dans le périmètre : le binaire Rust du node, l'API HTTP, le flux WebSocket, le sous-ensemble JSON-RPC compatible Ethereum, les SDKs (Rust / JS / Python), le site (XSS, contenu mixte, erreurs de math sur la page tokenomics).</p>
+                <p data-lang="en" class="lang-show">Out of scope: third-party services (Cloudflare, Stoplight Elements), brute-force, DoS that requires sustained traffic above the public rate limits, social-engineering of maintainers.</p>
+                <p data-lang="fr">Hors périmètre : services tiers (Cloudflare, Stoplight Elements), brute-force, DoS nécessitant un trafic soutenu au-dessus des rate limits publics, social-engineering des mainteneurs.</p>
+
+                <h3><span data-lang="en" class="lang-show">Safe-harbor</span><span data-lang="fr">Sphère de sécurité (safe harbor)</span></h3>
+                <p data-lang="en" class="lang-show">Good-faith research that respects user privacy, avoids data destruction and gives us a reasonable disclosure window will not be subject to legal action.</p>
+                <p data-lang="fr">La recherche de bonne foi qui respecte la vie privée des utilisateurs, évite la destruction de données et nous laisse une fenêtre de divulgation raisonnable ne fera pas l'objet de poursuites.</p>
+              </div>
+            </section>
+
+            <section class="doc-section" id="disclosed">
+              <h2><span data-lang="en" class="lang-show">Disclosed vulnerabilities</span><span data-lang="fr">Vulnérabilités divulguées</span></h2>
+              <div class="prose">
+                <p data-lang="en" class="lang-show">No public disclosures yet.</p>
+                <p data-lang="fr">Aucune divulgation publique pour l'instant.</p>
+                <p data-lang="en" class="lang-show">Once the bug-bounty program is live, fixed and public-disclosed findings will appear here with CVE identifiers, severity, and patch commit links.</p>
+                <p data-lang="fr">Dès que le programme de bug bounty sera actif, les findings corrigés et divulgués apparaîtront ici avec leurs identifiants CVE, leur sévérité et les commits de patch.</p>
+              </div>
+            </section>
+
+            <section class="doc-section" id="known-limits">
+              <h2><span data-lang="en" class="lang-show">Known limitations</span><span data-lang="fr">Limites connues</span></h2>
+              <div class="prose">
+                <p data-lang="en" class="lang-show">The following are documented in the project <code>CLAUDE.md</code>. None block the single-validator testnet, but they gate further multi-node rollout.</p>
+                <p data-lang="fr">Les éléments suivants sont documentés dans le <code>CLAUDE.md</code> du projet. Aucun ne bloque le testnet à validateur unique, mais ils conditionnent un déploiement multi-nœud.</p>
+                <ol>
+                  <li>
+                    <strong><span data-lang="en" class="lang-show">Slot-leader scheduling missing.</span><span data-lang="fr">Planification de slot-leader manquante.</span></strong>
+                    <span data-lang="en" class="lang-show">With &ge;2 validators, each one currently produces a block every 10&nbsp;s, leading to permanent forks. Multi-validator rollout waits on a deterministic, stake-weighted slot-leader function.</span>
+                    <span data-lang="fr">Avec &ge;2 validateurs, chacun produit pour l'instant un bloc toutes les 10&nbsp;s, ce qui crée des forks permanents. Le déploiement multi-validateur attend une fonction slot-leader déterministe pondérée par stake.</span>
+                  </li>
+                  <li>
+                    <strong><span data-lang="en" class="lang-show">RequestBlocks sync timeout.</span><span data-lang="fr">Timeout sync RequestBlocks.</span></strong>
+                    <span data-lang="en" class="lang-show">Even with valid peer connectivity, the receive loop in the network module times out before block batches arrive. Under investigation.</span>
+                    <span data-lang="fr">Même avec une connectivité valide, la boucle de réception du module réseau expire avant que les lots de blocs n'arrivent. En cours d'analyse.</span>
+                  </li>
+                  <li>
+                    <strong><span data-lang="en" class="lang-show">Persisted state-root divergence after some restarts.</span><span data-lang="fr">Divergence de state-root persistée après certains redémarrages.</span></strong>
+                    <span data-lang="en" class="lang-show">Diagnostic logging now dumps each account leaf when divergence is detected. Root cause not yet identified.</span>
+                    <span data-lang="fr">Un logging de diagnostic dumpe désormais chaque feuille de compte lors d'une divergence. Cause racine non identifiée.</span>
+                  </li>
+                </ol>
+                <p data-lang="en" class="lang-show">Mainnet will not ship while any of the above remains open.</p>
+                <p data-lang="fr">Le mainnet ne sortira pas tant qu'un de ces points reste ouvert.</p>
+              </div>
+            </section>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div class="footer-grid">
+        <div class="footer-col">
+          <a class="logo" href="/" style="margin-bottom:18px;" aria-label="CURS3D — home">
+            <span class="logo-mark" aria-hidden="true"></span>
+            <span>CURS3D <small>L1</small></span>
+          </a>
+          <p data-lang="en" class="lang-show">A post-quantum Layer 1 blockchain. Conservative cryptography, BFT proof-of-stake, WASM execution. Built in the open.</p>
+          <p data-lang="fr">Une blockchain Layer 1 post-quantique. Cryptographie conservatrice, proof-of-stake BFT, exécution WASM. Construite à découvert.</p>
+        </div>
+        <div class="footer-col"><h4>Protocol</h4><ul><li><a href="/stack">Stack</a></li><li><a href="/docs">Documentation</a></li><li><a href="/whitepaper">Whitepaper</a></li><li><a href="/tokenomics">Tokenomics</a></li></ul></div>
+        <div class="footer-col"><h4>Network</h4><ul><li><a href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer">Explorer</a></li><li><a href="/run-validator">Run a validator</a></li><li><a href="/faucet">Faucet</a></li><li><a href="/api">API reference</a></li></ul></div>
+        <div class="footer-col"><h4>Project</h4><ul><li><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener noreferrer">GitHub</a></li><li><a href="/governance">Governance</a></li><li><a href="/security">Security</a></li><li><a href="/community">Community</a></li></ul></div>
+      </div>
+      <div class="footer-bottom">
+        <span>&copy; 2026 CURS3D PROTOCOL · APACHE-2.0</span>
+        <span class="hash">CHAIN-ID <b style="color:var(--fg)" data-stat="chainid">curs3d-public-testnet</b></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="landing.js?v=6" defer></script>
+</body>
+</html>

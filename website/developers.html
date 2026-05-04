@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CURS3D — Developers · SDKs, API, Examples</title>
+  <meta name="description" content="Build on CURS3D. Rust, JavaScript, and Python SDKs. OpenAPI 3.1 reference. Quick-start examples for the post-quantum L1 testnet." />
+  <link rel="canonical" href="https://curs3d.fr/developers" />
+  <link rel="alternate" hreflang="en" href="https://curs3d.fr/developers" />
+  <link rel="alternate" hreflang="fr" href="https://curs3d.fr/developers" />
+  <link rel="alternate" hreflang="x-default" href="https://curs3d.fr/developers" />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="CURS3D — Developers" />
+  <meta property="og:description" content="SDKs, API, examples. Build on the post-quantum Layer 1 testnet." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://curs3d.fr/developers" />
+  <meta property="og:image" content="https://curs3d.fr/og-image.svg" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:locale:alternate" content="fr_FR" />
+  <meta property="og:site_name" content="CURS3D" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:site" content="@curs3d" />
+  <meta name="twitter:title" content="CURS3D — Developers" />
+  <meta name="twitter:description" content="SDKs, API, examples. Build on the post-quantum Layer 1 testnet." />
+  <meta name="twitter:image" content="https://curs3d.fr/og-image.svg" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://api.curs3d.fr" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="landing.css?v=6" />
+
+  <style>
+    .dev-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1px;
+      background: var(--line);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      margin-bottom: 60px;
+    }
+    .dev-card {
+      background: var(--bg-1);
+      padding: 28px;
+      transition: background .2s;
+    }
+    .dev-card:hover { background: var(--bg-2); }
+    .dev-card-num {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .14em;
+      color: var(--mute);
+      margin-bottom: 24px;
+    }
+    .dev-card-title {
+      font-family: var(--display);
+      font-size: 20px;
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: var(--fg);
+    }
+    .dev-card-tech {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--accent);
+      letter-spacing: .04em;
+      margin-bottom: 14px;
+    }
+    .dev-card p {
+      font-size: 14px;
+      color: var(--fg-1);
+      line-height: 1.6;
+      margin-bottom: 18px;
+    }
+    .dev-card a.btn {
+      font-size: 11.5px;
+      padding: 6px 12px;
+    }
+    .quick-start { margin-bottom: 60px; }
+    .quick-start h3 {
+      font-family: var(--display);
+      font-weight: 500;
+      font-size: 22px;
+      color: var(--fg);
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+  <div class="scroll-progress"></div>
+
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="logo" href="/" data-magnetic aria-label="CURS3D — home">
+        <span class="logo-mark" aria-hidden="true"></span>
+        <span>CURS3D <small>L1</small></span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/docs">Docs</a>
+        <a href="/stack">Stack</a>
+        <a href="/run-validator"><span data-lang="en" class="lang-show">Run Validator</span><span data-lang="fr">Validateur</span></a>
+        <a href="/governance"><span data-lang="en" class="lang-show">Governance</span><span data-lang="fr">Gouvernance</span></a>
+        <a href="/tokenomics">Tokenomics</a>
+        <a href="/whitepaper">Whitepaper</a>
+        <a href="/examples"><span data-lang="en" class="lang-show">Examples</span><span data-lang="fr">Exemples</span></a>
+      </nav>
+      <div class="nav-actions">
+        <div class="lang-toggle" role="tablist" aria-label="Language">
+          <button data-lang-set="en" class="active" role="tab" aria-selected="true" aria-label="English">EN</button>
+          <button data-lang-set="fr" role="tab" aria-selected="false" aria-label="Français">FR</button>
+        </div>
+        <a class="btn" href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer" data-magnetic>
+          <span data-lang="en" class="lang-show">Explorer</span>
+          <span data-lang="fr">Explorateur</span>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="btn btn-primary" href="/run-validator" data-magnetic>
+          <span data-lang="en" class="lang-show">Run a node</span>
+          <span data-lang="fr">Lancer un nœud</span>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+        <button class="nav-burger" aria-label="Open menu" aria-expanded="false"><span aria-hidden="true"></span></button>
+      </div>
+    </div>
+  </header>
+
+  <div class="statusbar" aria-label="Network status">
+    <div class="wrap statusbar-inner">
+      <span class="status-item">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span data-lang="en" class="lang-show">TESTNET</span>
+        <span data-lang="fr">TESTNET</span>
+        <b data-live-source aria-live="polite">SIM</b>
+      </span>
+      <span class="status-item" aria-live="polite">BLOCK <b data-stat="block">—</b></span>
+      <span class="status-item" aria-live="polite">EPOCH <b data-stat="epoch">—</b></span>
+      <span class="status-item" aria-live="polite">VALIDATORS <b data-stat="validators">—</b></span>
+      <span class="statusbar-ticker" aria-hidden="true"><span class="t-dyn">DEVELOPERS // SDKs · API · EXAMPLES</span></span>
+    </div>
+  </div>
+
+  <main id="main">
+    <section class="page-hero">
+      <div class="wrap">
+        <span class="eyebrow"><span data-lang="en" class="lang-show">Developers</span><span data-lang="fr">Développeurs</span></span>
+        <h1>
+          <span data-lang="en" class="lang-show">Build on <em>CURS3D</em>.</span>
+          <span data-lang="fr">Bâtissez sur <em>CURS3D</em>.</span>
+        </h1>
+        <p class="lede">
+          <span data-lang="en" class="lang-show">SDKs in three languages, an OpenAPI&nbsp;3.1 reference for the 27&#8209;endpoint HTTP API, and runnable examples. Deploy a smart contract, send a transaction, subscribe to events.</span>
+          <span data-lang="fr">Des SDKs dans trois langages, une référence OpenAPI&nbsp;3.1 pour l'API HTTP à 27 endpoints, et des exemples exécutables. Déployez un smart contract, envoyez une transaction, abonnez-vous aux événements.</span>
+        </p>
+        <div class="page-hero-actions">
+          <a class="btn btn-primary" href="/api" data-magnetic>API reference<span class="arrow" aria-hidden="true">→</span></a>
+          <a class="btn" href="/examples" data-magnetic><span data-lang="en" class="lang-show">Examples</span><span data-lang="fr">Exemples</span><span class="arrow" aria-hidden="true">→</span></a>
+          <a class="btn" href="/faucet" data-magnetic><span data-lang="en" class="lang-show">Faucet</span><span data-lang="fr">Robinet</span><span class="arrow" aria-hidden="true">→</span></a>
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="section-tag">01 / SDKs</div>
+          <h2 class="section-title">
+            <span data-lang="en" class="lang-show">Three SDKs. <em>Same API, native ergonomics.</em></span>
+            <span data-lang="fr">Trois SDKs. <em>Même API, ergonomie native.</em></span>
+          </h2>
+        </div>
+
+        <div class="dev-grid reveal" data-stagger>
+          <article class="dev-card">
+            <div class="dev-card-num">SDK 01</div>
+            <div class="dev-card-title">Rust</div>
+            <div class="dev-card-tech">curs3d-contract · wasm32-unknown-unknown</div>
+            <p data-lang="en" class="lang-show">Write smart contracts that compile to WASM. Bundles a heap-base bump allocator, a panic handler, and host-call bindings. Five reference examples: counter, ERC-20, multisig, NFT, vesting.</p>
+            <p data-lang="fr">Écrivez des smart contracts qui compilent vers WASM. Inclut un allocateur bump basé sur le heap, un handler de panic, et les bindings d'appels système. Cinq exemples : counter, ERC-20, multisig, NFT, vesting.</p>
+            <a class="btn" href="https://github.com/Pazificateur69/curs3d/tree/main/sdk/rust" target="_blank" rel="noopener noreferrer">GitHub<span class="arrow" aria-hidden="true">↗</span></a>
+          </article>
+
+          <article class="dev-card">
+            <div class="dev-card-num">SDK 02</div>
+            <div class="dev-card-title">JavaScript / TypeScript</div>
+            <div class="dev-card-tech">@curs3d/sdk · ESM · ethers-style</div>
+            <p data-lang="en" class="lang-show">For browsers and Node.js. Wagmi/ethers compatibility through the Ethereum-compatible JSON-RPC subset. Native Dilithium-L5 signing for canonical CURS3D transactions.</p>
+            <p data-lang="fr">Pour navigateurs et Node.js. Compatible wagmi / ethers via le sous-ensemble JSON-RPC compatible Ethereum. Signature native Dilithium-L5 pour les transactions canoniques CURS3D.</p>
+            <a class="btn" href="https://github.com/Pazificateur69/curs3d/tree/main/sdk/javascript" target="_blank" rel="noopener noreferrer">GitHub<span class="arrow" aria-hidden="true">↗</span></a>
+          </article>
+
+          <article class="dev-card">
+            <div class="dev-card-num">SDK 03</div>
+            <div class="dev-card-title">Python</div>
+            <div class="dev-card-tech">curs3d-sdk · async-first</div>
+            <p data-lang="en" class="lang-show">Async client built on httpx. Ideal for indexers, analytics, and trading bots. Direct binding to the HTTP API and the WebSocket event feed.</p>
+            <p data-lang="fr">Client async basé sur httpx. Idéal pour les indexers, analytics et bots de trading. Binding direct vers l'API HTTP et le flux WebSocket.</p>
+            <a class="btn" href="https://github.com/Pazificateur69/curs3d/tree/main/sdk/python" target="_blank" rel="noopener noreferrer">GitHub<span class="arrow" aria-hidden="true">↗</span></a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="section-tag">02 / QUICK-START</div>
+          <h2 class="section-title">
+            <span data-lang="en" class="lang-show">From zero to a <em>signed transaction</em>.</span>
+            <span data-lang="fr">De zéro à une <em>transaction signée</em>.</span>
+          </h2>
+        </div>
+
+        <div class="quick-start reveal">
+          <h3>Rust</h3>
+          <div class="code-block">
+            <div class="code-head">
+              <div class="code-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+              <div class="code-title">cargo run --example transfer</div>
+              <button class="code-copy" data-done="COPIED" aria-label="Copy code">COPY</button>
+            </div>
+<pre class="code-body"><span class="c-key">use</span> curs3d_sdk::{Client, KeyPair};
+
+<span class="c-key">async fn</span> <span class="c-fn">main</span>() -&gt; Result&lt;()&gt; {
+  <span class="c-key">let</span> client = Client::<span class="c-fn">connect</span>(<span class="c-str">"https://api.curs3d.fr"</span>).<span class="c-fn">await</span>?;
+  <span class="c-key">let</span> kp = KeyPair::<span class="c-fn">load</span>(<span class="c-str">"wallet.json"</span>, <span class="c-str">"password"</span>)?;
+
+  <span class="c-key">let</span> tx = client.<span class="c-fn">tx</span>()
+    .<span class="c-fn">transfer</span>(<span class="c-str">"CUR…"</span>, <span class="c-num">100_000_000</span>) <span class="c-comment">// 100 CUR in microtokens</span>
+    .<span class="c-fn">sign</span>(&amp;kp)
+    .<span class="c-fn">broadcast</span>().<span class="c-fn">await</span>?;
+
+  <span class="c-fn">println!</span>(<span class="c-str">"hash = {}"</span>, tx.hash);
+  <span class="c-key">Ok</span>(())
+}</pre>
+          </div>
+        </div>
+
+        <div class="quick-start reveal">
+          <h3>JavaScript</h3>
+          <div class="code-block">
+            <div class="code-head">
+              <div class="code-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+              <div class="code-title">node transfer.mjs</div>
+              <button class="code-copy" data-done="COPIED" aria-label="Copy code">COPY</button>
+            </div>
+<pre class="code-body"><span class="c-key">import</span> { Client, dilithium } <span class="c-key">from</span> <span class="c-str">"@curs3d/sdk"</span>;
+
+<span class="c-key">const</span> c = <span class="c-key">await</span> Client.<span class="c-fn">connect</span>(<span class="c-str">"https://api.curs3d.fr"</span>);
+<span class="c-key">const</span> kp = <span class="c-key">await</span> dilithium.<span class="c-fn">loadWallet</span>(<span class="c-str">"./wallet.json"</span>, process.env.PASS);
+
+<span class="c-key">const</span> tx = <span class="c-key">await</span> c.tx
+  .<span class="c-fn">transfer</span>(<span class="c-str">"CUR…"</span>, <span class="c-num">100_000_000n</span>)
+  .<span class="c-fn">sign</span>(kp)
+  .<span class="c-fn">broadcast</span>();
+
+console.<span class="c-fn">log</span>(<span class="c-str">"hash ="</span>, tx.hash);</pre>
+          </div>
+        </div>
+
+        <div class="quick-start reveal">
+          <h3>Python</h3>
+          <div class="code-block">
+            <div class="code-head">
+              <div class="code-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+              <div class="code-title">python transfer.py</div>
+              <button class="code-copy" data-done="COPIED" aria-label="Copy code">COPY</button>
+            </div>
+<pre class="code-body"><span class="c-key">import</span> asyncio
+<span class="c-key">from</span> curs3d <span class="c-key">import</span> Client, load_wallet
+
+<span class="c-key">async def</span> <span class="c-fn">main</span>():
+    c = <span class="c-key">await</span> Client.connect(<span class="c-str">"https://api.curs3d.fr"</span>)
+    kp = load_wallet(<span class="c-str">"wallet.json"</span>, <span class="c-str">"password"</span>)
+
+    tx = <span class="c-key">await</span> (
+        c.tx
+        .transfer(<span class="c-str">"CUR…"</span>, <span class="c-num">100_000_000</span>)
+        .sign(kp)
+        .broadcast()
+    )
+    <span class="c-fn">print</span>(<span class="c-str">"hash ="</span>, tx.hash)
+
+asyncio.run(main())</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="section-tag">03 / RESOURCES</div>
+          <h2 class="section-title">
+            <span data-lang="en" class="lang-show">Everything else <em>at hand</em>.</span>
+            <span data-lang="fr">Tout le reste <em>à portée</em>.</span>
+          </h2>
+        </div>
+
+        <div class="dev-grid reveal" data-stagger>
+          <article class="dev-card">
+            <div class="dev-card-num">/api</div>
+            <div class="dev-card-title">OpenAPI 3.1 reference</div>
+            <p data-lang="en" class="lang-show">Interactive Stoplight Elements rendering of all 27 HTTP endpoints, the WebSocket event feed, and the Ethereum-compatible JSON-RPC subset. Click any operation for live cURL examples.</p>
+            <p data-lang="fr">Rendu interactif Stoplight Elements de tous les 27 endpoints HTTP, du flux WebSocket et du sous-ensemble JSON-RPC compatible Ethereum. Cliquez sur une opération pour des exemples cURL.</p>
+            <a class="btn" href="/api">Explore API<span class="arrow" aria-hidden="true">→</span></a>
+          </article>
+          <article class="dev-card">
+            <div class="dev-card-num">/examples</div>
+            <div class="dev-card-title"><span data-lang="en" class="lang-show">Step-by-step examples</span><span data-lang="fr">Exemples pas à pas</span></div>
+            <p data-lang="en" class="lang-show">From running a node to deploying a CUR-20 token, sending tokens, listening to WebSocket events, and using all three SDKs.</p>
+            <p data-lang="fr">Du lancement d'un node au déploiement d'un token CUR-20, envoi de tokens, écoute d'événements WebSocket, et usage des trois SDKs.</p>
+            <a class="btn" href="/examples"><span data-lang="en" class="lang-show">Open</span><span data-lang="fr">Ouvrir</span><span class="arrow" aria-hidden="true">→</span></a>
+          </article>
+          <article class="dev-card">
+            <div class="dev-card-num">/faucet</div>
+            <div class="dev-card-title"><span data-lang="en" class="lang-show">Testnet faucet</span><span data-lang="fr">Faucet testnet</span></div>
+            <p data-lang="en" class="lang-show">Get 100 CUR for testing. One request per address and per IP every hour. Captcha required.</p>
+            <p data-lang="fr">Recevez 100 CUR pour tester. Une requête par adresse et par IP, toutes les heures. Captcha requis.</p>
+            <a class="btn" href="/faucet"><span data-lang="en" class="lang-show">Get tokens</span><span data-lang="fr">Recevoir</span><span class="arrow" aria-hidden="true">→</span></a>
+          </article>
+          <article class="dev-card">
+            <div class="dev-card-num">/run-validator</div>
+            <div class="dev-card-title"><span data-lang="en" class="lang-show">Run a validator</span><span data-lang="fr">Lancer un validateur</span></div>
+            <p data-lang="en" class="lang-show">Operate a node in 10 steps: install, generate genesis-aware keys, peer with the bootnode, and observe finalisation.</p>
+            <p data-lang="fr">Opérez un node en 10 étapes : installer, générer des clés conformes au genesis, peering avec le bootnode, observer la finalité.</p>
+            <a class="btn" href="/run-validator"><span data-lang="en" class="lang-show">Open guide</span><span data-lang="fr">Ouvrir le guide</span><span class="arrow" aria-hidden="true">→</span></a>
+          </article>
+          <article class="dev-card">
+            <div class="dev-card-num">github</div>
+            <div class="dev-card-title">Source code</div>
+            <p data-lang="en" class="lang-show">Apache-2.0. Rust nightly. ~31&#8239;k LOC across consensus, crypto, networking, storage, VM and API. Issues and PRs welcome.</p>
+            <p data-lang="fr">Apache-2.0. Rust nightly. ~31&#8239;k LOC répartis sur consensus, crypto, networking, storage, VM et API. Issues et PRs bienvenues.</p>
+            <a class="btn" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener noreferrer">GitHub<span class="arrow" aria-hidden="true">↗</span></a>
+          </article>
+          <article class="dev-card">
+            <div class="dev-card-num">/community</div>
+            <div class="dev-card-title"><span data-lang="en" class="lang-show">Discord &amp; community</span><span data-lang="fr">Discord &amp; communauté</span></div>
+            <p data-lang="en" class="lang-show">Real-time chat with maintainers and other validators. Discord invite, X/Twitter, newsletter and brand assets.</p>
+            <p data-lang="fr">Discussion en temps réel avec mainteneurs et validateurs. Invitation Discord, X/Twitter, newsletter et brand assets.</p>
+            <a class="btn" href="/community"><span data-lang="en" class="lang-show">Join</span><span data-lang="fr">Rejoindre</span><span class="arrow" aria-hidden="true">→</span></a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta-block">
+      <div class="wrap reveal">
+        <div class="cta-eyebrow">
+          <span data-lang="en" class="lang-show">// SHIP SOMETHING</span>
+          <span data-lang="fr">// LIVREZ QUELQUE CHOSE</span>
+        </div>
+        <h2 class="cta-title">
+          <span data-lang="en" class="lang-show">Read the API.<br>Pick an SDK. <em>Send your first transaction.</em></span>
+          <span data-lang="fr">Lisez l'API.<br>Choisissez un SDK. <em>Envoyez votre première transaction.</em></span>
+        </h2>
+        <div class="cta-actions">
+          <a class="btn btn-primary" href="/api" data-magnetic>API reference<span class="arrow" aria-hidden="true">→</span></a>
+          <a class="btn" href="/examples" data-magnetic><span data-lang="en" class="lang-show">Examples</span><span data-lang="fr">Exemples</span><span class="arrow" aria-hidden="true">→</span></a>
+          <a class="btn" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener noreferrer" data-magnetic>GitHub<span class="arrow" aria-hidden="true">↗</span></a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div class="footer-grid">
+        <div class="footer-col">
+          <a class="logo" href="/" style="margin-bottom:18px;" aria-label="CURS3D — home">
+            <span class="logo-mark" aria-hidden="true"></span>
+            <span>CURS3D <small>L1</small></span>
+          </a>
+          <p data-lang="en" class="lang-show">A post-quantum Layer 1 blockchain. Conservative cryptography, BFT proof-of-stake, WASM execution. Built in the open.</p>
+          <p data-lang="fr">Une blockchain Layer 1 post-quantique. Cryptographie conservatrice, proof-of-stake BFT, exécution WASM. Construite à découvert.</p>
+        </div>
+        <div class="footer-col"><h4>Protocol</h4><ul><li><a href="/stack">Stack</a></li><li><a href="/docs">Documentation</a></li><li><a href="/whitepaper">Whitepaper</a></li><li><a href="/tokenomics">Tokenomics</a></li></ul></div>
+        <div class="footer-col"><h4>Network</h4><ul><li><a href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer">Explorer</a></li><li><a href="/run-validator">Run a validator</a></li><li><a href="/faucet">Faucet</a></li><li><a href="/api">API reference</a></li></ul></div>
+        <div class="footer-col"><h4>Project</h4><ul><li><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener noreferrer">GitHub</a></li><li><a href="/governance">Governance</a></li><li><a href="/security">Security</a></li><li><a href="/community">Community</a></li></ul></div>
+      </div>
+      <div class="footer-bottom">
+        <span>&copy; 2026 CURS3D PROTOCOL · APACHE-2.0</span>
+        <span class="hash">CHAIN-ID <b style="color:var(--fg)" data-stat="chainid">curs3d-public-testnet</b></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="landing.js?v=6" defer></script>
+</body>
+</html>

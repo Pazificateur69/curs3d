@@ -1,0 +1,18 @@
+# humanstxt.org / curs3d.fr
+
+/* TEAM */
+Founder & lead engineer: Pazent
+GitHub: https://github.com/Pazificateur69/curs3d
+
+/* THANKS */
+- NIST PQC project (FIPS 202, FIPS 204)
+- The libp2p, hyper, wasmer, sled, pqcrypto-dilithium maintainers
+- Everyone running an early validator on testnet-1
+
+/* SITE */
+Last update: 2026-05-04
+Standards: HTML5, CSS3, ES2020
+Components: hand-written; no framework
+Fonts: Space Grotesk, IBM Plex Sans, JetBrains Mono
+Backend: Rust (nightly), libp2p, hyper, wasmer
+License: Apache-2.0

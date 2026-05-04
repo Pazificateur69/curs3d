@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CURS3D — Community · GitHub, Discord, X, Newsletter</title>
+  <meta name="description" content="Join the CURS3D community: GitHub, Discord, X/Twitter, newsletter, and brand assets. Talk to maintainers, run a validator, ship a contract." />
+  <link rel="canonical" href="https://curs3d.fr/community" />
+  <link rel="alternate" hreflang="en" href="https://curs3d.fr/community" />
+  <link rel="alternate" hreflang="fr" href="https://curs3d.fr/community" />
+  <link rel="alternate" hreflang="x-default" href="https://curs3d.fr/community" />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="CURS3D — Community" />
+  <meta property="og:description" content="Join the post-quantum L1 community: GitHub, Discord, X, newsletter." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://curs3d.fr/community" />
+  <meta property="og:image" content="https://curs3d.fr/og-image.svg" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:locale:alternate" content="fr_FR" />
+  <meta property="og:site_name" content="CURS3D" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:site" content="@curs3d" />
+  <meta name="twitter:title" content="CURS3D — Community" />
+  <meta name="twitter:description" content="GitHub, Discord, X, newsletter, and brand assets for the CURS3D community." />
+  <meta name="twitter:image" content="https://curs3d.fr/og-image.svg" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://api.curs3d.fr" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="landing.css?v=6" />
+
+  <style>
+    .channels {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1px;
+      background: var(--line);
+      border: 1px solid var(--line);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      margin-bottom: 60px;
+    }
+    .channel {
+      background: var(--bg-1);
+      padding: 28px;
+      transition: background .2s;
+      display: flex;
+      flex-direction: column;
+    }
+    .channel:hover { background: var(--bg-2); }
+    .channel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 18px;
+    }
+    .channel-num {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .14em;
+      color: var(--mute);
+    }
+    .channel-status {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .12em;
+      color: var(--green);
+      text-transform: uppercase;
+    }
+    .channel-status.soon { color: var(--gold); }
+    .channel h3 {
+      font-family: var(--display);
+      font-size: 22px;
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: var(--fg);
+    }
+    .channel p {
+      font-size: 14px;
+      color: var(--fg-1);
+      line-height: 1.6;
+      margin-bottom: 18px;
+      flex-grow: 1;
+    }
+    .channel a.btn { align-self: flex-start; font-size: 11.5px; padding: 6px 12px; }
+  </style>
+</head>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+  <div class="scroll-progress"></div>
+
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="logo" href="/" data-magnetic aria-label="CURS3D — home">
+        <span class="logo-mark" aria-hidden="true"></span>
+        <span>CURS3D <small>L1</small></span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/docs">Docs</a>
+        <a href="/stack">Stack</a>
+        <a href="/run-validator"><span data-lang="en" class="lang-show">Run Validator</span><span data-lang="fr">Validateur</span></a>
+        <a href="/governance"><span data-lang="en" class="lang-show">Governance</span><span data-lang="fr">Gouvernance</span></a>
+        <a href="/tokenomics">Tokenomics</a>
+        <a href="/whitepaper">Whitepaper</a>
+        <a href="/examples"><span data-lang="en" class="lang-show">Examples</span><span data-lang="fr">Exemples</span></a>
+      </nav>
+      <div class="nav-actions">
+        <div class="lang-toggle" role="tablist" aria-label="Language">
+          <button data-lang-set="en" class="active" role="tab" aria-selected="true" aria-label="English">EN</button>
+          <button data-lang-set="fr" role="tab" aria-selected="false" aria-label="Français">FR</button>
+        </div>
+        <a class="btn" href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer" data-magnetic>
+          <span data-lang="en" class="lang-show">Explorer</span>
+          <span data-lang="fr">Explorateur</span>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="btn btn-primary" href="/run-validator" data-magnetic>
+          <span data-lang="en" class="lang-show">Run a node</span>
+          <span data-lang="fr">Lancer un nœud</span>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+        <button class="nav-burger" aria-label="Open menu" aria-expanded="false"><span aria-hidden="true"></span></button>
+      </div>
+    </div>
+  </header>
+
+  <div class="statusbar" aria-label="Network status">
+    <div class="wrap statusbar-inner">
+      <span class="status-item">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span data-lang="en" class="lang-show">TESTNET</span>
+        <span data-lang="fr">TESTNET</span>
+        <b data-live-source aria-live="polite">SIM</b>
+      </span>
+      <span class="status-item" aria-live="polite">BLOCK <b data-stat="block">—</b></span>
+      <span class="status-item" aria-live="polite">EPOCH <b data-stat="epoch">—</b></span>
+      <span class="status-item" aria-live="polite">VALIDATORS <b data-stat="validators">—</b></span>
+      <span class="statusbar-ticker" aria-hidden="true"><span class="t-dyn">COMMUNITY // OPEN SOURCE · OPEN DOORS</span></span>
+    </div>
+  </div>
+
+  <main id="main">
+    <section class="page-hero">
+      <div class="wrap">
+        <span class="eyebrow"><span data-lang="en" class="lang-show">Community</span><span data-lang="fr">Communauté</span></span>
+        <h1>
+          <span data-lang="en" class="lang-show">Built in the <em>open</em>.</span>
+          <span data-lang="fr">Construit à <em>découvert</em>.</span>
+        </h1>
+        <p class="lede">
+          <span data-lang="en" class="lang-show">CURS3D is open-source and growing. Watch the source, drop into Discord, follow on X, or get the newsletter for testnet milestones and audit reports.</span>
+          <span data-lang="fr">CURS3D est open-source et grandit. Suivez le code, rejoignez Discord, suivez-nous sur X, ou abonnez-vous à la newsletter pour les jalons testnet et les rapports d'audit.</span>
+        </p>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="section-tag">01 / CHANNELS</div>
+          <h2 class="section-title">
+            <span data-lang="en" class="lang-show">Where the <em>conversation</em> is.</span>
+            <span data-lang="fr">Où la <em>conversation</em> a lieu.</span>
+          </h2>
+        </div>
+
+        <div class="channels reveal" data-stagger>
+          <article class="channel">
+            <div class="channel-head">
+              <span class="channel-num">01 / CODE</span>
+              <span class="channel-status">LIVE</span>
+            </div>
+            <h3>GitHub</h3>
+            <p data-lang="en" class="lang-show">Source code, issues, pull requests, security advisories, weekly commit log. Apache-2.0. Rust nightly.</p>
+            <p data-lang="fr">Code source, issues, pull requests, security advisories, journal de commits hebdomadaire. Apache-2.0. Rust nightly.</p>
+            <a class="btn" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener noreferrer">github.com/Pazificateur69/curs3d<span class="arrow" aria-hidden="true">↗</span></a>
+          </article>
+
+          <article class="channel">
+            <div class="channel-head">
+              <span class="channel-num">02 / CHAT</span>
+              <span class="channel-status soon"><span data-lang="en" class="lang-show">SOON</span><span data-lang="fr">BIENTÔT</span></span>
+            </div>
+            <h3>Discord</h3>
+            <p data-lang="en" class="lang-show">Real-time discussion with maintainers and validator operators. Channels for protocol, dev support, and node ops. Invite link goes here once the server is open to the public.</p>
+            <p data-lang="fr">Discussion en temps réel avec mainteneurs et opérateurs de validateurs. Canaux protocole, support dev, et ops de node. Le lien d'invitation arrive quand le serveur sera public.</p>
+            <a class="btn" href="#contact-discord" aria-disabled="true"><span data-lang="en" class="lang-show">Coming soon</span><span data-lang="fr">Bientôt</span><span class="arrow" aria-hidden="true">→</span></a>
+          </article>
+
+          <article class="channel">
+            <div class="channel-head">
+              <span class="channel-num">03 / NEWS</span>
+              <span class="channel-status soon"><span data-lang="en" class="lang-show">SOON</span><span data-lang="fr">BIENTÔT</span></span>
+            </div>
+            <h3>X / Twitter</h3>
+            <p data-lang="en" class="lang-show">Build-in-public updates, testnet milestones, deep-dives on consensus and crypto choices. Handle <code>@curs3d</code> reserved.</p>
+            <p data-lang="fr">Mises à jour build-in-public, jalons testnet, deep-dives sur les choix de consensus et de crypto. Handle <code>@curs3d</code> réservé.</p>
+            <a class="btn" href="https://x.com/curs3d" target="_blank" rel="noopener noreferrer"><span data-lang="en" class="lang-show">Follow</span><span data-lang="fr">Suivre</span><span class="arrow" aria-hidden="true">↗</span></a>
+          </article>
+
+          <article class="channel">
+            <div class="channel-head">
+              <span class="channel-num">04 / NEWSLETTER</span>
+              <span class="channel-status">LIVE</span>
+            </div>
+            <h3>Newsletter</h3>
+            <p data-lang="en" class="lang-show">Quarterly digest of testnet milestones, audit reports, ecosystem launches. No spam, no marketing fluff. Email a one-line subscribe and you are in.</p>
+            <p data-lang="fr">Récapitulatif trimestriel des jalons testnet, rapports d'audit, lancements ecosystème. Aucun spam, aucun blabla marketing. Envoyez un e-mail d'inscription en une ligne et c'est fait.</p>
+            <a class="btn" href="mailto:newsletter@curs3d.fr?subject=Subscribe%20me&amp;body=Add%20me%20to%20the%20CURS3D%20newsletter%20please.">newsletter@curs3d.fr<span class="arrow" aria-hidden="true">→</span></a>
+          </article>
+
+          <article class="channel">
+            <div class="channel-head">
+              <span class="channel-num">05 / SECURITY</span>
+              <span class="channel-status">LIVE</span>
+            </div>
+            <h3><span data-lang="en" class="lang-show">Security disclosure</span><span data-lang="fr">Divulgation de sécurité</span></h3>
+            <p data-lang="en" class="lang-show">Found something we missed? Email security@curs3d.fr or open a private GitHub Security Advisory. Bug-bounty program forthcoming.</p>
+            <p data-lang="fr">Vous avez trouvé quelque chose ? Écrivez à security@curs3d.fr ou ouvrez un GitHub Security Advisory privé. Programme de bug bounty à venir.</p>
+            <a class="btn" href="/security"><span data-lang="en" class="lang-show">Security policy</span><span data-lang="fr">Politique de sécurité</span><span class="arrow" aria-hidden="true">→</span></a>
+          </article>
+
+          <article class="channel">
+            <div class="channel-head">
+              <span class="channel-num">06 / BRAND</span>
+              <span class="channel-status soon"><span data-lang="en" class="lang-show">SOON</span><span data-lang="fr">BIENTÔT</span></span>
+            </div>
+            <h3><span data-lang="en" class="lang-show">Brand assets</span><span data-lang="fr">Brand assets</span></h3>
+            <!-- The /brand zip will be added once the design system is locked. -->
+            <p data-lang="en" class="lang-show">Logo, wordmark, color tokens, OG image. SVG and PNG. Use them on integrations, exchange listings, and validator pages.</p>
+            <p data-lang="fr">Logo, wordmark, tokens de couleur, image OG. SVG et PNG. À utiliser sur les intégrations, listings d'exchange, et pages de validateur.</p>
+            <a class="btn" href="#brand-soon" aria-disabled="true"><span data-lang="en" class="lang-show">Coming soon</span><span data-lang="fr">Bientôt</span><span class="arrow" aria-hidden="true">→</span></a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <div class="section-tag">02 / CONDUCT</div>
+          <h2 class="section-title">
+            <span data-lang="en" class="lang-show">Some <em>house rules</em>.</span>
+            <span data-lang="fr">Quelques <em>règles de la maison</em>.</span>
+          </h2>
+        </div>
+        <div class="prose reveal" style="max-width:60ch;">
+          <p data-lang="en" class="lang-show">All community spaces follow the spirit of the Contributor Covenant. Be excellent to each other. Discuss the protocol, not the people. Disagree on technical merits in public, settle personal conflicts in private.</p>
+          <p data-lang="fr">Tous les espaces communautaires suivent l'esprit du Contributor Covenant. Soyez bienveillants. Discutez du protocole, pas des personnes. Désaccordez-vous publiquement sur les mérites techniques, réglez les conflits personnels en privé.</p>
+          <p data-lang="en" class="lang-show">No financial advice. No price talk. No referral spam. We are building infrastructure — keep the signal high.</p>
+          <p data-lang="fr">Aucun conseil financier. Aucun bavardage sur les prix. Aucun spam de referral. On construit de l'infrastructure — gardez le ratio signal élevé.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta-block">
+      <div class="wrap reveal">
+        <div class="cta-eyebrow">
+          <span data-lang="en" class="lang-show">// SAY HELLO</span>
+          <span data-lang="fr">// DITES BONJOUR</span>
+        </div>
+        <h2 class="cta-title">
+          <span data-lang="en" class="lang-show">Open the source.<br>Open an issue. <em>Open a conversation.</em></span>
+          <span data-lang="fr">Ouvrez le code.<br>Ouvrez une issue. <em>Ouvrez la conversation.</em></span>
+        </h2>
+        <div class="cta-actions">
+          <a class="btn btn-primary" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener noreferrer" data-magnetic>GitHub<span class="arrow" aria-hidden="true">↗</span></a>
+          <a class="btn" href="mailto:newsletter@curs3d.fr?subject=Subscribe%20me" data-magnetic><span data-lang="en" class="lang-show">Newsletter</span><span data-lang="fr">Newsletter</span><span class="arrow" aria-hidden="true">→</span></a>
+          <a class="btn" href="/security" data-magnetic><span data-lang="en" class="lang-show">Report a vulnerability</span><span data-lang="fr">Signaler une vulnérabilité</span><span class="arrow" aria-hidden="true">→</span></a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <div class="footer-grid">
+        <div class="footer-col">
+          <a class="logo" href="/" style="margin-bottom:18px;" aria-label="CURS3D — home">
+            <span class="logo-mark" aria-hidden="true"></span>
+            <span>CURS3D <small>L1</small></span>
+          </a>
+          <p data-lang="en" class="lang-show">A post-quantum Layer 1 blockchain. Conservative cryptography, BFT proof-of-stake, WASM execution. Built in the open.</p>
+          <p data-lang="fr">Une blockchain Layer 1 post-quantique. Cryptographie conservatrice, proof-of-stake BFT, exécution WASM. Construite à découvert.</p>
+        </div>
+        <div class="footer-col"><h4>Protocol</h4><ul><li><a href="/stack">Stack</a></li><li><a href="/docs">Documentation</a></li><li><a href="/whitepaper">Whitepaper</a></li><li><a href="/tokenomics">Tokenomics</a></li></ul></div>
+        <div class="footer-col"><h4>Network</h4><ul><li><a href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer">Explorer</a></li><li><a href="/run-validator">Run a validator</a></li><li><a href="/faucet">Faucet</a></li><li><a href="/api">API reference</a></li></ul></div>
+        <div class="footer-col"><h4>Project</h4><ul><li><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener noreferrer">GitHub</a></li><li><a href="/governance">Governance</a></li><li><a href="/security">Security</a></li><li><a href="/community">Community</a></li></ul></div>
+      </div>
+      <div class="footer-bottom">
+        <span>&copy; 2026 CURS3D PROTOCOL · APACHE-2.0</span>
+        <span class="hash">CHAIN-ID <b style="color:var(--fg)" data-stat="chainid">curs3d-public-testnet</b></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="landing.js?v=6" defer></script>
+</body>
+</html>
