@@ -73,7 +73,7 @@ def verify_token(token: str, remote_ip: str) -> bool:
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
-    def do_POST(self):
+    def _verify(self):
         if self.path != "/verify":
             self.send_response(404)
             self.end_headers()
@@ -92,6 +92,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         else:
             self.send_response(403)
             self.end_headers()
+
+    # nginx auth_request issues GET by default; client-facing POST is also fine.
+    do_GET = _verify
+    do_POST = _verify
 
     def log_message(self, fmt, *args):
         log.info("%s - %s", self.client_address[0], fmt % args)
