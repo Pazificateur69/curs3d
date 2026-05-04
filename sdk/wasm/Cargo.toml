@@ -1,0 +1,60 @@
+[package]
+name = "curs3d-wallet-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "Browser-side crypto bundle for CURS3D (Dilithium-L5 / ML-DSA-87 + Argon2id + AES-256-GCM)."
+license = "MIT"
+repository = "https://github.com/Pazificateur69/curs3d"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Post-quantum signatures (FIPS-204 ML-DSA-87 — pure Rust, wasm32-friendly).
+# IMPORTANT: signatures produced here are NOT verifiable by the node's
+# `pqcrypto-dilithium 0.5.0` (NIST round 3). See README "Interop" section.
+ml-dsa = { version = "=0.1.0-rc.9", default-features = false, features = [
+    "rand_core",
+    "alloc",
+    "zeroize",
+] }
+signature = { version = "3.0.0", default-features = false, features = ["rand_core"] }
+
+# wasm-bindgen layer
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+serde-wasm-bindgen = "0.6"
+
+# Randomness — both the 0.2 and 0.3 lines must be configured for the browser
+# because the dependency tree pulls both transitively.
+getrandom = { version = "0.2", features = ["js"] }
+getrandom_v3 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
+
+# Wallet encryption (matches node's wallet::hardened_argon2 parameters)
+argon2 = { version = "0.5", default-features = false, features = ["alloc"] }
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+
+# Hashing for address derivation (CUR + EIP-55 checksum)
+sha3 = { version = "0.10", default-features = false }
+
+# Misc
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bincode = "1"
+hex = "0.4"
+zeroize = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+hex-literal = "0.4"
+# Used only for the optional native interop sanity check (verify that our
+# library's verify path agrees with itself across encoded boundaries).
+# Pulling pqcrypto-dilithium here is intentionally avoided — it does not
+# compile to wasm32 and is not required for these tests.
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

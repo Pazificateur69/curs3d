@@ -1,0 +1,10 @@
+# Cargo build artefacts
+/target/
+
+# wasm-pack output (regenerate via `wasm-pack build`)
+/pkg/
+
+# Editor cruft
+*.swp
+*.swo
+.DS_Store
