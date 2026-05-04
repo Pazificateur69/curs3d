@@ -1113,6 +1113,7 @@ async fn deploy_token(
         signature: None,
         gas_limit: 0,
         data,
+        evm_raw_tx: Vec::new(),
     };
     tx.sign(&w.keypair);
 
@@ -1210,6 +1211,7 @@ async fn transfer_token(
         signature: None,
         gas_limit: 0,
         data,
+        evm_raw_tx: Vec::new(),
     };
     tx.sign(&w.keypair);
 
