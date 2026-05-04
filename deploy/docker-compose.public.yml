@@ -19,6 +19,8 @@ services:
       - "/run/curs3d/validator.password"
       - "--rpc-addr"
       - "0.0.0.0:9545"
+      - "--http-addr"
+      - "0.0.0.0:8080"
       - "--genesis-config"
       - "/etc/curs3d/genesis.public-testnet.json"
       - "--public-addr"

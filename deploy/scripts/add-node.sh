@@ -13,7 +13,10 @@ fi
 NODE_NUM=$1
 BOOTNODE_IP=$2
 BOOTNODE_PEERID=$3
-MULTINODE_DIR="/tmp/curs3d-multinode"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+MULTINODE_DIR="${MULTINODE_DIR:-/tmp/curs3d-multinode}"
+BOOTNODE_MULTIADDR="/ip4/${BOOTNODE_IP}/tcp/4337/p2p/${BOOTNODE_PEERID}"
 
 # Oracle Cloud config
 COMPARTMENT="ocid1.tenancy.oc1..aaaaaaaalu3mxlfrfi3nb5lqazygqtj6um2epn4ra2s2hp4kblbrs3zbxmva"
@@ -23,6 +26,19 @@ SUBNET="ocid1.subnet.oc1.eu-marseille-1.aaaaaaaajggxyny36gmrjp2mb2dqhfedunmpg4w6
 SSH_KEY="/tmp/curs3d_ssh_pub.pub"
 
 echo "=== Creating curs3d-node${NODE_NUM} ==="
+
+for required in \
+    "${MULTINODE_DIR}/validator${NODE_NUM}.json" \
+    "${MULTINODE_DIR}/validator${NODE_NUM}.password" \
+    "${MULTINODE_DIR}/genesis.json" \
+    "${REPO_DIR}/deploy/scripts/setup-node.sh" \
+    "${REPO_DIR}/deploy/scripts/curs3d-healthcheck.sh" \
+    "${REPO_DIR}/deploy/systemd/curs3d-healthcheck.cron"; do
+    if [ ! -f "$required" ]; then
+        echo "Missing required file: $required"
+        exit 1
+    fi
+done
 
 # 1. Launch instance
 RESULT=$(oci compute instance launch \
@@ -83,13 +99,14 @@ echo "Installing deps + building (this takes ~10 min)..."
 ssh -i ~/.ssh/id_ed25519_server ubuntu@$IP "sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libssl-dev nginx curl jq ca-certificates 2>&1 | tail -1 && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y 2>&1 | tail -1 && source ~/.cargo/env && cd /home/ubuntu/curs3d && cargo build --release 2>&1 | tail -3"
 
 # 7. Setup
-scp -i ~/.ssh/id_ed25519_server ${MULTINODE_DIR}/setup-node.sh ubuntu@$IP:/home/ubuntu/
-ssh -i ~/.ssh/id_ed25519_server ubuntu@$IP "bash /home/ubuntu/setup-node.sh ${NODE_NUM} ${BOOTNODE_IP}"
+scp -i ~/.ssh/id_ed25519_server \
+    "${REPO_DIR}/deploy/scripts/setup-node.sh" \
+    "${REPO_DIR}/deploy/scripts/curs3d-healthcheck.sh" \
+    "${REPO_DIR}/deploy/systemd/curs3d-healthcheck.cron" \
+    ubuntu@$IP:/home/ubuntu/
+ssh -i ~/.ssh/id_ed25519_server ubuntu@$IP "bash /home/ubuntu/setup-node.sh ${NODE_NUM} ${IP} ${BOOTNODE_MULTIADDR}"
 
-# 8. Fix bootnode flag in systemd
-ssh -i ~/.ssh/id_ed25519_server ubuntu@$IP "sudo sed -i 's|--boot-nodes /ip4/${BOOTNODE_IP}/tcp/4337|--bootnode /ip4/${BOOTNODE_IP}/tcp/4337/p2p/${BOOTNODE_PEERID}|' /etc/systemd/system/curs3d.service && sudo systemctl daemon-reload"
-
-# 9. Start
+# 8. Start
 ssh -i ~/.ssh/id_ed25519_server ubuntu@$IP "sudo systemctl enable curs3d && sudo systemctl start curs3d"
 sleep 5
 

@@ -69,6 +69,8 @@ echo "[6/9] Installing systemd service..."
 sed -e "s/node.example.com/${DOMAIN}/g" \
     -e "s/explorer.example.com/${EXPLORER_DOMAIN}/g" \
     "$REPO_DIR/deploy/systemd/curs3d.service" > /etc/systemd/system/curs3d.service
+install -m 755 "$REPO_DIR/deploy/scripts/curs3d-healthcheck.sh" /usr/local/bin/curs3d-healthcheck.sh
+install -m 644 "$REPO_DIR/deploy/systemd/curs3d-healthcheck.cron" /etc/cron.d/curs3d-healthcheck
 systemctl daemon-reload
 
 # ─── 7. TLS certificates (BEFORE nginx TLS config) ──────────────

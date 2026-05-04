@@ -1,51 +1,99 @@
 services:
+  localnet-init:
+    build: .
+    container_name: curs3d-localnet-init
+    entrypoint: ["/usr/local/bin/init-localnet"]
+    volumes:
+      - localnet-shared:/localnet
+
   node1:
     build: .
-    container_name: curs3d-validator
+    container_name: curs3d-validator-1
     command:
       - "node"
       - "--port"
       - "4337"
       - "--data-dir"
       - "/data"
+      - "--validator-wallet"
+      - "/localnet/node1/validator.json"
+      - "--validator-password-file"
+      - "/localnet/node1/validator.password"
       - "--rpc-addr"
       - "0.0.0.0:9545"
+      - "--http-addr"
+      - "0.0.0.0:8080"
+      - "--genesis-config"
+      - "/localnet/genesis.localnet.json"
+      - "--public-addr"
+      - "/dns4/node1/tcp/4337"
     ports:
       - "4337:4337"
       - "9545:9545"
       - "8080:8080"
     volumes:
+      - localnet-shared:/localnet:ro
       - node1-data:/data
     networks:
       - curs3d-net
+    depends_on:
+      localnet-init:
+        condition: service_completed_successfully
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   node2:
     build: .
-    container_name: curs3d-relay
+    container_name: curs3d-validator-2
     command:
       - "node"
       - "--port"
       - "4337"
       - "--data-dir"
       - "/data"
-      - "--rpc-addr"
-      - "0.0.0.0:9545"
+      - "--validator-wallet"
+      - "/localnet/node2/validator.json"
+      - "--validator-password-file"
+      - "/localnet/node2/validator.password"
       - "--bootnode"
       - "/dns4/node1/tcp/4337"
+      - "--rpc-addr"
+      - "0.0.0.0:9545"
+      - "--http-addr"
+      - "0.0.0.0:8080"
+      - "--genesis-config"
+      - "/localnet/genesis.localnet.json"
+      - "--public-addr"
+      - "/dns4/node2/tcp/4337"
     ports:
       - "4338:4337"
       - "9546:9545"
       - "8081:8080"
     volumes:
+      - localnet-shared:/localnet:ro
       - node2-data:/data
     networks:
       - curs3d-net
     depends_on:
-      - node1
+      localnet-init:
+        condition: service_completed_successfully
+      node1:
+        condition: service_started
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 volumes:
+  localnet-shared:
   node1-data:
   node2-data:
 

@@ -37,6 +37,7 @@ RUN apt-get update && \
 
 # Copy the compiled binary
 COPY --from=builder /usr/src/curs3d/target/release/curs3d /usr/local/bin/curs3d
+COPY deploy/scripts/init-localnet.sh /usr/local/bin/init-localnet
 
 # P2P port
 EXPOSE 4337
@@ -44,6 +45,8 @@ EXPOSE 4337
 EXPOSE 9545
 # HTTP API port
 EXPOSE 8080
+
+RUN chmod 755 /usr/local/bin/init-localnet
 
 ENTRYPOINT ["curs3d"]
 CMD ["node"]

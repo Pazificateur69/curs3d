@@ -2,6 +2,8 @@
 Description=CURS3D public bootstrap node
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
 
 [Service]
 Type=simple
@@ -15,7 +17,7 @@ Environment=CURS3D_FAUCET_WALLET=/etc/curs3d/faucet.json
 Environment=CURS3D_FAUCET_PASSWORD_FILE=/etc/curs3d/faucet.password
 Environment=CURS3D_FAUCET_FEE=1000
 Environment=CURS3D_FAUCET_COOLDOWN_FILE=/var/lib/curs3d/faucet_cooldowns.json
-ExecStart=/usr/local/bin/curs3d node --port 4337 --data-dir /var/lib/curs3d --validator-wallet /etc/curs3d/validator.json --validator-password-file /etc/curs3d/validator.password --rpc-addr 127.0.0.1:9545 --genesis-config /etc/curs3d/genesis.public-testnet.json --public-addr /dns4/node.example.com/tcp/4337
+ExecStart=/usr/local/bin/curs3d node --port 4337 --data-dir /var/lib/curs3d --validator-wallet /etc/curs3d/validator.json --validator-password-file /etc/curs3d/validator.password --rpc-addr 127.0.0.1:9545 --http-addr 127.0.0.1:8080 --genesis-config /etc/curs3d/genesis.public-testnet.json --public-addr /dns4/node.example.com/tcp/4337
 Restart=always
 RestartSec=5
 LimitNOFILE=65536
