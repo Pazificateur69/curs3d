@@ -645,9 +645,11 @@ impl Blockchain {
     /// model historical version transitions.
     pub fn protocol_version_at_height(&self, height: u64) -> u32 {
         if self.genesis_config.upgrades.is_empty() {
-            // Default schedule: slot-leader rules apply from the first
-            // post-genesis block onward.
-            return if height == 0 { 1 } else { 3 };
+            // Default: slot-leader rules apply uniformly. We return v3 even
+            // at height 0 so the gossipsub topic name (which is derived from
+            // protocol_version) is identical across freshly-started nodes
+            // and nodes that have already synced a few blocks.
+            return 3;
         }
         let mut version = 1u32;
         for upgrade in &self.genesis_config.upgrades {
