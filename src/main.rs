@@ -1,22 +1,11 @@
-mod api;
-mod consensus;
-mod core;
-mod crypto;
-mod governance;
-mod network;
-mod rpc;
-mod storage;
-mod token;
-mod trie;
-mod vm;
-mod wallet;
+use curs3d::{api, core, crypto, network, rpc, runtime, token, wallet};
 
 use std::sync::Arc;
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use clap::{Parser, Subcommand};
 use libp2p::{Multiaddr, identity};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use tracing::info;
 
 use crate::core::chain::{
@@ -56,7 +45,14 @@ enum Commands {
         #[arg(long, default_value = DEFAULT_RPC_ADDR)]
         rpc_addr: String,
         #[arg(long)]
+        http_addr: Option<String>,
+        #[arg(long)]
         genesis_config: Option<String>,
+        /// Generate a fresh libp2p identity and replace the existing one. The
+        /// previous keyfile is moved aside as `p2p_identity.pb.bak`. This will
+        /// change the node's PeerId — bootstrap peers will need the new id.
+        #[arg(long, default_value_t = false)]
+        reset_p2p_identity: bool,
     },
     Wallet {
         #[arg(short, long, default_value = "wallet.json")]
@@ -115,14 +111,14 @@ enum Commands {
         chain_id: String,
         #[arg(long, default_value = "CURS3D Public Testnet")]
         chain_name: String,
-        #[arg(long)]
-        validator_wallet: String,
-        #[arg(long)]
-        validator_password_file: Option<String>,
-        #[arg(long, default_value_t = 1_500_000)]
-        validator_balance_cur: u64,
-        #[arg(long, default_value_t = 50_000)]
-        validator_stake_cur: u64,
+        #[arg(long = "validator-wallet", required = true, action = clap::ArgAction::Append)]
+        validator_wallets: Vec<String>,
+        #[arg(long = "validator-password-file", action = clap::ArgAction::Append)]
+        validator_password_files: Vec<String>,
+        #[arg(long = "validator-balance-cur", action = clap::ArgAction::Append)]
+        validator_balance_curs: Vec<u64>,
+        #[arg(long = "validator-stake-cur", action = clap::ArgAction::Append)]
+        validator_stake_curs: Vec<u64>,
         #[arg(long)]
         faucet_wallet: Option<String>,
         #[arg(long)]
@@ -194,6 +190,32 @@ enum Commands {
         #[arg(long = "public-addr")]
         public_addrs: Vec<String>,
     },
+    /// Deploy a WebAssembly smart contract built with the curs3d-contract Rust SDK.
+    DeployContract {
+        #[arg(short, long, default_value = "wallet.json")]
+        wallet: String,
+        #[arg(long)]
+        password_file: Option<String>,
+        /// Path to the .wasm file (e.g. target/wasm32-unknown-unknown/release/foo.wasm)
+        #[arg(long)]
+        wasm: String,
+        #[arg(long, default_value_t = 5_000_000)]
+        gas_limit: u64,
+        #[arg(short, long, default_value_t = 1000)]
+        fee: u64,
+        #[arg(long, default_value = DEFAULT_DATA_DIR)]
+        data_dir: String,
+        #[arg(long, default_value = DEFAULT_RPC_ADDR)]
+        rpc_addr: String,
+    },
+    /// Light-client demo: connect to a node API, fetch genesis + headers,
+    /// verify them with the in-tree LightClient, and print the result.
+    LightSync {
+        #[arg(long, default_value = "https://api.curs3d.fr")]
+        api: String,
+        #[arg(long, default_value_t = 64)]
+        limit: u64,
+    },
 }
 
 #[tokio::main]
@@ -210,7 +232,9 @@ async fn main() {
             bootnodes,
             public_addrs,
             rpc_addr,
+            http_addr,
             genesis_config,
+            reset_p2p_identity,
         } => {
             run_node(
                 port,
@@ -220,7 +244,9 @@ async fn main() {
                 &bootnodes,
                 &public_addrs,
                 &rpc_addr,
+                http_addr.as_deref(),
                 genesis_config.as_deref(),
+                reset_p2p_identity,
             )
             .await
         }
@@ -278,10 +304,10 @@ async fn main() {
             output,
             chain_id,
             chain_name,
-            validator_wallet,
-            validator_password_file,
-            validator_balance_cur,
-            validator_stake_cur,
+            validator_wallets,
+            validator_password_files,
+            validator_balance_curs,
+            validator_stake_curs,
             faucet_wallet,
             faucet_password_file,
             faucet_balance_cur,
@@ -292,10 +318,10 @@ async fn main() {
             &output,
             &chain_id,
             &chain_name,
-            &validator_wallet,
-            validator_password_file.as_deref(),
-            validator_balance_cur,
-            validator_stake_cur,
+            &validator_wallets,
+            &validator_password_files,
+            &validator_balance_curs,
+            &validator_stake_curs,
             faucet_wallet.as_deref(),
             faucet_password_file.as_deref(),
             faucet_balance_cur,
@@ -371,6 +397,27 @@ async fn main() {
             data_dir,
             public_addrs,
         } => show_bootnode_addresses(&data_dir, &public_addrs),
+        Commands::DeployContract {
+            wallet,
+            password_file,
+            wasm,
+            gas_limit,
+            fee,
+            data_dir,
+            rpc_addr,
+        } => {
+            deploy_contract(
+                &wallet,
+                password_file.as_deref(),
+                &wasm,
+                gas_limit,
+                fee,
+                &data_dir,
+                &rpc_addr,
+            )
+            .await
+        }
+        Commands::LightSync { api, limit } => light_sync(&api, limit).await,
     }
 }
 
@@ -445,7 +492,9 @@ async fn run_node(
     bootnodes: &[String],
     public_addrs: &[String],
     rpc_addr: &str,
+    http_addr_override: Option<&str>,
     genesis_config_path: Option<&str>,
+    reset_p2p_identity: bool,
 ) {
     println!(
         r#"
@@ -499,8 +548,15 @@ async fn run_node(
     );
 
     let chain = Arc::new(Mutex::new(chain));
+    let http_addr = match resolve_http_addr(rpc_addr, http_addr_override) {
+        Ok(addr) => addr,
+        Err(err) => {
+            eprintln!("Failed to resolve HTTP API address: {}", err);
+            return;
+        }
+    };
 
-    let validator_key = if let Some(wallet_path) = validator_wallet {
+    let (validator_key, validator_address) = if let Some(wallet_path) = validator_wallet {
         let password = resolve_password(
             validator_password_file,
             "CURS3D_VALIDATOR_PASSWORD_FILE",
@@ -510,24 +566,35 @@ async fn run_node(
         match wallet::Wallet::load_auto(wallet_path, &password) {
             Ok(w) => {
                 println!("Validator wallet loaded: {}", w.address);
-                Some(w.keypair)
+                (Some(w.keypair), Some(w.address))
             }
             Err(wallet::WalletError::WrongPassword) => {
-                eprintln!("Wrong password for validator wallet. Running without block production.");
-                None
+                eprintln!("Wrong password for validator wallet.");
+                return;
             }
             Err(e) => {
-                eprintln!(
-                    "Failed to load validator wallet: {}. Running without block production.",
-                    e
-                );
-                None
+                eprintln!("Failed to load validator wallet: {}", e);
+                return;
             }
         }
     } else {
         println!("No validator wallet specified. Running as relay node.");
-        None
+        (None, None)
     };
+
+    let node_role = if validator_key.is_some() {
+        runtime::NodeRole::Validator
+    } else {
+        runtime::NodeRole::Relay
+    };
+    let runtime_state: runtime::SharedRuntimeState =
+        Arc::new(RwLock::new(runtime::RuntimeState::new(
+            node_role,
+            validator_address.clone(),
+            bootnodes.len(),
+            rpc_addr,
+            http_addr.clone(),
+        )));
 
     let (outbound_tx, outbound_rx) = tokio::sync::mpsc::channel(100);
     let (event_tx, _event_rx) = tokio::sync::broadcast::channel::<String>(256);
@@ -543,16 +610,23 @@ async fn run_node(
     let http_chain = Arc::clone(&chain);
     let http_event_tx = event_tx.clone();
     let http_outbound_tx = outbound_tx.clone();
-    let http_addr = rpc_addr.replace("9545", "8080");
+    let http_addr_for_task = http_addr.clone();
+    let http_runtime_state = Arc::clone(&runtime_state);
     let http_task = tokio::spawn(async move {
-        if let Err(e) =
-            api::serve_http(&http_addr, http_chain, http_event_tx, http_outbound_tx).await
+        if let Err(e) = api::serve_http(
+            &http_addr_for_task,
+            http_chain,
+            http_event_tx,
+            http_outbound_tx,
+            http_runtime_state,
+        )
+        .await
         {
             tracing::error!("HTTP API error: {}", e);
         }
     });
 
-    let p2p_identity = match load_or_create_p2p_identity(data_dir) {
+    let p2p_identity = match load_or_create_p2p_identity(data_dir, reset_p2p_identity) {
         Ok(keypair) => keypair,
         Err(err) => {
             eprintln!("Failed to load P2P identity: {}", err);
@@ -582,6 +656,10 @@ async fn run_node(
     .await
     {
         Ok(mut node) => {
+            {
+                let mut state = runtime_state.write().await;
+                state.set_network_online(true);
+            }
             let (active_validators, pending_txs, chain_id, chain_name, genesis_hash) = {
                 let chain_lock = chain.lock().await;
                 (
@@ -601,7 +679,7 @@ async fn run_node(
             println!("Node PeerId: {}", node.peer_id);
             println!("Listening on port {}", port);
             println!("RPC listening on {}", rpc_addr);
-            println!("HTTP API on http://{}", rpc_addr.replace("9545", "8080"));
+            println!("HTTP API on http://{}", http_addr);
             println!("Chain height: {}", chain_height);
             println!("Active validators: {}", active_validators);
             println!("Pending txs: {}", pending_txs);
@@ -634,7 +712,13 @@ async fn run_node(
             println!("Press Ctrl+C to stop the node.");
 
             tokio::select! {
-                _ = node.run_with_chain(chain, outbound_rx, validator_key, Some(event_tx.clone())) => {}
+                _ = node.run_with_chain(
+                    chain,
+                    outbound_rx,
+                    validator_key,
+                    Some(event_tx.clone()),
+                    Arc::clone(&runtime_state),
+                ) => {}
                 rpc_result = rpc_task => {
                     match rpc_result {
                         Ok(Ok(())) => {}
@@ -650,18 +734,7 @@ async fn run_node(
         }
         Err(e) => {
             eprintln!("Failed to start network node: {}", e);
-            eprintln!("Running in offline mode...");
-
-            let chain_lock = chain.lock().await;
-            println!("Blockchain running in offline mode.");
-            println!("Height: {}", chain_lock.height());
-            println!("Latest: {}", chain_lock.latest_block().hash_hex());
-            drop(chain_lock);
-
-            tokio::signal::ctrl_c()
-                .await
-                .expect("failed to listen for ctrl-c");
-            println!("\nShutting down...");
+            eprintln!("Node startup aborted.");
         }
     }
 }
@@ -977,6 +1050,7 @@ async fn unstake_tokens(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn deploy_token(
     wallet_path: &str,
     password_file: Option<&str>,
@@ -1057,6 +1131,7 @@ async fn deploy_token(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn transfer_token(
     wallet_path: &str,
     password_file: Option<&str>,
@@ -1199,6 +1274,158 @@ async fn submit_transaction(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+async fn deploy_contract(
+    wallet_path: &str,
+    password_file: Option<&str>,
+    wasm_path: &str,
+    gas_limit: u64,
+    fee: u64,
+    data_dir: &str,
+    rpc_addr: &str,
+) {
+    let wasm_bytes = match std::fs::read(wasm_path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            eprintln!("Failed to read wasm file {}: {}", wasm_path, e);
+            return;
+        }
+    };
+    if wasm_bytes.is_empty() {
+        eprintln!("Wasm file is empty");
+        return;
+    }
+    if !(wasm_bytes.len() >= 4 && &wasm_bytes[0..4] == b"\0asm") {
+        eprintln!(
+            "File does not look like a WebAssembly module (expected magic '\\0asm', got {:?})",
+            &wasm_bytes[..wasm_bytes.len().min(4)]
+        );
+        return;
+    }
+    println!(
+        "Loaded {} bytes of wasm from {}",
+        wasm_bytes.len(),
+        wasm_path
+    );
+
+    let password = resolve_password(
+        password_file,
+        "CURS3D_WALLET_PASSWORD_FILE",
+        "CURS3D_WALLET_PASSWORD",
+        Some(("Enter wallet password: ", false)),
+    );
+    let w = match wallet::Wallet::load_auto(wallet_path, &password) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("Failed to load wallet: {}", e);
+            return;
+        }
+    };
+
+    let sender_address = wallet::Wallet::derive_address_bytes(&w.keypair.public_key);
+    let account_state = match fetch_account_state(sender_address.clone(), data_dir, rpc_addr).await
+    {
+        Ok(state) => state,
+        Err(err) => {
+            eprintln!("Failed to resolve account state: {}", err);
+            return;
+        }
+    };
+
+    let chain_id = resolve_chain_id(data_dir, rpc_addr)
+        .await
+        .unwrap_or_else(|_| "curs3d-devnet".to_string());
+
+    let mut tx = core::transaction::Transaction::deploy_contract(
+        &chain_id,
+        w.keypair.public_key.clone(),
+        wasm_bytes.clone(),
+        gas_limit,
+        fee,
+        account_state.nonce,
+    );
+    tx.sign(&w.keypair);
+    let tx_hash = tx.hash_hex();
+
+    // Predict the contract address (deterministic: sha3(deployer || nonce))
+    let predicted_address = {
+        let mut data = Vec::with_capacity(28);
+        data.extend_from_slice(&sender_address);
+        data.extend_from_slice(&account_state.nonce.to_le_bytes());
+        let digest = crypto::hash::sha3_hash(&data);
+        digest[..crypto::hash::ADDRESS_LEN].to_vec()
+    };
+
+    match submit_transaction(tx, data_dir, rpc_addr).await {
+        Ok(mode) => {
+            println!();
+            println!("=== CURS3D Contract Deployed ===");
+            println!("Wasm size:        {} bytes", wasm_bytes.len());
+            println!("Deployer:         {}", w.address);
+            println!("Predicted addr:   CUR{}", hex::encode(&predicted_address));
+            println!("Tx hash:          {}", tx_hash);
+            println!("Gas limit:        {}", gas_limit);
+            println!("Fee:              {}", fee);
+            println!("Route:            {}", mode);
+            println!();
+            println!(
+                "Once mined, query the receipt: curl http://localhost:8080/api/receipt/{}",
+                tx_hash
+            );
+        }
+        Err(e) => eprintln!("Failed to deploy contract: {}", e),
+    }
+}
+
+async fn light_sync(api: &str, limit: u64) {
+    let api = api.trim_end_matches('/');
+    println!("CURS3D light-client sync demo");
+    println!("API endpoint: {}", api);
+
+    let genesis_url = format!("{}/api/genesis", api);
+    let headers_url = format!("{}/api/headers?from=0&limit={}", api, limit.clamp(1, 256));
+
+    println!();
+    println!("Step 1: fetch the genesis anchor");
+    println!("  curl -s {}", genesis_url);
+    println!();
+    println!("Step 2: fetch a range of signed headers");
+    println!("  curl -s '{}'", headers_url);
+    println!();
+    println!("Step 3: feed the headers to the LightClient.");
+    println!("        The struct lives in src/light/mod.rs and exposes:");
+    println!("          - LightClient::new(chain_id, genesis_hash)");
+    println!("          - LightClient::sync_headers(Vec<SignedHeader>)");
+    println!("          - LightClient::verify_account_proof(...)");
+    println!("          - LightClient::verify_storage_proof(...)");
+    println!();
+    println!(
+        "Pseudocode (drop into a Rust binary that depends on this crate as a library):
+    use curs3d::light::{{LightClient, SignedHeader}};
+
+    let g: serde_json::Value = reqwest::get(\"{}/api/genesis\")
+        .await?.json().await?;
+    let chain_id = g[\"data\"][\"chain_id\"]
+        .as_str()
+        .ok_or(\"missing chain_id\")?
+        .to_string();
+    let genesis_hash = hex::decode(
+        g[\"data\"][\"genesis_hash\"]
+            .as_str()
+            .ok_or(\"missing genesis_hash\")?,
+    )?;
+
+    let h: serde_json::Value = reqwest::get(\"{}/api/headers?from=0&limit=64\")
+        .await?.json().await?;
+    let headers: Vec<SignedHeader> = serde_json::from_value(h[\"data\"][\"headers\"].clone())?;
+
+    let mut client = LightClient::new(chain_id, genesis_hash);
+    client.sync_headers(headers)?;
+    println!(\"verified up to height {{}}\", client.height());",
+        api, api
+    );
+}
+
 async fn resolve_chain_id(data_dir: &str, rpc_addr: &str) -> Result<String, String> {
     match rpc::send_request(rpc_addr, &RpcRequest::GetStatus).await {
         Ok(RpcResponse::Status { status }) => Ok(status.chain_id),
@@ -1216,10 +1443,10 @@ fn generate_genesis(
     output: &str,
     chain_id: &str,
     chain_name: &str,
-    validator_wallet: &str,
-    validator_password_file: Option<&str>,
-    validator_balance_cur: u64,
-    validator_stake_cur: u64,
+    validator_wallets: &[String],
+    validator_password_files: &[String],
+    validator_balance_curs: &[u64],
+    validator_stake_curs: &[u64],
     faucet_wallet: Option<&str>,
     faucet_password_file: Option<&str>,
     faucet_balance_cur: u64,
@@ -1227,28 +1454,73 @@ fn generate_genesis(
     minimum_stake_cur: u64,
     epoch_length: u64,
 ) {
-    let validator_password = resolve_password(
-        validator_password_file,
-        "CURS3D_VALIDATOR_PASSWORD_FILE",
-        "CURS3D_VALIDATOR_PASSWORD",
-        Some(("Enter validator wallet password: ", false)),
-    );
-    let validator = match wallet::Wallet::load_auto(validator_wallet, &validator_password) {
-        Ok(wallet) => wallet,
+    let validator_count = validator_wallets.len();
+    let validator_password_files = match expand_string_arg(
+        "validator password files",
+        validator_password_files,
+        validator_count,
+    ) {
+        Ok(values) => values,
         Err(err) => {
-            eprintln!("Failed to load validator wallet: {}", err);
+            eprintln!("{}", err);
+            return;
+        }
+    };
+    let validator_balance_curs = match expand_u64_arg(
+        "validator balances",
+        validator_balance_curs,
+        validator_count,
+        1_500_000,
+    ) {
+        Ok(values) => values,
+        Err(err) => {
+            eprintln!("{}", err);
+            return;
+        }
+    };
+    let validator_stake_curs = match expand_u64_arg(
+        "validator stakes",
+        validator_stake_curs,
+        validator_count,
+        50_000,
+    ) {
+        Ok(values) => values,
+        Err(err) => {
+            eprintln!("{}", err);
             return;
         }
     };
 
     let mut allocations = BTreeMap::<String, (u64, u64)>::new();
-    allocations.insert(
-        validator.keypair.public_key_hex(),
-        (
-            validator_balance_cur.saturating_mul(MICROTOKENS_PER_CUR),
-            validator_stake_cur.saturating_mul(MICROTOKENS_PER_CUR),
-        ),
-    );
+    let mut validator_summaries = Vec::with_capacity(validator_count);
+    for (index, wallet_path) in validator_wallets.iter().enumerate() {
+        let validator_password = resolve_password(
+            validator_password_files[index].as_deref(),
+            "CURS3D_VALIDATOR_PASSWORD_FILE",
+            "CURS3D_VALIDATOR_PASSWORD",
+            Some(("Enter validator wallet password: ", false)),
+        );
+        let validator = match wallet::Wallet::load_auto(wallet_path, &validator_password) {
+            Ok(wallet) => wallet,
+            Err(err) => {
+                eprintln!("Failed to load validator wallet {}: {}", wallet_path, err);
+                return;
+            }
+        };
+        allocations.insert(
+            validator.keypair.public_key_hex(),
+            (
+                validator_balance_curs[index].saturating_mul(MICROTOKENS_PER_CUR),
+                validator_stake_curs[index].saturating_mul(MICROTOKENS_PER_CUR),
+            ),
+        );
+        validator_summaries.push((
+            wallet_path.clone(),
+            validator.address,
+            validator_balance_curs[index],
+            validator_stake_curs[index],
+        ));
+    }
 
     let faucet_summary = if let Some(path) = faucet_wallet {
         let faucet_password = resolve_password(
@@ -1317,10 +1589,15 @@ fn generate_genesis(
     println!("Output:              {}", output_path.display());
     println!("Chain ID:            {}", genesis.chain_id);
     println!("Chain Name:          {}", genesis.chain_name);
-    println!("Validator Wallet:    {}", validator_wallet);
-    println!("Validator Address:   {}", validator.address);
-    println!("Validator Stake:     {} CURS3D", validator_stake_cur);
-    println!("Validator Balance:   {} CURS3D", validator_balance_cur);
+    println!("Validators:          {}", validator_summaries.len());
+    for (index, (wallet_path, address, balance_cur, stake_cur)) in
+        validator_summaries.iter().enumerate()
+    {
+        println!("  Validator {} Wallet:   {}", index + 1, wallet_path);
+        println!("  Validator {} Address:  {}", index + 1, address);
+        println!("  Validator {} Balance:  {} CURS3D", index + 1, balance_cur);
+        println!("  Validator {} Stake:    {} CURS3D", index + 1, stake_cur);
+    }
     if let Some((faucet_address, faucet_path)) = faucet_summary {
         println!("Faucet Wallet:       {}", faucet_path);
         println!("Faucet Address:      {}", faucet_address);
@@ -1336,12 +1613,63 @@ fn generate_genesis(
     );
 }
 
+fn resolve_http_addr(rpc_addr: &str, http_addr_override: Option<&str>) -> Result<String, String> {
+    if let Some(http_addr) = http_addr_override {
+        return Ok(http_addr.to_string());
+    }
+
+    if let Ok(addr) = rpc_addr.parse::<std::net::SocketAddr>() {
+        return Ok(std::net::SocketAddr::new(addr.ip(), 8080).to_string());
+    }
+
+    match rpc_addr.rsplit_once(':') {
+        Some((host, _)) if !host.is_empty() => Ok(format!("{}:8080", host)),
+        _ => Err(format!(
+            "could not derive HTTP address from RPC address '{}'; set --http-addr explicitly",
+            rpc_addr
+        )),
+    }
+}
+
+fn expand_string_arg(
+    label: &str,
+    values: &[String],
+    target_len: usize,
+) -> Result<Vec<Option<String>>, String> {
+    match values.len() {
+        0 => Ok(vec![None; target_len]),
+        1 => Ok((0..target_len).map(|_| Some(values[0].clone())).collect()),
+        len if len == target_len => Ok(values.iter().cloned().map(Some).collect()),
+        len => Err(format!(
+            "invalid {} count: expected 0, 1, or {}, got {}",
+            label, target_len, len
+        )),
+    }
+}
+
+fn expand_u64_arg(
+    label: &str,
+    values: &[u64],
+    target_len: usize,
+    default_value: u64,
+) -> Result<Vec<u64>, String> {
+    match values.len() {
+        0 => Ok(vec![default_value; target_len]),
+        1 => Ok(vec![values[0]; target_len]),
+        len if len == target_len => Ok(values.to_vec()),
+        len => Err(format!(
+            "invalid {} count: expected 0, 1, or {}, got {}",
+            label, target_len, len
+        )),
+    }
+}
+
 fn show_bootnode_addresses(data_dir: &str, public_addrs: &[String]) {
     if let Err(err) = fs::create_dir_all(data_dir) {
         eprintln!("Failed to create data directory: {}", err);
         return;
     }
-    let identity = match load_or_create_p2p_identity(data_dir) {
+    let identity = match load_or_create_p2p_identity(data_dir, false) {
         Ok(identity) => identity,
         Err(err) => {
             eprintln!("Failed to load P2P identity: {}", err);
@@ -1416,18 +1744,64 @@ fn bootnode_addresses_path(data_dir: &str) -> PathBuf {
     PathBuf::from(data_dir).join("bootnode.addrs")
 }
 
-fn load_or_create_p2p_identity(data_dir: &str) -> Result<identity::Keypair, String> {
+/// Persist the libp2p identity keypair atomically with 0600 permissions.
+///
+/// We write to a sibling tmpfile and rename so a crash mid-write can never
+/// leave a half-written keyfile that would silently regenerate a new PeerId
+/// on next boot — that exact bug bit us in the live testnet (#1). On unix we
+/// also chmod the file to 0600 so other local users can't read the secret.
+fn write_p2p_identity_atomic(path: &PathBuf, encoded: &[u8]) -> Result<(), String> {
+    let tmp_path = path.with_extension("pb.tmp");
+    fs::write(&tmp_path, encoded).map_err(|err| err.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o600);
+        fs::set_permissions(&tmp_path, perms).map_err(|err| err.to_string())?;
+    }
+    fs::rename(&tmp_path, path).map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+/// Load the persistent libp2p identity from disk, regenerating it only if the
+/// file is genuinely missing. Parse failures are surfaced as hard errors —
+/// silently regenerating on a corrupt file would re-introduce the original
+/// "PeerId churns across restarts" bug (#1).
+///
+/// If `force_reset` is true (CLI `--reset-p2p-identity`), we generate a fresh
+/// keypair and overwrite the file. The previous keyfile is moved aside as
+/// `p2p_identity.pb.bak` so it can be recovered manually.
+fn load_or_create_p2p_identity(
+    data_dir: &str,
+    force_reset: bool,
+) -> Result<identity::Keypair, String> {
     let path = p2p_identity_path(data_dir);
-    if path.exists() {
+
+    if force_reset && path.exists() {
+        let backup = path.with_extension("pb.bak");
+        let _ = fs::rename(&path, &backup);
+    }
+
+    if !force_reset && path.exists() {
         let bytes = fs::read(&path).map_err(|err| err.to_string())?;
-        return identity::Keypair::from_protobuf_encoding(&bytes).map_err(|err| err.to_string());
+        return identity::Keypair::from_protobuf_encoding(&bytes).map_err(|err| {
+            // Make the error message actionable — operators have hit this
+            // when restoring a partial backup, and silently regenerating
+            // would change the PeerId.
+            format!(
+                "failed to parse {}: {}. \
+                 Use `curs3d node --reset-p2p-identity` to regenerate (will change PeerId).",
+                path.display(),
+                err
+            )
+        });
     }
 
     let keypair = identity::Keypair::generate_ed25519();
     let encoded = keypair
         .to_protobuf_encoding()
         .map_err(|err| err.to_string())?;
-    fs::write(&path, encoded).map_err(|err| err.to_string())?;
+    write_p2p_identity_atomic(&path, &encoded)?;
     Ok(keypair)
 }
 

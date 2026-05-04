@@ -6,6 +6,7 @@ pub mod governance;
 pub mod light;
 pub mod network;
 pub mod rpc;
+pub mod runtime;
 pub mod storage;
 pub mod token;
 pub mod trie;

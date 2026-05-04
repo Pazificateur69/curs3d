@@ -38,6 +38,10 @@ const MAX_PENDING_GAS_PER_ACCOUNT_MULTIPLIER: u64 = 2;
 const MAX_PENDING_NONCE_GAP: u64 = 32;
 const MIN_REPLACEMENT_FEE_BUMP_PCT: u64 = 10;
 const MIN_REPLACEMENT_PRIORITY_BUMP_PCT: u64 = 25;
+/// Hard cap on deployed contract bytecode (256 KB). The implicit gas-based
+/// limit (block_gas_limit / GAS_PER_BYTE ≈ 625 KB) is loose; this cap gives a
+/// clearer error and bounds long-term storage growth.
+pub const MAX_CONTRACT_CODE_BYTES: usize = 256 * 1024;
 const CHAIN_CONFIG_KEY: &[u8] = b"chain_config";
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -204,6 +208,8 @@ pub enum ChainError {
     ReorgBelowFinality(u64),
     #[error("invalid protocol version: expected {expected}, got {got}")]
     InvalidProtocolVersion { expected: u32, got: u32 },
+    #[error("gas calculation overflowed")]
+    GasOverflow,
     #[error("snapshot error: {0}")]
     SnapshotError(String),
     #[error("vm error: {0}")]
@@ -270,6 +276,13 @@ pub struct Blockchain {
     pub governance: GovernanceState,
     /// Tracks consecutive missed epochs per validator address (for inactivity penalties)
     pub validator_missed_epochs: HashMap<Vec<u8>, u64>,
+    /// In-memory index from block hash to block height. Avoids O(n) scans for
+    /// `block-by-hash` and `eth_getBlockByHash` lookups. Rebuilt on startup,
+    /// kept in sync inside `add_block` / reorg paths.
+    pub block_hash_to_height: HashMap<Vec<u8>, u64>,
+    /// In-memory index from tx hash to (block_height, tx_index). Speeds up
+    /// `tx/:hash`, `eth_getTransactionByHash` and any historical lookup.
+    pub tx_hash_index: HashMap<Vec<u8>, (u64, usize)>,
     storage: Option<Storage>,
 }
 
@@ -333,6 +346,8 @@ impl Blockchain {
             token_registry: TokenRegistry::new(),
             governance: GovernanceState::new(),
             validator_missed_epochs: HashMap::new(),
+            block_hash_to_height: HashMap::new(),
+            tx_hash_index: HashMap::new(),
             storage: None,
         })
     }
@@ -450,6 +465,8 @@ impl Blockchain {
                 token_registry: stored_token_registry,
                 governance: stored_governance,
                 validator_missed_epochs: HashMap::new(),
+                block_hash_to_height: HashMap::new(),
+                tx_hash_index: HashMap::new(),
                 storage: Some(storage),
             };
 
@@ -505,7 +522,7 @@ impl Blockchain {
         (self.block_gas_limit / 2).max(1)
     }
 
-    fn next_base_fee_per_gas(&self, parent: &Block) -> u64 {
+    pub fn next_base_fee_per_gas(&self, parent: &Block) -> u64 {
         let parent_base_fee = if parent.header.height == 0 {
             parent
                 .header
@@ -849,6 +866,22 @@ impl Blockchain {
 
         let snapshot_state = Self::decode_snapshot_state(manifest, chunks)?;
 
+        // Defence against silent history rewrite: for every block height we
+        // already have locally, the snapshot must agree on the hash. Otherwise
+        // a peer could feed us a different chain history that shares the same
+        // genesis (#5).
+        for snapshot_block in &snapshot_state.blocks {
+            let h = snapshot_block.header.height as usize;
+            if let Some(local_block) = self.blocks.get(h)
+                && local_block.hash != snapshot_block.hash
+            {
+                return Err(ChainError::SnapshotError(format!(
+                    "snapshot block at height {} disagrees with local canonical block",
+                    snapshot_block.header.height
+                )));
+            }
+        }
+
         self.blocks = snapshot_state.blocks;
         self.accounts = snapshot_state.accounts.into_iter().collect();
         self.contracts = snapshot_state.contracts.into_iter().collect();
@@ -931,6 +964,13 @@ impl Blockchain {
                         .topic
                         .as_ref()
                         .is_none_or(|topic| entry.topics.iter().any(|candidate| candidate == topic))
+                    && filter.topics.as_ref().is_none_or(|positional| {
+                        positional.iter().enumerate().all(|(i, expected)| {
+                            expected.as_ref().is_none_or(|wanted| {
+                                entry.topics.get(i).is_some_and(|actual| actual == wanted)
+                            })
+                        })
+                    })
                     && filter
                         .from_block
                         .is_none_or(|from_block| entry.block_height >= from_block)
@@ -941,6 +981,40 @@ impl Blockchain {
             .take(limit)
             .cloned()
             .collect()
+    }
+
+    /// Return all transactions involving `address` (as sender or recipient).
+    /// Walks the chain newest-first and stops at `limit` results.
+    pub fn transactions_for_address(
+        &self,
+        address: &[u8],
+        from_block: Option<u64>,
+        to_block: Option<u64>,
+        limit: usize,
+    ) -> Vec<(u64, usize, Transaction)> {
+        let limit = limit.min(1000);
+        let mut out = Vec::new();
+        for block in self.blocks.iter().rev() {
+            if let Some(to) = to_block
+                && block.header.height > to
+            {
+                continue;
+            }
+            if let Some(from) = from_block
+                && block.header.height < from
+            {
+                break;
+            }
+            for (idx, tx) in block.transactions.iter().enumerate() {
+                if tx.from == address || tx.to == address {
+                    out.push((block.header.height, idx, tx.clone()));
+                    if out.len() >= limit {
+                        return out;
+                    }
+                }
+            }
+        }
+        out
     }
 
     pub fn estimate_transaction(
@@ -1096,6 +1170,11 @@ impl Blockchain {
         if tx.estimated_gas_for_admission() > self.block_gas_limit {
             return Err(ChainError::InvalidTransactionFormat(
                 "transaction gas limit exceeds block gas limit",
+            ));
+        }
+        if tx.kind == TransactionKind::DeployContract && tx.to.len() > MAX_CONTRACT_CODE_BYTES {
+            return Err(ChainError::InvalidTransactionFormat(
+                "deploy contract: wasm code exceeds 256 KB limit",
             ));
         }
         let pending_base_fee = self.next_base_fee_per_gas(self.latest_block());
@@ -1460,6 +1539,12 @@ impl Blockchain {
         self.token_registry = execution.token_registry;
         self.governance = execution.governance;
         self.blocks.push(block.clone());
+        self.block_hash_to_height
+            .insert(block.hash.clone(), block.header.height);
+        for (tx_index, tx) in block.transactions.iter().enumerate() {
+            self.tx_hash_index
+                .insert(tx.hash(), (block.header.height, tx_index));
+        }
         self.rebuild_receipt_indexes();
         self.remove_block_transactions_from_mempool(&block);
         self.persist_full_state()?;
@@ -1750,7 +1835,7 @@ impl Blockchain {
 
     fn contract_storage_root(contract: &ContractState) -> Vec<u8> {
         let mut storage_entries: Vec<(&Vec<u8>, &Vec<u8>)> = contract.storage.iter().collect();
-        storage_entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        storage_entries.sort_by_key(|(a, _)| *a);
         let leaves: Vec<Vec<u8>> = storage_entries
             .into_iter()
             .map(|(key, value)| {
@@ -1781,13 +1866,13 @@ impl Blockchain {
         let mut leaves: Vec<Vec<u8>> = Vec::new();
 
         let mut account_entries: Vec<(&Vec<u8>, &AccountState)> = accounts.iter().collect();
-        account_entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        account_entries.sort_by_key(|(a, _)| *a);
         for (address, state) in account_entries {
             leaves.push(Self::account_leaf_hash(address, state));
         }
 
         let mut contract_entries: Vec<(&Vec<u8>, &ContractState)> = contracts.iter().collect();
-        contract_entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        contract_entries.sort_by_key(|(a, _)| *a);
         for (address, state) in contract_entries {
             leaves.push(Self::contract_leaf_hash(address, state));
         }
@@ -1835,7 +1920,7 @@ impl Blockchain {
     pub fn get_account_proof(&self, address: &[u8]) -> Option<AccountProof> {
         let state = self.accounts.get(address)?.clone();
         let mut account_entries: Vec<(&Vec<u8>, &AccountState)> = self.accounts.iter().collect();
-        account_entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        account_entries.sort_by_key(|(a, _)| *a);
         let account_index = account_entries
             .iter()
             .position(|(entry_address, _)| entry_address.as_slice() == address)?;
@@ -1869,17 +1954,17 @@ impl Blockchain {
         let value = contract.storage.get(key)?.clone();
 
         let mut account_entries: Vec<(&Vec<u8>, &AccountState)> = self.accounts.iter().collect();
-        account_entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        account_entries.sort_by_key(|(a, _)| *a);
         let account_count = account_entries.len();
 
         let mut contract_entries: Vec<(&Vec<u8>, &ContractState)> = self.contracts.iter().collect();
-        contract_entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        contract_entries.sort_by_key(|(a, _)| *a);
         let contract_position = contract_entries
             .iter()
             .position(|(entry_address, _)| entry_address.as_slice() == contract_address)?;
 
         let mut storage_entries: Vec<(&Vec<u8>, &Vec<u8>)> = contract.storage.iter().collect();
-        storage_entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        storage_entries.sort_by_key(|(a, _)| *a);
         let storage_position = storage_entries
             .iter()
             .position(|(entry_key, _)| entry_key.as_slice() == key)?;
@@ -2177,9 +2262,52 @@ impl Blockchain {
         }
         Self::apply_coinbase_transaction(&mut projected_accounts, coinbase)?;
 
-        if block.header.state_root
-            != Self::compute_state_root_full(&projected_accounts, &projected_contracts)
-        {
+        let computed_state_root =
+            Self::compute_state_root_full(&projected_accounts, &projected_contracts);
+        if block.header.state_root != computed_state_root {
+            // Diagnostic dump: when this fires on restart it crash-loops the
+            // node, and historically we couldn't tell *what* part of the
+            // recomputed state diverged. Log both roots plus a hash of every
+            // account and contract leaf so the next occurrence can be
+            // forensically reproduced. (#2)
+            tracing::error!(
+                target: "audit",
+                event = "state_root_mismatch",
+                height = block.header.height,
+                expected = %hex::encode(&block.header.state_root),
+                computed = %hex::encode(&computed_state_root),
+                account_count = projected_accounts.len(),
+                contract_count = projected_contracts.len(),
+            );
+            let mut sorted_accounts: Vec<(&Vec<u8>, &AccountState)> =
+                projected_accounts.iter().collect();
+            sorted_accounts.sort_by_key(|(a, _)| *a);
+            for (addr, state) in sorted_accounts.iter().take(64) {
+                let leaf = Self::account_leaf_hash(addr, state);
+                tracing::error!(
+                    target: "audit",
+                    event = "state_root_account_leaf",
+                    addr = %hex::encode(addr),
+                    balance = state.balance,
+                    nonce = state.nonce,
+                    staked = state.staked_balance,
+                    pending_unstakes = state.pending_unstakes.len(),
+                    leaf = %hex::encode(&leaf),
+                );
+            }
+            let mut sorted_contracts: Vec<(&Vec<u8>, &ContractState)> =
+                projected_contracts.iter().collect();
+            sorted_contracts.sort_by_key(|(a, _)| *a);
+            for (addr, state) in sorted_contracts.iter().take(64) {
+                let leaf = Self::contract_leaf_hash(addr, state);
+                tracing::error!(
+                    target: "audit",
+                    event = "state_root_contract_leaf",
+                    addr = %hex::encode(addr),
+                    storage_keys = state.storage.len(),
+                    leaf = %hex::encode(&leaf),
+                );
+            }
             return Err(ChainError::InvalidStateRoot);
         }
 
@@ -2313,10 +2441,13 @@ impl Blockchain {
                         ChainError::InvalidTransactionFormat("invalid DeployToken JSON in data")
                     })?;
                 token_registry
-                    .deploy_token(&tx.from, tx.nonce.saturating_sub(1), &params, current_height)
-                    .map_err(|_e| {
-                        ChainError::InvalidTransactionFormat("token operation failed")
-                    })?;
+                    .deploy_token(
+                        &tx.from,
+                        tx.nonce.saturating_sub(1),
+                        &params,
+                        current_height,
+                    )
+                    .map_err(|_e| ChainError::InvalidTransactionFormat("token operation failed"))?;
             }
             TransactionKind::TokenTransfer => {
                 let params: crate::token::TokenTransferParams = serde_json::from_slice(&tx.data)
@@ -2330,9 +2461,7 @@ impl Blockchain {
                         &params.recipient,
                         params.amount,
                     )
-                    .map_err(|_e| {
-                        ChainError::InvalidTransactionFormat("token operation failed")
-                    })?;
+                    .map_err(|_e| ChainError::InvalidTransactionFormat("token operation failed"))?;
             }
             TransactionKind::TokenApprove => {
                 let params: crate::token::TokenApproveParams = serde_json::from_slice(&tx.data)
@@ -2346,9 +2475,7 @@ impl Blockchain {
                         &params.spender,
                         params.amount,
                     )
-                    .map_err(|_e| {
-                        ChainError::InvalidTransactionFormat("token operation failed")
-                    })?;
+                    .map_err(|_e| ChainError::InvalidTransactionFormat("token operation failed"))?;
             }
             TransactionKind::TokenTransferFrom => {
                 let params: crate::token::TokenTransferFromParams =
@@ -2365,9 +2492,7 @@ impl Blockchain {
                         &params.recipient,
                         params.amount,
                     )
-                    .map_err(|_e| {
-                        ChainError::InvalidTransactionFormat("token operation failed")
-                    })?;
+                    .map_err(|_e| ChainError::InvalidTransactionFormat("token operation failed"))?;
             }
             TransactionKind::SubmitProposal => {
                 let params: crate::governance::SubmitProposalParams =
@@ -2388,7 +2513,13 @@ impl Blockchain {
                     .map(|(addr, a)| (addr.clone(), a.staked_balance))
                     .collect();
                 governance
-                    .submit_proposal(&tx.from, &params, current_height, epoch_length, stake_snapshot)
+                    .submit_proposal(
+                        &tx.from,
+                        &params,
+                        current_height,
+                        epoch_length,
+                        stake_snapshot,
+                    )
                     .map_err(|_| {
                         ChainError::InvalidTransactionFormat("governance operation failed")
                     })?;
@@ -2516,8 +2647,13 @@ impl Blockchain {
                 "coinbase not allowed in user transaction flow",
             ))?,
             TransactionKind::DeployContract => {
-                let (contract, mut receipt) =
-                    Vm::deploy(&tx.to, &tx.from, tx.nonce.saturating_sub(1), tx.gas_limit)?;
+                let (contract, mut receipt) = Vm::deploy(
+                    &tx.to,
+                    &tx.from,
+                    tx.nonce.saturating_sub(1),
+                    tx.gas_limit,
+                    current_height,
+                )?;
                 let deploy_gas_used = receipt.gas_used;
                 receipt.tx_hash = tx_hash.clone();
                 if let Some(ref addr) = receipt.contract_address {
@@ -3015,6 +3151,19 @@ impl Blockchain {
         self.epoch_snapshots.clear();
         self.epoch_snapshots
             .insert(0, self.snapshot_for_accounts(0, &accounts));
+        // Rebuild the in-memory hash → height / tx → location indexes from the
+        // canonical chain. These were lost on restart and the alternative was
+        // an O(n) scan on every lookup.
+        self.block_hash_to_height.clear();
+        self.tx_hash_index.clear();
+        for block in &blocks {
+            self.block_hash_to_height
+                .insert(block.hash.clone(), block.header.height);
+            for (tx_index, tx) in block.transactions.iter().enumerate() {
+                self.tx_hash_index
+                    .insert(tx.hash(), (block.header.height, tx_index));
+            }
+        }
 
         let mut previous = blocks
             .first()
@@ -3469,8 +3618,13 @@ mod tests {
         assert_eq!(chain.get_account(&address).pending_unstakes.len(), 1);
         let balance_after_unstake_block = chain.get_balance(&address);
         // Balance includes block reward but minus gas fees for unstake tx
-        assert!(balance_after_unstake_block < balance_after_stake + DEFAULT_BLOCK_REWARD - 5_000_000);
-        assert!(balance_after_unstake_block > balance_after_stake + DEFAULT_BLOCK_REWARD - 5_000_000 - 100_000);
+        assert!(
+            balance_after_unstake_block < balance_after_stake + DEFAULT_BLOCK_REWARD - 5_000_000
+        );
+        assert!(
+            balance_after_unstake_block
+                > balance_after_stake + DEFAULT_BLOCK_REWARD - 5_000_000 - 100_000
+        );
 
         for _ in 0..DEFAULT_UNSTAKE_DELAY_BLOCKS {
             let block = chain.create_block(&validator).unwrap();
@@ -3653,6 +3807,212 @@ mod tests {
         );
     }
 
+    /// End-to-end: deploy a real SDK-compiled wasm contract through the chain
+    /// (not via Vm directly), call it twice, and verify the receipt + state +
+    /// indexes (block_hash_to_height, tx_hash_index, log_index) all stay
+    /// consistent. Skipped if the .wasm hasn't been built yet so CI without the
+    /// wasm32 target keeps passing.
+    #[test]
+    fn test_sdk_counter_via_chain_integration() {
+        const COUNTER_WASM: &[u8] = include_bytes!(
+            "../../sdk/rust/examples/counter/target/wasm32-unknown-unknown/release/counter_contract.wasm"
+        );
+        if COUNTER_WASM.len() < 16 {
+            return;
+        }
+
+        let mut chain = Blockchain::new();
+        let validator = KeyPair::generate();
+        // Mine several blocks to give the validator enough liquid balance to pay
+        // for the deploy + call gas budgets.
+        for _ in 0..6 {
+            let block = chain.create_block(&validator).unwrap();
+            chain.add_block(block).unwrap();
+        }
+
+        // Deploy the SDK contract via a real DeployContract tx
+        let mut deploy_tx = Transaction::deploy_contract(
+            chain.chain_id(),
+            validator.public_key.clone(),
+            COUNTER_WASM.to_vec(),
+            5_000_000,
+            0,
+            0,
+        )
+        .with_fee_caps(50, 5);
+        deploy_tx.sign(&validator);
+        let deploy_hash = deploy_tx.hash();
+        chain.add_transaction(deploy_tx).unwrap();
+        let block = chain.create_block(&validator).unwrap();
+        let deploy_block_hash = block.hash.clone();
+        let deploy_block_height = block.header.height;
+        chain.add_block(block).unwrap();
+
+        // Index integrity: deploy block + tx are both reachable in O(1)
+        assert_eq!(
+            chain.block_hash_to_height.get(&deploy_block_hash).copied(),
+            Some(deploy_block_height)
+        );
+        assert_eq!(
+            chain.tx_hash_index.get(&deploy_hash).map(|(h, _)| *h),
+            Some(deploy_block_height)
+        );
+
+        let contract_address = chain
+            .receipts
+            .values()
+            .find(|r| r.contract_address.is_some())
+            .expect("deploy receipt missing")
+            .contract_address
+            .clone()
+            .unwrap();
+
+        // First call: counter goes 0 → 1
+        let mut call1 = Transaction::call_contract(
+            chain.chain_id(),
+            validator.public_key.clone(),
+            contract_address.clone(),
+            Vec::new(),
+            0,
+            2_000_000,
+            0,
+            1,
+        )
+        .with_fee_caps(50, 5);
+        call1.sign(&validator);
+        let call1_hash = call1.hash();
+        chain.add_transaction(call1).unwrap();
+        let block = chain.create_block(&validator).unwrap();
+        chain.add_block(block).unwrap();
+
+        let receipt1 = chain
+            .get_receipt(&call1_hash)
+            .expect("call1 receipt missing");
+        assert!(receipt1.receipt.success);
+        assert_eq!(receipt1.receipt.logs.len(), 1);
+        assert_eq!(receipt1.receipt.logs[0].topics[0], b"tick");
+        let mut buf = [0u8; 8];
+        buf.copy_from_slice(&receipt1.receipt.logs[0].data[..8]);
+        assert_eq!(u64::from_le_bytes(buf), 1);
+
+        // Second call: counter goes 1 → 2 (proves storage persisted across blocks)
+        let mut call2 = Transaction::call_contract(
+            chain.chain_id(),
+            validator.public_key.clone(),
+            contract_address.clone(),
+            Vec::new(),
+            0,
+            2_000_000,
+            0,
+            2,
+        )
+        .with_fee_caps(50, 5);
+        call2.sign(&validator);
+        let call2_hash = call2.hash();
+        chain.add_transaction(call2).unwrap();
+        let block = chain.create_block(&validator).unwrap();
+        chain.add_block(block).unwrap();
+
+        let receipt2 = chain
+            .get_receipt(&call2_hash)
+            .expect("call2 receipt missing");
+        let mut buf2 = [0u8; 8];
+        buf2.copy_from_slice(&receipt2.receipt.logs[0].data[..8]);
+        assert_eq!(u64::from_le_bytes(buf2), 2);
+
+        // Log index gets two `tick` entries on the same contract
+        let logs = chain.query_logs(&LogFilter {
+            contract: Some(contract_address),
+            topic: Some(b"tick".to_vec()),
+            topics: None,
+            from_block: None,
+            to_block: None,
+            limit: Some(10),
+        });
+        assert_eq!(logs.len(), 2);
+    }
+
+    #[test]
+    fn test_deploy_contract_rejects_oversize_wasm() {
+        let mut chain = Blockchain::new();
+        let validator = KeyPair::generate();
+        // Mine a block to fund the validator
+        let block = chain.create_block(&validator).unwrap();
+        chain.add_block(block).unwrap();
+
+        // 257 KB of bytes prefixed with the wasm magic so the size check fires
+        // before any wasm validation logic.
+        let mut oversize = vec![0u8; MAX_CONTRACT_CODE_BYTES + 1024];
+        oversize[..4].copy_from_slice(b"\0asm");
+        let mut tx = Transaction::deploy_contract(
+            chain.chain_id(),
+            validator.public_key.clone(),
+            oversize,
+            5_000_000,
+            0,
+            0,
+        )
+        .with_fee_caps(50, 5);
+        tx.sign(&validator);
+
+        let err = chain.add_transaction(tx).unwrap_err();
+        match err {
+            ChainError::InvalidTransactionFormat(msg) => {
+                assert!(
+                    msg.contains("256 KB"),
+                    "expected size-limit error, got: {}",
+                    msg
+                );
+            }
+            other => panic!("expected InvalidTransactionFormat, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_block_hash_index_survives_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let validator = KeyPair::generate();
+
+        let allocations = vec![GenesisAllocation {
+            public_key: hex::encode(&validator.public_key),
+            balance: 1_000_000_000,
+            staked_balance: 0,
+        }];
+        let genesis_config = GenesisConfig {
+            allocations,
+            ..GenesisConfig::default()
+        };
+
+        let mut block_hashes = Vec::new();
+        {
+            let mut chain =
+                Blockchain::with_storage(dir.path().to_str().unwrap(), Some(&genesis_config))
+                    .unwrap();
+            for _ in 0..3 {
+                let block = chain.create_block(&validator).unwrap();
+                block_hashes.push(block.hash.clone());
+                chain.add_block(block).unwrap();
+            }
+            // Index populated in-memory after add_block
+            for (i, h) in block_hashes.iter().enumerate() {
+                assert_eq!(
+                    chain.block_hash_to_height.get(h).copied(),
+                    Some((i + 1) as u64)
+                );
+            }
+        }
+        // Reopen from disk: rebuild_canonical_state must repopulate the index
+        let chain =
+            Blockchain::with_storage(dir.path().to_str().unwrap(), Some(&genesis_config)).unwrap();
+        for (i, h) in block_hashes.iter().enumerate() {
+            assert_eq!(
+                chain.block_hash_to_height.get(h).copied(),
+                Some((i + 1) as u64),
+                "block hash index must survive restart"
+            );
+        }
+    }
+
     #[test]
     fn test_account_and_storage_proofs_roundtrip() {
         let mut chain = Blockchain::new();
@@ -3744,8 +4104,9 @@ mod tests {
         assert_eq!(indexed_receipt.receipt.logs.len(), 1);
 
         let logs = chain.query_logs(&LogFilter {
-            contract: Some(contract_address),
+            contract: Some(contract_address.clone()),
             topic: Some(b"topic".to_vec()),
+            topics: None,
             from_block: Some(0),
             to_block: Some(chain.height()),
             limit: Some(10),
@@ -3753,6 +4114,83 @@ mod tests {
         assert_eq!(logs.len(), 1);
         assert_eq!(logs[0].tx_hash, call_tx_hash);
         assert_eq!(logs[0].data, b"val1".to_vec());
+
+        // Positional topics filter (eth-style): topic at index 0 must equal "topic"
+        let logs_positional = chain.query_logs(&LogFilter {
+            contract: Some(contract_address.clone()),
+            topic: None,
+            topics: Some(vec![Some(b"topic".to_vec())]),
+            from_block: None,
+            to_block: None,
+            limit: Some(10),
+        });
+        assert_eq!(logs_positional.len(), 1);
+
+        // Wildcard at position 0 matches everything
+        let logs_wildcard = chain.query_logs(&LogFilter {
+            contract: Some(contract_address.clone()),
+            topic: None,
+            topics: Some(vec![None]),
+            from_block: None,
+            to_block: None,
+            limit: Some(10),
+        });
+        assert_eq!(logs_wildcard.len(), 1);
+
+        // Wrong topic at position 0 matches nothing
+        let logs_no_match = chain.query_logs(&LogFilter {
+            contract: Some(contract_address),
+            topic: None,
+            topics: Some(vec![Some(b"other".to_vec())]),
+            from_block: None,
+            to_block: None,
+            limit: Some(10),
+        });
+        assert_eq!(logs_no_match.len(), 0);
+    }
+
+    #[test]
+    fn test_transactions_for_address_returns_sent_and_received() {
+        let mut chain = Blockchain::new();
+        let validator = KeyPair::generate();
+
+        // Block 1: validator gets the coinbase reward
+        let block = chain.create_block(&validator).unwrap();
+        chain.add_block(block).unwrap();
+
+        // Validator sends a transfer to a fresh address
+        let recipient = vec![9u8; hash::ADDRESS_LEN];
+        let mut transfer_tx = Transaction::new(
+            chain.chain_id(),
+            validator.public_key.clone(),
+            recipient.clone(),
+            1_000,
+            100,
+            0,
+        );
+        transfer_tx.sign(&validator);
+        let transfer_hash = transfer_tx.hash();
+        chain.add_transaction(transfer_tx).unwrap();
+        let block = chain.create_block(&validator).unwrap();
+        chain.add_block(block).unwrap();
+
+        let validator_addr = hash::address_bytes_from_public_key(&validator.public_key);
+        let validator_txs = chain.transactions_for_address(&validator_addr, None, None, 50);
+        // Validator was sender of the transfer + recipient of coinbase blocks
+        assert!(
+            validator_txs
+                .iter()
+                .any(|(_, _, tx)| tx.hash() == transfer_hash),
+            "should include the transfer the validator sent"
+        );
+
+        let recipient_txs = chain.transactions_for_address(&recipient, None, None, 50);
+        assert_eq!(recipient_txs.len(), 1);
+        assert_eq!(recipient_txs[0].2.hash(), transfer_hash);
+
+        // Limit clamps the result
+        let limited = chain.transactions_for_address(&validator_addr, None, None, 1);
+        assert_eq!(limited.len(), 1);
     }
 
     #[test]
@@ -4005,6 +4443,67 @@ mod tests {
         assert!(matches!(err, ChainError::SnapshotError(_)));
     }
 
+    /// Regression test for #5: a peer that ships a snapshot whose blocks
+    /// disagree with our locally stored canonical chain at any height must
+    /// be rejected, not silently overwrite our history.
+    ///
+    /// The test deliberately puts the local node at a SHORTER height than
+    /// the snapshot tip so that the existing `manifest.height` check
+    /// (which only looks at the tip) cannot fire — only the new per-height
+    /// loop should reject the snapshot.
+    #[test]
+    fn test_snapshot_rejects_divergent_block_hash_at_any_height() {
+        let dir_a = tempfile::tempdir().unwrap();
+        let dir_b = tempfile::tempdir().unwrap();
+        let validator = KeyPair::generate();
+        let genesis = GenesisConfig {
+            chain_id: "curs3d-snapshot-divergent-test".to_string(),
+            chain_name: "curs3d-snapshot-divergent-test".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            unstake_delay_blocks: DEFAULT_UNSTAKE_DELAY_BLOCKS,
+            epoch_length: DEFAULT_EPOCH_LENGTH,
+            jail_duration_blocks: DEFAULT_JAIL_DURATION_BLOCKS,
+            allocations: vec![GenesisAllocation {
+                public_key: hex::encode(&validator.public_key),
+                balance: 1_000_000_000,
+                staked_balance: 5_000,
+            }],
+            ..Default::default()
+        };
+
+        // chain_a = our local node, only one block past genesis.
+        let mut chain_a =
+            Blockchain::with_storage(dir_a.path().to_str().unwrap(), Some(&genesis)).unwrap();
+        let block = chain_a.create_block(&validator).unwrap();
+        chain_a.add_block(block).unwrap();
+        let local_block_1_hash = chain_a.blocks[1].hash.clone();
+
+        // chain_b = remote peer with a divergent history, several blocks ahead.
+        // To force divergence at height 1 (block creation is otherwise deterministic
+        // when the validator and parent are identical), wait one second so the
+        // block timestamp differs.
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        let mut chain_b =
+            Blockchain::with_storage(dir_b.path().to_str().unwrap(), Some(&genesis)).unwrap();
+        for _ in 0..5 {
+            let block = chain_b.create_block(&validator).unwrap();
+            chain_b.add_block(block).unwrap();
+        }
+        // Sanity: chain_b's block at height 1 must disagree with chain_a's.
+        assert_ne!(chain_b.blocks[1].hash, local_block_1_hash);
+        // chain_a is shorter than chain_b's snapshot tip, so the legacy
+        // tip-only check cannot fire here.
+        assert!(chain_a.height() < chain_b.height());
+
+        let manifest_b = chain_b.create_snapshot().unwrap();
+        let chunks_b = chain_b.get_snapshot_chunks(manifest_b.height).unwrap();
+        let err = chain_a.apply_snapshot(&manifest_b, &chunks_b).unwrap_err();
+        assert!(matches!(err, ChainError::SnapshotError(_)));
+        // Local chain must be untouched.
+        assert_eq!(chain_a.blocks[1].hash, local_block_1_hash);
+    }
+
     #[test]
     fn test_restart_restores_contracts_and_receipts() {
         let dir = tempfile::tempdir().unwrap();
@@ -4066,6 +4565,83 @@ mod tests {
             assert_eq!(restored.success, receipt.success);
             assert_eq!(restored.gas_used, receipt.gas_used);
             assert_eq!(restored.contract_address, receipt.contract_address);
+        }
+    }
+
+    /// Regression test for #2: build a chain, drop it, reload from disk, and
+    /// verify the recomputed state root matches every persisted block header.
+    /// If a non-determinism creeps into state-root computation (HashMap
+    /// iteration order, leaky governance state, etc.) this will fail with
+    /// `InvalidStateRoot` on the second `with_storage`.
+    #[test]
+    fn test_state_root_deterministic_across_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let validator = KeyPair::generate();
+        let recipient = KeyPair::generate();
+        let genesis = GenesisConfig {
+            chain_id: "curs3d-state-root-restart".to_string(),
+            chain_name: "curs3d-state-root-restart".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            unstake_delay_blocks: DEFAULT_UNSTAKE_DELAY_BLOCKS,
+            epoch_length: DEFAULT_EPOCH_LENGTH,
+            jail_duration_blocks: DEFAULT_JAIL_DURATION_BLOCKS,
+            allocations: vec![
+                GenesisAllocation {
+                    public_key: hex::encode(&validator.public_key),
+                    balance: 1_000_000_000,
+                    staked_balance: 5_000,
+                },
+                GenesisAllocation {
+                    public_key: hex::encode(&recipient.public_key),
+                    balance: 0,
+                    staked_balance: 0,
+                },
+            ],
+            ..Default::default()
+        };
+
+        let data_dir = dir.path().join("chain_db");
+        let data_dir_str = data_dir.to_str().unwrap();
+
+        let mut chain = Blockchain::with_storage(data_dir_str, Some(&genesis)).unwrap();
+        // Build a few blocks with mixed activity (transfer + stake unwinding +
+        // contract deploy) so the state graph has enough surface area to
+        // expose non-determinism if any creeps in.
+        let recipient_addr = hash::address_bytes_from_public_key(&recipient.public_key);
+        for i in 0..5u64 {
+            let mut tx = Transaction::new(
+                chain.chain_id(),
+                validator.public_key.clone(),
+                recipient_addr.clone(),
+                100,
+                10,
+                i,
+            );
+            tx.sign(&validator);
+            chain.add_transaction(tx).unwrap();
+            let block = chain.create_block(&validator).unwrap();
+            chain.add_block(block).unwrap();
+        }
+        let expected_height = chain.height();
+        let expected_state_roots: Vec<Vec<u8>> = chain
+            .blocks
+            .iter()
+            .map(|b| b.header.state_root.clone())
+            .collect();
+
+        drop(chain);
+
+        // Reloading must succeed; rebuild_canonical_state would otherwise
+        // raise InvalidStateRoot during replay.
+        let restarted = Blockchain::with_storage(data_dir_str, Some(&genesis)).unwrap();
+        assert_eq!(restarted.height(), expected_height);
+        for (h, expected_root) in expected_state_roots.iter().enumerate() {
+            assert_eq!(
+                &restarted.blocks[h].header.state_root, expected_root,
+                "state_root for block {} diverged after restart",
+                h
+            );
         }
     }
 

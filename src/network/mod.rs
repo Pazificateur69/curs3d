@@ -1,10 +1,10 @@
+use bincode::Options;
 use futures::StreamExt;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{
     Multiaddr, PeerId, Swarm, SwarmBuilder, gossipsub, identity, mdns, noise, swarm::SwarmEvent,
     tcp, yamux,
 };
-use bincode::Options;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
@@ -17,6 +17,7 @@ use crate::consensus::{EquivocationEvidence, FinalityVote};
 use crate::core::block::Block;
 use crate::core::chain::{Blockchain, ChainError};
 use crate::crypto::dilithium::{self, KeyPair, Signature};
+use crate::runtime::SharedRuntimeState;
 use crate::storage::{SnapshotManifest, StateChunk};
 
 const SYNC_TIMEOUT_SECS: u64 = 15;
@@ -27,11 +28,20 @@ const SYNC_BATCH_SIZE: u64 = 50;
 const MAX_DESERIALIZE_SIZE: u64 = 16 * 1024 * 1024;
 
 /// Bounded bincode deserialization to prevent OOM attacks from untrusted network data.
+///
+/// CRITICAL: must match the encoding used by `bincode::serialize` (the default
+/// "legacy" encoding: fixed-int, little-endian, allow-trailing). `bincode::options()`
+/// alone returns `DefaultOptions` which uses **var-int** encoding — mixing the two
+/// produces silent schema mismatches that surface as "string is not valid utf8"
+/// errors deep in nested types. See: bincode v1 docs.
 fn bounded_deserialize<T: serde::de::DeserializeOwned>(data: &[u8]) -> Result<T, String> {
     if data.len() as u64 > MAX_DESERIALIZE_SIZE {
         return Err(format!("payload too large: {} bytes", data.len()));
     }
-    bincode::options()
+    bincode::DefaultOptions::new()
+        .with_fixint_encoding()
+        .with_little_endian()
+        .allow_trailing_bytes()
         .with_limit(MAX_DESERIALIZE_SIZE)
         .deserialize(data)
         .map_err(|e| format!("deserialize error: {}", e))
@@ -474,6 +484,7 @@ impl NetworkNode {
         mut outbound_rx: mpsc::Receiver<NetworkMessage>,
         validator_key: Option<KeyPair>,
         event_tx: Option<tokio::sync::broadcast::Sender<String>>,
+        runtime_state: SharedRuntimeState,
     ) {
         let mut discovered_peers: HashSet<PeerId> = HashSet::new();
 
@@ -592,7 +603,8 @@ impl NetworkNode {
                                     Ok(()) => {
                                         info!("Produced block #{} ({})", block_height, &block_hash[..16]);
 
-                                        // Emit WebSocket event
+                                        // Emit WebSocket events: legacy `new_block` summary + `new_header`
+                                        // signed-header stream consumed by light clients.
                                         if let Some(etx) = &event_tx {
                                             let _ = etx.send(serde_json::json!({
                                                 "type": "new_block",
@@ -602,6 +614,21 @@ impl NetworkNode {
                                                     "tx_count": block.transactions.len(),
                                                     "timestamp": block.header.timestamp,
                                                 }
+                                            }).to_string());
+
+                                            let chain_id = {
+                                                let chain_lock = chain.lock().await;
+                                                chain_lock.chain_id().to_string()
+                                            };
+                                            let signed_header = crate::light::SignedHeader {
+                                                chain_id,
+                                                header: block.header.clone(),
+                                                block_hash: block.hash.clone(),
+                                                signature: block.signature.clone(),
+                                            };
+                                            let _ = etx.send(serde_json::json!({
+                                                "type": "new_header",
+                                                "data": signed_header,
                                             }).to_string());
                                         }
 
@@ -942,6 +969,67 @@ impl NetworkNode {
                                         }
                                         match bounded_deserialize::<SnapshotManifest>(&data) {
                                             Ok(manifest) => {
+                                                // Validate the manifest before we accept it as a
+                                                // pending snapshot. Without this check a single
+                                                // peer can feed us a fake manifest and we will
+                                                // happily start storing chunks against it (#4).
+                                                let chain_lock = chain.lock().await;
+                                                let our_chain_id = chain_lock.chain_id().to_string();
+                                                let our_genesis = chain_lock.genesis_hash().to_vec();
+                                                let our_finalized_height = chain_lock.finalized_height();
+                                                let our_finalized_hash = chain_lock
+                                                    .finality_tracker
+                                                    .finalized_hash
+                                                    .clone();
+                                                drop(chain_lock);
+
+                                                if manifest.chain_id != our_chain_id {
+                                                    warn!(
+                                                        "Rejecting snapshot manifest: chain_id mismatch ({} vs {})",
+                                                        manifest.chain_id, our_chain_id
+                                                    );
+                                                    continue;
+                                                }
+                                                if manifest.genesis_hash != our_genesis {
+                                                    warn!("Rejecting snapshot manifest: genesis hash mismatch");
+                                                    continue;
+                                                }
+                                                if manifest.chunk_root.is_empty() {
+                                                    warn!("Rejecting snapshot manifest: empty chunk_root");
+                                                    continue;
+                                                }
+                                                if manifest.chunk_count == 0
+                                                    || manifest.chunk_hashes.len() != manifest.chunk_count
+                                                {
+                                                    warn!(
+                                                        "Rejecting snapshot manifest: chunk_count={} hashes_len={}",
+                                                        manifest.chunk_count,
+                                                        manifest.chunk_hashes.len()
+                                                    );
+                                                    continue;
+                                                }
+                                                if manifest.height > manifest.tip_height
+                                                    && manifest.tip_height != 0
+                                                {
+                                                    warn!(
+                                                        "Rejecting snapshot manifest: height {} > tip_height {}",
+                                                        manifest.height, manifest.tip_height
+                                                    );
+                                                    continue;
+                                                }
+                                                // If we already have finality at or past the
+                                                // snapshot's claimed finalized height, the hashes
+                                                // must agree — otherwise the peer is pushing a
+                                                // divergent history.
+                                                if !our_finalized_hash.is_empty()
+                                                    && our_finalized_height >= manifest.finalized_height
+                                                    && our_finalized_height == manifest.finalized_height
+                                                    && our_finalized_hash != manifest.finalized_hash
+                                                {
+                                                    warn!("Rejecting snapshot manifest: finalized hash conflicts with local finality");
+                                                    continue;
+                                                }
+
                                                 info!("Received snapshot manifest for height {}", manifest.height);
                                                 let same_session = pending_snapshot_manifest
                                                     .as_ref()
@@ -1039,6 +1127,8 @@ impl NetworkNode {
                                     self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
                                 }
                             }
+                            let mut state = runtime_state.write().await;
+                            state.set_peer_count(self.swarm.connected_peers().count());
                         }
                         SwarmEvent::Behaviour(CursBehaviourEvent::Mdns(
                             mdns::Event::Expired(peers)
@@ -1048,6 +1138,18 @@ impl NetworkNode {
                                 discovered_peers.remove(&peer_id);
                                 self.swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
                             }
+                            let mut state = runtime_state.write().await;
+                            state.set_peer_count(self.swarm.connected_peers().count());
+                        }
+                        SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                            info!("Connected to peer {}", peer_id);
+                            let mut state = runtime_state.write().await;
+                            state.set_peer_count(self.swarm.connected_peers().count());
+                        }
+                        SwarmEvent::ConnectionClosed { peer_id, .. } => {
+                            info!("Disconnected from peer {}", peer_id);
+                            let mut state = runtime_state.write().await;
+                            state.set_peer_count(self.swarm.connected_peers().count());
                         }
                         SwarmEvent::NewListenAddr { address, .. } => {
                             info!("Listening on {}", address);
@@ -1101,7 +1203,7 @@ impl NetworkNode {
             Ok(()) => {
                 info!("Accepted block #{} from network", block_height);
 
-                // Emit WebSocket event
+                // Emit WebSocket events: summary + signed-header stream for light clients.
                 if let Some(etx) = &event_tx {
                     let _ = etx.send(
                         serde_json::json!({
@@ -1112,6 +1214,19 @@ impl NetworkNode {
                                 "tx_count": block.transactions.len(),
                                 "timestamp": block.header.timestamp,
                             }
+                        })
+                        .to_string(),
+                    );
+                    let signed_header = crate::light::SignedHeader {
+                        chain_id: chain_lock.chain_id().to_string(),
+                        header: block.header.clone(),
+                        block_hash: block.hash.clone(),
+                        signature: block.signature.clone(),
+                    };
+                    let _ = etx.send(
+                        serde_json::json!({
+                            "type": "new_header",
+                            "data": signed_header,
                         })
                         .to_string(),
                     );
@@ -1475,5 +1590,27 @@ mod tests {
             scorer.record_good(&peer, 50);
         }
         assert_eq!(scorer.get_score(&peer), PEER_SCORE_MAX);
+    }
+
+    /// Regression test for #3: producer used `bincode::serialize` (fixint
+    /// encoding), consumer used `bincode::options()` (varint encoding by
+    /// default). The mismatch corrupted nested types and surfaced as
+    /// "string is not valid utf8". Now both sides MUST agree.
+    #[test]
+    fn test_bounded_deserialize_matches_default_serialize_for_block() {
+        use crate::core::block::Block;
+        let block = Block::genesis();
+        let serialized = bincode::serialize(&block).expect("serialize");
+        let round_tripped: Block = bounded_deserialize(&serialized)
+            .expect("bounded_deserialize must accept default-bincode output");
+        assert_eq!(round_tripped.hash, block.hash);
+        assert_eq!(round_tripped.header.height, block.header.height);
+    }
+
+    #[test]
+    fn test_bounded_deserialize_rejects_oversized_payload() {
+        let huge = vec![0u8; (MAX_DESERIALIZE_SIZE + 1) as usize];
+        let result: Result<Vec<u8>, String> = bounded_deserialize(&huge);
+        assert!(result.is_err());
     }
 }

@@ -82,7 +82,10 @@ impl LightClient {
         let expected_height = if self.headers.is_empty() {
             0
         } else {
-            self.headers.last().unwrap().header.height + 1
+            self.headers
+                .last()
+                .map(|signed| signed.header.height + 1)
+                .ok_or(LightClientError::EmptyHeaders)?
         };
 
         if header.height != expected_height {
@@ -246,6 +249,46 @@ mod tests {
     fn test_sync_empty_headers_rejected() {
         let mut lc = LightClient::new("test".to_string(), vec![]);
         assert_eq!(lc.sync_headers(vec![]), Err(LightClientError::EmptyHeaders));
+    }
+
+    #[test]
+    fn test_sync_rejects_wrong_chain_id() {
+        let validator = crate::crypto::dilithium::KeyPair::generate();
+        let genesis = crate::core::block::Block::genesis_with_state_root(
+            hash::sha3_hash(b"state-root"),
+            "chain-a",
+            0,
+        );
+        let mut lc = LightClient::new("chain-b".to_string(), genesis.hash.clone());
+        let err = lc
+            .sync_headers(vec![SignedHeader {
+                chain_id: "chain-a".to_string(),
+                header: genesis.header.clone(),
+                block_hash: genesis.hash.clone(),
+                signature: None,
+            }])
+            .unwrap_err();
+        assert_eq!(err, LightClientError::InvalidChainId);
+        let _ = validator;
+    }
+
+    #[test]
+    fn test_state_root_at_height_returns_known_root() {
+        let genesis = crate::core::block::Block::genesis_with_state_root(
+            hash::sha3_hash(b"state-root"),
+            "chain-state",
+            0,
+        );
+        let mut lc = LightClient::new("chain-state".to_string(), genesis.hash.clone());
+        lc.sync_headers(vec![SignedHeader {
+            chain_id: "chain-state".to_string(),
+            header: genesis.header.clone(),
+            block_hash: genesis.hash.clone(),
+            signature: None,
+        }])
+        .unwrap();
+        assert_eq!(lc.state_root_at(0), Some(&genesis.header.state_root));
+        assert!(lc.state_root_at(1).is_none());
     }
 
     #[test]

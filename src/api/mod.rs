@@ -1,3 +1,5 @@
+pub mod eth_rpc;
+
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -25,7 +27,9 @@ use crate::core::receipt::{IndexedLogEntry, IndexedReceipt, LogFilter};
 use crate::core::state_proof::{AccountProof, StorageProof};
 use crate::core::transaction::{Transaction, TransactionKind};
 use crate::crypto::hash;
+use crate::light::SignedHeader;
 use crate::network::NetworkMessage;
+use crate::runtime::{NodeRole, SharedRuntimeState};
 use crate::wallet;
 
 const MAX_API_BODY_BYTES: usize = 1024 * 1024;
@@ -37,18 +41,22 @@ const RATE_LIMIT_CLEANUP_SECS: u64 = 120;
 const RATE_LIMIT_CLEANUP_INTERVAL: u64 = 100;
 const FAUCET_AMOUNT: u64 = 100_000_000;
 const FAUCET_COOLDOWN_SECS: u64 = 3600;
+const MAX_HEALTHY_BLOCK_AGE_SECS: i64 = 120;
 static API_START_TIME: OnceLock<Instant> = OnceLock::new();
 static RATE_LIMIT_REMAINING: AtomicU64 = AtomicU64::new(60);
 static RATE_LIMIT_MAX: AtomicU64 = AtomicU64::new(60);
 
 type RateLimiterMap = Arc<Mutex<HashMap<IpAddr, Vec<Instant>>>>;
 type FaucetCooldownMap = Arc<Mutex<HashMap<String, u64>>>;
+type FaucetIpCooldownMap = Arc<Mutex<HashMap<String, u64>>>;
 
 struct RequestContext {
     peer_ip: IpAddr,
     rate_limiter: RateLimiterMap,
     request_counter: Arc<AtomicU64>,
     faucet_cooldowns: FaucetCooldownMap,
+    faucet_ip_cooldowns: FaucetIpCooldownMap,
+    runtime_state: SharedRuntimeState,
 }
 
 // ─── API Response Types ──────────────────────────────────────────────
@@ -61,6 +69,36 @@ struct ApiResponse<T: Serialize> {
 }
 
 fn json_ok<T: Serialize>(data: T) -> Response<Full<Bytes>> {
+    json_ok_with_origin(data, false)
+}
+
+fn finish_response(
+    builder: hyper::http::response::Builder,
+    body: impl Into<Bytes>,
+) -> Response<Full<Bytes>> {
+    builder.body(Full::new(body.into())).unwrap_or_else(|err| {
+        tracing::error!(error = %err, "failed to build HTTP response");
+        Response::new(Full::new(Bytes::from_static(
+            br#"{"ok":false,"data":null,"error":"internal response error"}"#,
+        )))
+    })
+}
+
+fn json_response<T: Serialize>(status: StatusCode, data: T) -> Response<Full<Bytes>> {
+    let resp = ApiResponse {
+        ok: status.is_success(),
+        data: Some(data),
+        error: None,
+    };
+    let body = serde_json::to_string(&resp).unwrap_or_default();
+    let mut builder = Response::builder()
+        .status(status)
+        .header("Content-Type", "application/json");
+    builder = with_cors_headers(builder);
+    finish_response(builder, body)
+}
+
+fn json_ok_with_origin<T: Serialize>(data: T, force_public: bool) -> Response<Full<Bytes>> {
     let resp = ApiResponse {
         ok: true,
         data: Some(data),
@@ -70,8 +108,12 @@ fn json_ok<T: Serialize>(data: T) -> Response<Full<Bytes>> {
     let mut builder = Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", "application/json");
-    builder = with_cors_headers(builder);
-    builder.body(Full::new(Bytes::from(body))).unwrap()
+    builder = if force_public {
+        with_public_cors_headers(builder)
+    } else {
+        with_cors_headers(builder)
+    };
+    finish_response(builder, body)
 }
 
 fn json_err(status: StatusCode, msg: &str) -> Response<Full<Bytes>> {
@@ -85,7 +127,7 @@ fn json_err(status: StatusCode, msg: &str) -> Response<Full<Bytes>> {
         .status(status)
         .header("Content-Type", "application/json");
     builder = with_cors_headers(builder);
-    builder.body(Full::new(Bytes::from(body))).unwrap()
+    finish_response(builder, body)
 }
 
 fn text_response(status: StatusCode, content_type: &str, body: String) -> Response<Full<Bytes>> {
@@ -93,19 +135,28 @@ fn text_response(status: StatusCode, content_type: &str, body: String) -> Respon
         .status(status)
         .header("Content-Type", content_type);
     builder = with_cors_headers(builder);
-    builder.body(Full::new(Bytes::from(body))).unwrap()
+    finish_response(builder, body)
 }
 
 fn cors_preflight() -> Response<Full<Bytes>> {
     if cors_allow_origin().is_none() {
-        return Response::builder()
-            .status(StatusCode::FORBIDDEN)
-            .body(Full::new(Bytes::new()))
-            .unwrap();
+        return finish_response(
+            Response::builder().status(StatusCode::FORBIDDEN),
+            Bytes::new(),
+        );
     }
     let mut builder = Response::builder().status(StatusCode::NO_CONTENT);
     builder = with_cors_headers(builder);
-    builder.body(Full::new(Bytes::new())).unwrap()
+    finish_response(builder, Bytes::new())
+}
+
+/// Preflight reply for the always-public ETH JSON-RPC endpoint. Used regardless
+/// of `CURS3D_API_ALLOW_ORIGIN` so dApps and Metamask can reach the node from
+/// any origin.
+fn cors_preflight_public() -> Response<Full<Bytes>> {
+    let mut builder = Response::builder().status(StatusCode::NO_CONTENT);
+    builder = with_public_cors_headers(builder);
+    finish_response(builder, Bytes::new())
 }
 
 fn cors_allow_origin() -> Option<String> {
@@ -125,6 +176,21 @@ fn with_cors_headers(builder: hyper::http::response::Builder) -> hyper::http::re
             "Access-Control-Allow-Headers",
             "Content-Type, Authorization",
         )
+}
+
+/// Permissive CORS headers for endpoints that must be reachable from any origin
+/// (the Ethereum-compatible JSON-RPC: Metamask, ethers.js, wagmi).
+fn with_public_cors_headers(
+    builder: hyper::http::response::Builder,
+) -> hyper::http::response::Builder {
+    builder
+        .header("Access-Control-Allow-Origin", "*")
+        .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        .header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Authorization",
+        )
+        .header("Access-Control-Max-Age", "600")
 }
 
 // ─── Serializable API Structs ────────────────────────────────────────
@@ -264,6 +330,13 @@ struct ApiHealth {
     latest_block_timestamp: i64,
     latest_block_age_secs: i64,
     pending_transactions: usize,
+    node_role: NodeRole,
+    validator_address: Option<String>,
+    network_online: bool,
+    peer_count: usize,
+    bootnode_count: usize,
+    rpc_addr: String,
+    http_addr: String,
 }
 
 // ─── Converters ──────────────────────────────────────────────────────
@@ -478,16 +551,116 @@ fn persist_faucet_cooldowns(cooldowns: &HashMap<String, u64>) {
     }
 }
 
+fn faucet_ip_cooldown_store_path() -> String {
+    std::env::var("CURS3D_FAUCET_IP_COOLDOWN_FILE")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "faucet_ip_cooldowns.json".to_string())
+}
+
+fn faucet_ip_cooldown_secs() -> u64 {
+    std::env::var("CURS3D_FAUCET_IP_COOLDOWN_SECS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(FAUCET_COOLDOWN_SECS)
+}
+
+fn load_faucet_ip_cooldowns() -> HashMap<String, u64> {
+    let path = faucet_ip_cooldown_store_path();
+    let Ok(data) = std::fs::read(path) else {
+        return HashMap::new();
+    };
+    serde_json::from_slice(&data).unwrap_or_default()
+}
+
+fn persist_faucet_ip_cooldowns(cooldowns: &HashMap<String, u64>) {
+    let path = faucet_ip_cooldown_store_path();
+    if let Ok(data) = serde_json::to_vec_pretty(cooldowns) {
+        let _ = std::fs::write(path, data);
+    }
+}
+
+fn faucet_require_captcha() -> bool {
+    std::env::var("CURS3D_FAUCET_REQUIRE_CAPTCHA")
+        .ok()
+        .filter(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+        .is_some()
+}
+
+fn faucet_captcha_secret() -> Option<String> {
+    std::env::var("CURS3D_FAUCET_CAPTCHA_SECRET")
+        .ok()
+        .filter(|value| !value.is_empty())
+}
+
+/// Constant-time byte comparison to prevent timing attacks on the shared secret.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff: u8 = 0;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
+/// Captcha verification is delegated to the reverse proxy (nginx auth_request
+/// against hCaptcha or Cloudflare Turnstile). The proxy verifies the captcha
+/// then forwards two headers:
+///   - `X-Captcha-Verified: 1`
+///   - `X-Captcha-Secret: <shared-secret>` (matches CURS3D_FAUCET_CAPTCHA_SECRET)
+///
+/// Without the shared secret, a client could simply curl the node with
+/// `X-Captcha-Verified: 1` and bypass the gate. The shared secret guarantees
+/// the request actually flowed through the configured proxy.
+///
+/// If `CURS3D_FAUCET_CAPTCHA_SECRET` is not set, the node logs a warning and
+/// rejects all requests when captcha is required (fail-closed).
+fn captcha_verified(req: &Request<Incoming>) -> bool {
+    let verified_header = req
+        .headers()
+        .get("x-captcha-verified")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    if verified_header != "1" {
+        return false;
+    }
+
+    let Some(expected_secret) = faucet_captcha_secret() else {
+        tracing::warn!(
+            "captcha required but CURS3D_FAUCET_CAPTCHA_SECRET is not set — rejecting request"
+        );
+        return false;
+    };
+
+    let Some(provided_secret) = req
+        .headers()
+        .get("x-captcha-secret")
+        .and_then(|value| value.to_str().ok())
+    else {
+        return false;
+    };
+
+    constant_time_eq(expected_secret.as_bytes(), provided_secret.as_bytes())
+}
+
 // ─── Request Router ──────────────────────────────────────────────────
 
 async fn check_rate_limit(
     peer_ip: IpAddr,
     method: &Method,
+    path: &str,
     rate_limiter: &RateLimiterMap,
     request_counter: &AtomicU64,
 ) -> Option<Response<Full<Bytes>>> {
     let now = Instant::now();
-    let max_requests = if *method == Method::POST {
+    // /eth is a JSON-RPC endpoint dominated by read methods. Treating it as a
+    // POST under the strict 10/min cap breaks Metamask (which polls
+    // eth_blockNumber every block) and explorer/dApp traffic. Bucket it with
+    // the GET budget instead.
+    let is_eth_rpc = path == "/eth" || path == "/rpc/eth";
+    let max_requests = if *method == Method::POST && !is_eth_rpc {
         RATE_LIMIT_POST
     } else {
         RATE_LIMIT_GET
@@ -538,7 +711,13 @@ async fn handle_request(
     outbound_tx: mpsc::Sender<NetworkMessage>,
     ctx: RequestContext,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
+    let req_path = req.uri().path().to_string();
+    let is_eth_rpc = req_path == "/eth" || req_path == "/rpc/eth";
+
     if req.method() == Method::OPTIONS {
+        if is_eth_rpc {
+            return Ok(cors_preflight_public());
+        }
         return Ok(cors_preflight());
     }
 
@@ -546,6 +725,7 @@ async fn handle_request(
     if let Some(response) = check_rate_limit(
         ctx.peer_ip,
         req.method(),
+        &req_path,
         &ctx.rate_limiter,
         &ctx.request_counter,
     )
@@ -559,388 +739,658 @@ async fn handle_request(
     let rl_max = RATE_LIMIT_MAX.load(Ordering::Relaxed);
 
     let faucet_cooldowns = ctx.faucet_cooldowns;
+    let faucet_ip_cooldowns = ctx.faucet_ip_cooldowns;
+    let peer_ip = ctx.peer_ip;
+    let runtime_state = Arc::clone(&ctx.runtime_state);
 
     let path = req.uri().path().to_string();
     let method = req.method().clone();
 
     let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
 
-    let mut result: Result<Response<Full<Bytes>>, hyper::Error> =
-        match (method, segments.as_slice()) {
-            // GET /api/healthz
-            (Method::GET, ["api", "healthz"]) => {
-                let chain = chain.lock().await;
-                let latest_ts = chain.latest_block().header.timestamp;
-                let age = chrono::Utc::now().timestamp().saturating_sub(latest_ts);
-                Ok(json_ok(ApiHealth {
-                    ok: true,
+    let mut result: Result<Response<Full<Bytes>>, hyper::Error> = match (
+        method,
+        segments.as_slice(),
+    ) {
+        // GET /api/healthz
+        (Method::GET, ["api", "healthz"]) => {
+            let chain = chain.lock().await;
+            let latest_ts = chain.latest_block().header.timestamp;
+            let age = chrono::Utc::now().timestamp().saturating_sub(latest_ts);
+            let runtime = runtime_state.read().await.snapshot();
+            let healthy = runtime.network_online && age <= MAX_HEALTHY_BLOCK_AGE_SECS;
+            Ok(json_response(
+                if healthy {
+                    StatusCode::OK
+                } else {
+                    StatusCode::SERVICE_UNAVAILABLE
+                },
+                ApiHealth {
+                    ok: healthy,
                     chain_id: chain.chain_id().to_string(),
                     height: chain.height(),
                     finalized_height: chain.finalized_height(),
                     latest_block_timestamp: latest_ts,
                     latest_block_age_secs: age,
                     pending_transactions: chain.pending_transactions.len(),
-                }))
-            }
+                    node_role: runtime.role,
+                    validator_address: runtime.validator_address,
+                    network_online: runtime.network_online,
+                    peer_count: runtime.peer_count,
+                    bootnode_count: runtime.bootnode_count,
+                    rpc_addr: runtime.rpc_addr,
+                    http_addr: runtime.http_addr,
+                },
+            ))
+        }
 
-            // GET /api/metrics
-            (Method::GET, ["api", "metrics"]) => {
-                let chain = chain.lock().await;
-                let uptime = API_START_TIME
-                    .get()
-                    .map(|start| start.elapsed().as_secs())
-                    .unwrap_or_default();
-                let body = format!(
-                    concat!(
-                        "# TYPE curs3d_uptime_seconds counter\n",
-                        "curs3d_uptime_seconds {}\n",
-                        "# TYPE curs3d_chain_height gauge\n",
-                        "curs3d_chain_height {}\n",
-                        "# TYPE curs3d_finalized_height gauge\n",
-                        "curs3d_finalized_height {}\n",
-                        "# TYPE curs3d_pending_transactions gauge\n",
-                        "curs3d_pending_transactions {}\n",
-                        "# TYPE curs3d_active_validators gauge\n",
-                        "curs3d_active_validators {}\n",
-                        "# TYPE curs3d_accounts_total gauge\n",
-                        "curs3d_accounts_total {}\n",
-                        "# TYPE curs3d_contracts_total gauge\n",
-                        "curs3d_contracts_total {}\n",
-                        "# TYPE curs3d_receipts_total gauge\n",
-                        "curs3d_receipts_total {}\n",
-                        "# TYPE curs3d_logs_total gauge\n",
-                        "curs3d_logs_total {}\n",
-                        "# TYPE curs3d_base_fee_per_gas gauge\n",
-                        "curs3d_base_fee_per_gas {}\n",
-                    ),
-                    uptime,
-                    chain.height(),
-                    chain.finalized_height(),
-                    chain.pending_transactions.len(),
-                    chain.active_validator_count(),
-                    chain.accounts.len(),
-                    chain.contracts.len(),
-                    chain.receipts.len(),
-                    chain.log_index.len(),
-                    chain.current_base_fee_per_gas(),
-                );
-                Ok(text_response(
-                    StatusCode::OK,
-                    "text/plain; version=0.0.4",
-                    body,
-                ))
-            }
+        // GET /api/metrics
+        (Method::GET, ["api", "metrics"]) => {
+            let chain = chain.lock().await;
+            let uptime = API_START_TIME
+                .get()
+                .map(|start| start.elapsed().as_secs())
+                .unwrap_or_default();
+            let body = format!(
+                concat!(
+                    "# TYPE curs3d_uptime_seconds counter\n",
+                    "curs3d_uptime_seconds {}\n",
+                    "# TYPE curs3d_chain_height gauge\n",
+                    "curs3d_chain_height {}\n",
+                    "# TYPE curs3d_finalized_height gauge\n",
+                    "curs3d_finalized_height {}\n",
+                    "# TYPE curs3d_pending_transactions gauge\n",
+                    "curs3d_pending_transactions {}\n",
+                    "# TYPE curs3d_active_validators gauge\n",
+                    "curs3d_active_validators {}\n",
+                    "# TYPE curs3d_accounts_total gauge\n",
+                    "curs3d_accounts_total {}\n",
+                    "# TYPE curs3d_contracts_total gauge\n",
+                    "curs3d_contracts_total {}\n",
+                    "# TYPE curs3d_receipts_total gauge\n",
+                    "curs3d_receipts_total {}\n",
+                    "# TYPE curs3d_logs_total gauge\n",
+                    "curs3d_logs_total {}\n",
+                    "# TYPE curs3d_base_fee_per_gas gauge\n",
+                    "curs3d_base_fee_per_gas {}\n",
+                ),
+                uptime,
+                chain.height(),
+                chain.finalized_height(),
+                chain.pending_transactions.len(),
+                chain.active_validator_count(),
+                chain.accounts.len(),
+                chain.contracts.len(),
+                chain.receipts.len(),
+                chain.log_index.len(),
+                chain.current_base_fee_per_gas(),
+            );
+            Ok(text_response(
+                StatusCode::OK,
+                "text/plain; version=0.0.4",
+                body,
+            ))
+        }
 
-            // GET /api/status
-            (Method::GET, ["api", "status"]) => {
-                let chain = chain.lock().await;
-                Ok(json_ok(ApiStatus {
-                    chain_id: chain.chain_id().to_string(),
-                    chain_name: chain.genesis_config.chain_name.clone(),
-                    epoch: chain.current_epoch(),
-                    epoch_start_height: chain.current_epoch_start_height(),
-                    height: chain.height(),
-                    finalized_height: chain.finalized_height(),
-                    latest_hash: hex::encode(chain.latest_hash()),
-                    genesis_hash: hex::encode(chain.genesis_hash()),
-                    pending_transactions: chain.pending_transactions.len(),
-                    active_validators: chain.active_validator_count(),
-                    protocol_version: chain.protocol_version_at_height(chain.height()),
-                }))
-            }
+        // GET /api/status
+        (Method::GET, ["api", "status"]) => {
+            let chain = chain.lock().await;
+            Ok(json_ok(ApiStatus {
+                chain_id: chain.chain_id().to_string(),
+                chain_name: chain.genesis_config.chain_name.clone(),
+                epoch: chain.current_epoch(),
+                epoch_start_height: chain.current_epoch_start_height(),
+                height: chain.height(),
+                finalized_height: chain.finalized_height(),
+                latest_hash: hex::encode(chain.latest_hash()),
+                genesis_hash: hex::encode(chain.genesis_hash()),
+                pending_transactions: chain.pending_transactions.len(),
+                active_validators: chain.active_validator_count(),
+                protocol_version: chain.protocol_version_at_height(chain.height()),
+            }))
+        }
 
-            // GET /api/block/:height
-            (Method::GET, ["api", "block", height_str]) => {
-                let height: u64 = match height_str.parse() {
-                    Ok(h) => h,
-                    Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid height")),
-                };
-                let chain = chain.lock().await;
-                match chain.blocks.get(height as usize) {
-                    Some(block) => Ok(json_ok(block_to_api(block))),
-                    None => Ok(json_err(StatusCode::NOT_FOUND, "block not found")),
+        // GET /api/block/:height
+        (Method::GET, ["api", "block", height_str]) => {
+            let height: u64 = match height_str.parse() {
+                Ok(h) => h,
+                Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid height")),
+            };
+            let chain = chain.lock().await;
+            match chain.blocks.get(height as usize) {
+                Some(block) => Ok(json_ok(block_to_api(block))),
+                None => Ok(json_err(StatusCode::NOT_FOUND, "block not found")),
+            }
+        }
+
+        // ─── Light Client endpoints ──────────────────────────────────
+        // GET /api/genesis — minimal info for a light client to anchor on
+        (Method::GET, ["api", "genesis"]) => {
+            let chain = chain.lock().await;
+            let genesis = chain.blocks.first();
+            Ok(json_ok(serde_json::json!({
+                "chain_id": chain.chain_id(),
+                "chain_name": chain.genesis_config.chain_name,
+                "genesis_hash": genesis.map(|b| hex::encode(&b.hash)),
+                "genesis_timestamp": genesis.map(|b| b.header.timestamp),
+                "genesis_state_root": genesis.map(|b| hex::encode(&b.header.state_root)),
+                "block_gas_limit": chain.genesis_config.block_gas_limit,
+                "minimum_stake": chain.minimum_stake,
+                "epoch_length": chain.genesis_config.epoch_length,
+                "protocol_version": genesis.map(|b| b.header.version).unwrap_or(0),
+            })))
+        }
+
+        // GET /api/headers?from=N&to=M (signed headers for light client sync)
+        (Method::GET, ["api", "headers"]) => {
+            let query = req.uri().query().unwrap_or("");
+            let params: Vec<(&str, &str)> =
+                query.split('&').filter_map(|p| p.split_once('=')).collect();
+            let from: u64 = params
+                .iter()
+                .find(|(k, _)| *k == "from")
+                .and_then(|(_, v)| v.parse().ok())
+                .unwrap_or(0);
+            let limit: usize = params
+                .iter()
+                .find(|(k, _)| *k == "limit")
+                .and_then(|(_, v)| v.parse().ok())
+                .unwrap_or(64)
+                .min(256);
+            let to: u64 = params
+                .iter()
+                .find(|(k, _)| *k == "to")
+                .and_then(|(_, v)| v.parse().ok())
+                .unwrap_or(from + limit as u64);
+            let chain = chain.lock().await;
+            let chain_id = chain.chain_id().to_string();
+            let height = chain.height();
+            let upper = to.min(height).min(from + limit as u64);
+            let mut headers: Vec<SignedHeader> = Vec::new();
+            for h in from..=upper {
+                if let Some(block) = chain.blocks.get(h as usize) {
+                    headers.push(SignedHeader {
+                        chain_id: chain_id.clone(),
+                        header: block.header.clone(),
+                        block_hash: block.hash.clone(),
+                        signature: block.signature.clone(),
+                    });
                 }
             }
+            Ok(json_ok(serde_json::json!({
+                "from": from,
+                "to": upper,
+                "count": headers.len(),
+                "headers": headers,
+            })))
+        }
 
-            // GET /api/blocks?from=0&limit=20
-            (Method::GET, ["api", "blocks"]) => {
-                let query = req.uri().query().unwrap_or("");
-                let params: Vec<(&str, &str)> =
-                    query.split('&').filter_map(|p| p.split_once('=')).collect();
-
-                let from: u64 = params
-                    .iter()
-                    .find(|(k, _)| *k == "from")
-                    .and_then(|(_, v)| v.parse().ok())
-                    .unwrap_or(0);
-                let limit: usize = params
-                    .iter()
-                    .find(|(k, _)| *k == "limit")
-                    .and_then(|(_, v)| v.parse().ok())
-                    .unwrap_or(20)
-                    .min(100);
-
-                let chain = chain.lock().await;
-                let height = chain.height();
-                let start = if from == 0 && height >= limit as u64 {
-                    height - limit as u64 + 1
-                } else {
-                    from
-                };
-
-                let blocks: Vec<ApiBlockSummary> = (start..=height)
-                    .rev()
-                    .take(limit)
-                    .filter_map(|h| chain.blocks.get(h as usize).map(block_to_summary))
-                    .collect();
-
-                Ok(json_ok(blocks))
-            }
-
-            // GET /api/account/:address
-            (Method::GET, ["api", "account", addr_hex]) => {
-                let addr_clean = addr_hex.strip_prefix("CUR").unwrap_or(addr_hex);
-                let address = match hex::decode(addr_clean) {
-                    Ok(a) if a.len() == hash::ADDRESS_LEN => a,
-                    _ => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid address")),
-                };
-                let chain = chain.lock().await;
-                let state = chain.get_account(&address);
-                Ok(json_ok(ApiAccount {
-                    address: hex::encode(&address),
-                    balance: state.balance,
-                    nonce: state.nonce,
-                    staked_balance: state.staked_balance,
-                }))
-            }
-
-            // GET /api/account/:address/proof
-            (Method::GET, ["api", "account", addr_hex, "proof"]) => {
-                let addr_clean = addr_hex.strip_prefix("CUR").unwrap_or(addr_hex);
-                let address = match hex::decode(addr_clean) {
-                    Ok(a) if a.len() == hash::ADDRESS_LEN => a,
-                    _ => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid address")),
-                };
-                let chain = chain.lock().await;
-                match chain.get_account_proof(&address) {
-                    Some(proof) => Ok(json_ok(account_proof_to_api(proof))),
-                    None => Ok(json_err(StatusCode::NOT_FOUND, "account proof not found")),
+        // GET /api/header/:height
+        (Method::GET, ["api", "header", height_str]) => {
+            let height: u64 = match height_str.parse() {
+                Ok(h) => h,
+                Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid height")),
+            };
+            let chain = chain.lock().await;
+            match chain.blocks.get(height as usize) {
+                Some(block) => {
+                    let signed = SignedHeader {
+                        chain_id: chain.chain_id().to_string(),
+                        header: block.header.clone(),
+                        block_hash: block.hash.clone(),
+                        signature: block.signature.clone(),
+                    };
+                    Ok(json_ok(signed))
                 }
+                None => Ok(json_err(StatusCode::NOT_FOUND, "header not found")),
             }
+        }
 
-            // GET /api/contract/:address/storage/:key/proof
-            (Method::GET, ["api", "contract", contract_hex, "storage", key_hex, "proof"]) => {
-                let contract_address = match hex::decode(contract_hex) {
-                    Ok(a) if a.len() == hash::ADDRESS_LEN => a,
-                    _ => {
-                        return Ok(json_err(
-                            StatusCode::BAD_REQUEST,
-                            "invalid contract address",
-                        ));
-                    }
-                };
-                let key = match hex::decode(key_hex) {
-                    Ok(value) => value,
-                    Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid storage key")),
-                };
-                let chain = chain.lock().await;
-                match chain.get_storage_proof(&contract_address, &key) {
-                    Some(proof) => Ok(json_ok(storage_proof_to_api(proof))),
-                    None => Ok(json_err(StatusCode::NOT_FOUND, "storage proof not found")),
-                }
+        // GET /api/finality — finalized height + finalized hash for light clients
+        (Method::GET, ["api", "finality"]) => {
+            let chain = chain.lock().await;
+            Ok(json_ok(serde_json::json!({
+                "finalized_height": chain.finality_tracker.finalized_height,
+                "finalized_hash": hex::encode(&chain.finality_tracker.finalized_hash),
+                "current_height": chain.height(),
+            })))
+        }
+
+        // GET /api/block-by-hash/:hash
+        (Method::GET, ["api", "block-by-hash", hash_str]) => {
+            let hash_bytes = match hex::decode(hash_str) {
+                Ok(b) => b,
+                Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid hash")),
+            };
+            let chain = chain.lock().await;
+            let height = chain.block_hash_to_height.get(&hash_bytes).copied();
+            match height.and_then(|h| chain.blocks.get(h as usize)) {
+                Some(block) => Ok(json_ok(block_to_api(block))),
+                None => Ok(json_err(StatusCode::NOT_FOUND, "block not found")),
             }
+        }
 
-            // GET /api/tx/:hash
-            (Method::GET, ["api", "tx", tx_hash]) => {
-                let target = match hex::decode(tx_hash) {
-                    Ok(h) => h,
-                    Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid tx hash")),
-                };
-                let chain = chain.lock().await;
-                for block in chain.blocks.iter().rev() {
-                    for tx in &block.transactions {
-                        if tx.hash() == target {
-                            return Ok(json_ok(tx_to_api(tx)));
-                        }
-                    }
-                }
-                Ok(json_err(StatusCode::NOT_FOUND, "transaction not found"))
+        // GET /api/blocks?from=0&limit=20
+        (Method::GET, ["api", "blocks"]) => {
+            let query = req.uri().query().unwrap_or("");
+            let params: Vec<(&str, &str)> =
+                query.split('&').filter_map(|p| p.split_once('=')).collect();
+
+            let from: u64 = params
+                .iter()
+                .find(|(k, _)| *k == "from")
+                .and_then(|(_, v)| v.parse().ok())
+                .unwrap_or(0);
+            let limit: usize = params
+                .iter()
+                .find(|(k, _)| *k == "limit")
+                .and_then(|(_, v)| v.parse().ok())
+                .unwrap_or(20)
+                .min(100);
+
+            let chain = chain.lock().await;
+            let height = chain.height();
+            let start = if from == 0 && height >= limit as u64 {
+                height - limit as u64 + 1
+            } else {
+                from
+            };
+
+            let blocks: Vec<ApiBlockSummary> = (start..=height)
+                .rev()
+                .take(limit)
+                .filter_map(|h| chain.blocks.get(h as usize).map(block_to_summary))
+                .collect();
+
+            Ok(json_ok(blocks))
+        }
+
+        // GET /api/account/:address
+        (Method::GET, ["api", "account", addr_hex]) => {
+            let addr_clean = addr_hex.strip_prefix("CUR").unwrap_or(addr_hex);
+            let address = match hex::decode(addr_clean) {
+                Ok(a) if a.len() == hash::ADDRESS_LEN => a,
+                _ => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid address")),
+            };
+            let chain = chain.lock().await;
+            let state = chain.get_account(&address);
+            Ok(json_ok(ApiAccount {
+                address: hex::encode(&address),
+                balance: state.balance,
+                nonce: state.nonce,
+                staked_balance: state.staked_balance,
+            }))
+        }
+
+        // GET /api/account/:address/transactions?from_block=&to_block=&limit=
+        (Method::GET, ["api", "account", addr_hex, "transactions"]) => {
+            let addr_clean = addr_hex.strip_prefix("CUR").unwrap_or(addr_hex);
+            let address = match hex::decode(addr_clean) {
+                Ok(a) if a.len() == hash::ADDRESS_LEN => a,
+                _ => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid address")),
+            };
+            let query = req.uri().query().unwrap_or("");
+            let params: Vec<(&str, &str)> =
+                query.split('&').filter_map(|p| p.split_once('=')).collect();
+            let from_block = params
+                .iter()
+                .find(|(k, _)| *k == "from_block")
+                .and_then(|(_, v)| v.parse().ok());
+            let to_block = params
+                .iter()
+                .find(|(k, _)| *k == "to_block")
+                .and_then(|(_, v)| v.parse().ok());
+            let limit: usize = params
+                .iter()
+                .find(|(k, _)| *k == "limit")
+                .and_then(|(_, v)| v.parse().ok())
+                .unwrap_or(50)
+                .min(500);
+            let chain = chain.lock().await;
+            #[derive(Serialize)]
+            struct ApiAccountTx {
+                block_height: u64,
+                tx_index: usize,
+                #[serde(flatten)]
+                tx: ApiTransaction,
             }
+            let txs: Vec<ApiAccountTx> = chain
+                .transactions_for_address(&address, from_block, to_block, limit)
+                .into_iter()
+                .map(|(h, i, tx)| ApiAccountTx {
+                    block_height: h,
+                    tx_index: i,
+                    tx: tx_to_api(&tx),
+                })
+                .collect();
+            Ok(json_ok(txs))
+        }
 
-            // GET /api/receipt/:hash
-            (Method::GET, ["api", "receipt", tx_hash]) => {
-                let target = match hex::decode(tx_hash) {
-                    Ok(h) => h,
-                    Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid tx hash")),
-                };
-                let chain = chain.lock().await;
-                match chain.get_receipt(&target) {
-                    Some(receipt) => Ok(json_ok(indexed_receipt_to_api(receipt))),
-                    None => Ok(json_err(StatusCode::NOT_FOUND, "receipt not found")),
-                }
+        // GET /api/account/:address/proof
+        (Method::GET, ["api", "account", addr_hex, "proof"]) => {
+            let addr_clean = addr_hex.strip_prefix("CUR").unwrap_or(addr_hex);
+            let address = match hex::decode(addr_clean) {
+                Ok(a) if a.len() == hash::ADDRESS_LEN => a,
+                _ => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid address")),
+            };
+            let chain = chain.lock().await;
+            match chain.get_account_proof(&address) {
+                Some(proof) => Ok(json_ok(account_proof_to_api(proof))),
+                None => Ok(json_err(StatusCode::NOT_FOUND, "account proof not found")),
             }
+        }
 
-            // GET /api/logs?contract=&topic=&from_block=&to_block=&limit=
-            (Method::GET, ["api", "logs"]) => {
-                let query = req.uri().query().unwrap_or("");
-                let params: Vec<(&str, &str)> =
-                    query.split('&').filter_map(|p| p.split_once('=')).collect();
-                let contract = params
-                    .iter()
-                    .find(|(k, _)| *k == "contract")
-                    .and_then(|(_, v)| hex::decode(v).ok());
-                let topic = params
-                    .iter()
-                    .find(|(k, _)| *k == "topic")
-                    .and_then(|(_, v)| hex::decode(v).ok());
-                let from_block = params
-                    .iter()
-                    .find(|(k, _)| *k == "from_block")
-                    .and_then(|(_, v)| v.parse().ok());
-                let to_block = params
-                    .iter()
-                    .find(|(k, _)| *k == "to_block")
-                    .and_then(|(_, v)| v.parse().ok());
-                let limit = params
-                    .iter()
-                    .find(|(k, _)| *k == "limit")
-                    .and_then(|(_, v)| v.parse().ok());
-                let chain = chain.lock().await;
-                let filter = LogFilter {
-                    contract,
-                    topic,
-                    from_block,
-                    to_block,
-                    limit,
-                };
-                let entries: Vec<ApiLogEntry> = chain
-                    .query_logs(&filter)
-                    .into_iter()
-                    .map(indexed_log_to_api)
-                    .collect();
-                Ok(json_ok(entries))
-            }
-
-            // GET /api/pending
-            (Method::GET, ["api", "pending"]) => {
-                let chain = chain.lock().await;
-                let txs: Vec<ApiTransaction> =
-                    chain.pending_transactions.iter().map(tx_to_api).collect();
-                Ok(json_ok(txs))
-            }
-
-            // GET /api/validators
-            (Method::GET, ["api", "validators"]) => {
-                let chain = chain.lock().await;
-                let pos = crate::consensus::ProofOfStake::with_slashed(
-                    chain.minimum_stake,
-                    chain.slashed_validators.clone(),
-                    chain.height() + 1,
-                );
-                let validators: Vec<ApiValidator> = pos
-                    .active_validators(&chain.accounts)
-                    .into_iter()
-                    .map(|v| ApiValidator {
-                        address: hex::encode(&v.address),
-                        public_key: hex::encode(&v.public_key),
-                        stake: v.stake,
-                    })
-                    .collect();
-                Ok(json_ok(validators))
-            }
-
-            // POST /api/faucet/request
-            (Method::POST, ["api", "faucet", "request"]) => {
-                if let Some(content_length) = req
-                    .headers()
-                    .get(CONTENT_LENGTH)
-                    .and_then(|value| value.to_str().ok())
-                    .and_then(|value| value.parse::<usize>().ok())
-                    && content_length > MAX_API_BODY_BYTES
-                {
-                    return Ok(json_err(
-                        StatusCode::PAYLOAD_TOO_LARGE,
-                        "request body too large",
-                    ));
-                }
-
-                let body_bytes = match http_body_util::BodyExt::collect(req.into_body()).await {
-                    Ok(collected) => collected.to_bytes(),
-                    Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "failed to read body")),
-                };
-                if body_bytes.len() > MAX_API_BODY_BYTES {
-                    return Ok(json_err(
-                        StatusCode::PAYLOAD_TOO_LARGE,
-                        "request body too large",
-                    ));
-                }
-
-                let payload: serde_json::Value = match serde_json::from_slice(&body_bytes) {
-                    Ok(value) => value,
-                    Err(_) => {
-                        return Ok(json_err(
-                            StatusCode::BAD_REQUEST,
-                            "invalid faucet request JSON",
-                        ));
-                    }
-                };
-                let Some(address_str) = payload.get("address").and_then(|value| value.as_str())
-                else {
+        // GET /api/contract/:address/code — raw deployed bytecode (hex)
+        (Method::GET, ["api", "contract", contract_hex, "code"]) => {
+            let contract_address = match hex::decode(contract_hex) {
+                Ok(a) if a.len() == hash::ADDRESS_LEN => a,
+                _ => {
                     return Ok(json_err(
                         StatusCode::BAD_REQUEST,
-                        "missing faucet request address",
+                        "invalid contract address",
                     ));
-                };
-                let addr_clean = address_str.strip_prefix("CUR").unwrap_or(address_str);
-                let address = match hex::decode(addr_clean) {
-                    Ok(a) if a.len() == hash::ADDRESS_LEN => a,
-                    _ => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid address")),
-                };
-                let address_key = hex::encode(&address);
-                let Some((wallet_path, password, fee)) = faucet_wallet_configured() else {
+                }
+            };
+            let chain = chain.lock().await;
+            match chain.contracts.get(&contract_address) {
+                Some(state) => Ok(json_ok(serde_json::json!({
+                    "address": hex::encode(&contract_address),
+                    "code": hex::encode(&state.code),
+                    "code_length": state.code.len(),
+                    "code_hash": hex::encode(hash::sha3_hash(&state.code)),
+                    "owner": hex::encode(&state.owner),
+                }))),
+                None => Ok(json_err(StatusCode::NOT_FOUND, "contract not found")),
+            }
+        }
+
+        // GET /api/contract/:address/storage/:key/proof
+        (Method::GET, ["api", "contract", contract_hex, "storage", key_hex, "proof"]) => {
+            let contract_address = match hex::decode(contract_hex) {
+                Ok(a) if a.len() == hash::ADDRESS_LEN => a,
+                _ => {
+                    return Ok(json_err(
+                        StatusCode::BAD_REQUEST,
+                        "invalid contract address",
+                    ));
+                }
+            };
+            let key = match hex::decode(key_hex) {
+                Ok(value) => value,
+                Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid storage key")),
+            };
+            let chain = chain.lock().await;
+            match chain.get_storage_proof(&contract_address, &key) {
+                Some(proof) => Ok(json_ok(storage_proof_to_api(proof))),
+                None => Ok(json_err(StatusCode::NOT_FOUND, "storage proof not found")),
+            }
+        }
+
+        // GET /api/tx/:hash
+        (Method::GET, ["api", "tx", tx_hash]) => {
+            let target = match hex::decode(tx_hash) {
+                Ok(h) => h,
+                Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid tx hash")),
+            };
+            let chain = chain.lock().await;
+            if let Some((height, idx)) = chain.tx_hash_index.get(&target).copied()
+                && let Some(block) = chain.blocks.get(height as usize)
+                && let Some(tx) = block.transactions.get(idx)
+            {
+                return Ok(json_ok(tx_to_api(tx)));
+            }
+            Ok(json_err(StatusCode::NOT_FOUND, "transaction not found"))
+        }
+
+        // GET /api/receipt/:hash
+        (Method::GET, ["api", "receipt", tx_hash]) => {
+            let target = match hex::decode(tx_hash) {
+                Ok(h) => h,
+                Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid tx hash")),
+            };
+            let chain = chain.lock().await;
+            match chain.get_receipt(&target) {
+                Some(receipt) => Ok(json_ok(indexed_receipt_to_api(receipt))),
+                None => Ok(json_err(StatusCode::NOT_FOUND, "receipt not found")),
+            }
+        }
+
+        // GET /api/logs?contract=&topic=&from_block=&to_block=&limit=
+        (Method::GET, ["api", "logs"]) => {
+            let query = req.uri().query().unwrap_or("");
+            let params: Vec<(&str, &str)> =
+                query.split('&').filter_map(|p| p.split_once('=')).collect();
+            let contract = params
+                .iter()
+                .find(|(k, _)| *k == "contract")
+                .and_then(|(_, v)| hex::decode(v).ok());
+            let topic = params
+                .iter()
+                .find(|(k, _)| *k == "topic")
+                .and_then(|(_, v)| hex::decode(v).ok());
+            let from_block = params
+                .iter()
+                .find(|(k, _)| *k == "from_block")
+                .and_then(|(_, v)| v.parse().ok());
+            let to_block = params
+                .iter()
+                .find(|(k, _)| *k == "to_block")
+                .and_then(|(_, v)| v.parse().ok());
+            let limit = params
+                .iter()
+                .find(|(k, _)| *k == "limit")
+                .and_then(|(_, v)| v.parse().ok());
+            // Positional topics: topic0, topic1, topic2, topic3 (eth-style)
+            let mut positional: Vec<Option<Vec<u8>>> = Vec::new();
+            for i in 0..4 {
+                let key = format!("topic{}", i);
+                let value = params
+                    .iter()
+                    .find(|(k, _)| *k == key.as_str())
+                    .map(|(_, v)| *v);
+                if let Some(v) = value {
+                    positional.push(hex::decode(v).ok());
+                } else {
+                    positional.push(None);
+                }
+            }
+            let topics_filter = if positional.iter().any(|p| p.is_some()) {
+                Some(positional)
+            } else {
+                None
+            };
+            let chain = chain.lock().await;
+            let filter = LogFilter {
+                contract,
+                topic,
+                topics: topics_filter,
+                from_block,
+                to_block,
+                limit,
+            };
+            let entries: Vec<ApiLogEntry> = chain
+                .query_logs(&filter)
+                .into_iter()
+                .map(indexed_log_to_api)
+                .collect();
+            Ok(json_ok(entries))
+        }
+
+        // GET /api/pending
+        (Method::GET, ["api", "pending"]) => {
+            let chain = chain.lock().await;
+            let txs: Vec<ApiTransaction> =
+                chain.pending_transactions.iter().map(tx_to_api).collect();
+            Ok(json_ok(txs))
+        }
+
+        // GET /api/validators
+        (Method::GET, ["api", "validators"]) => {
+            let chain = chain.lock().await;
+            let pos = crate::consensus::ProofOfStake::with_slashed(
+                chain.minimum_stake,
+                chain.slashed_validators.clone(),
+                chain.height() + 1,
+            );
+            let validators: Vec<ApiValidator> = pos
+                .active_validators(&chain.accounts)
+                .into_iter()
+                .map(|v| ApiValidator {
+                    address: hex::encode(&v.address),
+                    public_key: hex::encode(&v.public_key),
+                    stake: v.stake,
+                })
+                .collect();
+            Ok(json_ok(validators))
+        }
+
+        // POST /api/faucet/request
+        (Method::POST, ["api", "faucet", "request"]) => {
+            if faucet_require_captcha() && !captcha_verified(&req) {
+                return Ok(json_err(
+                    StatusCode::FORBIDDEN,
+                    "captcha verification required",
+                ));
+            }
+
+            // Per-IP cooldown (independent of address), prevents wallet hopping.
+            // Note: the actual check+update is performed atomically below
+            // (after we know the address is well-formed) to close a race where
+            // two requests in the same second could both pass the check.
+            let ip_key = peer_ip.to_string();
+            let ip_cooldown = faucet_ip_cooldown_secs();
+
+            if let Some(content_length) = req
+                .headers()
+                .get(CONTENT_LENGTH)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<usize>().ok())
+                && content_length > MAX_API_BODY_BYTES
+            {
+                return Ok(json_err(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "request body too large",
+                ));
+            }
+
+            let body_bytes = match http_body_util::BodyExt::collect(req.into_body()).await {
+                Ok(collected) => collected.to_bytes(),
+                Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "failed to read body")),
+            };
+            if body_bytes.len() > MAX_API_BODY_BYTES {
+                return Ok(json_err(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "request body too large",
+                ));
+            }
+
+            let payload: serde_json::Value = match serde_json::from_slice(&body_bytes) {
+                Ok(value) => value,
+                Err(_) => {
+                    return Ok(json_err(
+                        StatusCode::BAD_REQUEST,
+                        "invalid faucet request JSON",
+                    ));
+                }
+            };
+            let Some(address_str) = payload.get("address").and_then(|value| value.as_str()) else {
+                return Ok(json_err(
+                    StatusCode::BAD_REQUEST,
+                    "missing faucet request address",
+                ));
+            };
+            let addr_clean = address_str.strip_prefix("CUR").unwrap_or(address_str);
+            let address = match hex::decode(addr_clean) {
+                Ok(a) if a.len() == hash::ADDRESS_LEN => a,
+                _ => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid address")),
+            };
+            let address_key = hex::encode(&address);
+            let Some((wallet_path, password, fee)) = faucet_wallet_configured() else {
+                return Ok(json_err(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "faucet disabled: configure CURS3D_FAUCET_WALLET and password",
+                ));
+            };
+            let faucet_wallet = match wallet::Wallet::load_auto(&wallet_path, &password) {
+                Ok(wallet) => wallet,
+                Err(_) => {
                     return Ok(json_err(
                         StatusCode::SERVICE_UNAVAILABLE,
-                        "faucet disabled: configure CURS3D_FAUCET_WALLET and password",
+                        "faucet unavailable: failed to load configured faucet wallet",
                     ));
-                };
-                let faucet_wallet = match wallet::Wallet::load_auto(&wallet_path, &password) {
-                    Ok(wallet) => wallet,
-                    Err(_) => {
+                }
+            };
+            let faucet_address =
+                hash::address_bytes_from_public_key(&faucet_wallet.keypair.public_key);
+
+            // Atomic cooldown check+reservation. Holding both mutexes across
+            // the check AND the optimistic write closes the race where two
+            // concurrent requests could both pass the check and then both
+            // update the map (#8). On any later failure we roll back.
+            let now_ts = current_unix_timestamp();
+            let (prev_addr_ts, prev_ip_ts) = {
+                let mut addr_cooldowns = faucet_cooldowns.lock().await;
+                let mut ip_cooldowns = faucet_ip_cooldowns.lock().await;
+
+                if let Some(last_request) = addr_cooldowns.get(&address_key) {
+                    let elapsed = now_ts.saturating_sub(*last_request);
+                    if elapsed < FAUCET_COOLDOWN_SECS {
+                        let remaining = FAUCET_COOLDOWN_SECS - elapsed;
                         return Ok(json_err(
-                            StatusCode::SERVICE_UNAVAILABLE,
-                            "faucet unavailable: failed to load configured faucet wallet",
+                            StatusCode::TOO_MANY_REQUESTS,
+                            &format!("faucet cooldown: try again in {} seconds", remaining),
                         ));
                     }
-                };
-                let faucet_address =
-                    hash::address_bytes_from_public_key(&faucet_wallet.keypair.public_key);
-
-                // Check faucet cooldown
-                {
-                    let cooldowns = faucet_cooldowns.lock().await;
-                    if let Some(last_request) = cooldowns.get(&address_key) {
-                        let elapsed = current_unix_timestamp().saturating_sub(*last_request);
-                        if elapsed < FAUCET_COOLDOWN_SECS {
-                            let remaining = FAUCET_COOLDOWN_SECS - elapsed;
-                            return Ok(json_err(
-                                StatusCode::TOO_MANY_REQUESTS,
-                                &format!("faucet cooldown: try again in {} seconds", remaining),
-                            ));
-                        }
+                }
+                if let Some(last_request) = ip_cooldowns.get(&ip_key) {
+                    let elapsed = now_ts.saturating_sub(*last_request);
+                    if elapsed < ip_cooldown {
+                        let remaining = ip_cooldown - elapsed;
+                        return Ok(json_err(
+                            StatusCode::TOO_MANY_REQUESTS,
+                            &format!("ip cooldown: try again in {} seconds", remaining),
+                        ));
                     }
                 }
 
-                let tx = {
-                    let mut chain = chain.lock().await;
-                    let faucet_account = chain.get_account(&faucet_address);
-                    let total_needed = FAUCET_AMOUNT.saturating_add(fee);
-                    if faucet_account.balance < total_needed {
-                        return Ok(json_err(
-                            StatusCode::SERVICE_UNAVAILABLE,
-                            "faucet depleted: refill the configured faucet wallet",
-                        ));
-                    }
+                let prev_addr_ts = addr_cooldowns.insert(address_key.clone(), now_ts);
+                let prev_ip_ts = ip_cooldowns.insert(ip_key.clone(), now_ts);
+                (prev_addr_ts, prev_ip_ts)
+            };
 
+            // Helper for the rollback path so we don't ship a bumped cooldown
+            // for a request that ultimately failed.
+            let rollback_cooldowns = || async {
+                let mut addr_cooldowns = faucet_cooldowns.lock().await;
+                match prev_addr_ts {
+                    Some(ts) => {
+                        addr_cooldowns.insert(address_key.clone(), ts);
+                    }
+                    None => {
+                        addr_cooldowns.remove(&address_key);
+                    }
+                }
+                let mut ip_cooldowns = faucet_ip_cooldowns.lock().await;
+                match prev_ip_ts {
+                    Some(ts) => {
+                        ip_cooldowns.insert(ip_key.clone(), ts);
+                    }
+                    None => {
+                        ip_cooldowns.remove(&ip_key);
+                    }
+                }
+            };
+
+            let tx_or_err = {
+                let mut chain = chain.lock().await;
+                let faucet_account = chain.get_account(&faucet_address);
+                let total_needed = FAUCET_AMOUNT.saturating_add(fee);
+                if faucet_account.balance < total_needed {
+                    Err((
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "faucet depleted: refill the configured faucet wallet".to_string(),
+                    ))
+                } else {
                     let mut tx = Transaction::new(
                         chain.chain_id(),
                         faucet_wallet.keypair.public_key.clone(),
@@ -950,236 +1400,223 @@ async fn handle_request(
                         faucet_account.nonce,
                     );
                     tx.sign(&faucet_wallet.keypair);
-                    if let Err(err) = chain.add_transaction(tx.clone()) {
-                        return Ok(json_err(
+                    match chain.add_transaction(tx.clone()) {
+                        Ok(()) => Ok(tx),
+                        Err(err) => Err((
                             StatusCode::BAD_REQUEST,
-                            &format!("faucet transfer rejected: {}", err),
-                        ));
+                            format!("faucet transfer rejected: {}", err),
+                        )),
                     }
-                    tx
-                };
-
-                if let Ok(data) = bincode::serialize(&tx) {
-                    let _ = outbound_tx.try_send(NetworkMessage::NewTransaction(data));
-                };
-
-                // Record cooldown
-                {
-                    let mut cooldowns = faucet_cooldowns.lock().await;
-                    cooldowns.insert(address_key, current_unix_timestamp());
-                    persist_faucet_cooldowns(&cooldowns);
                 }
+            };
 
-                Ok(json_ok(serde_json::json!({
-                    "address": hex::encode(&address),
-                    "amount": FAUCET_AMOUNT,
-                    "tx_hash": tx.hash_hex(),
-                    "from": faucet_wallet.address,
-                    "fee": fee,
-                    "next_available_secs": FAUCET_COOLDOWN_SECS
-                })))
+            let tx = match tx_or_err {
+                Ok(tx) => tx,
+                Err((status, msg)) => {
+                    rollback_cooldowns().await;
+                    return Ok(json_err(status, &msg));
+                }
+            };
+
+            if let Ok(data) = bincode::serialize(&tx) {
+                let _ = outbound_tx.try_send(NetworkMessage::NewTransaction(data));
+            };
+
+            // Persist cooldowns to disk now that the request has succeeded.
+            // The in-memory entries were already written under the atomic
+            // critical section above.
+            {
+                let cooldowns = faucet_cooldowns.lock().await;
+                persist_faucet_cooldowns(&cooldowns);
+            }
+            {
+                let ip_cooldowns = faucet_ip_cooldowns.lock().await;
+                persist_faucet_ip_cooldowns(&ip_cooldowns);
             }
 
-            // POST /api/tx/submit
-            (Method::POST, ["api", "tx", "submit"]) => {
-                if let Some(response) = enforce_api_auth(&req) {
-                    return Ok(response);
-                }
+            Ok(json_ok(serde_json::json!({
+                "address": hex::encode(&address),
+                "amount": FAUCET_AMOUNT,
+                "tx_hash": tx.hash_hex(),
+                "from": faucet_wallet.address,
+                "fee": fee,
+                "next_available_secs": FAUCET_COOLDOWN_SECS
+            })))
+        }
 
-                if let Some(content_length) = req
-                    .headers()
-                    .get(CONTENT_LENGTH)
-                    .and_then(|value| value.to_str().ok())
-                    .and_then(|value| value.parse::<usize>().ok())
-                    && content_length > MAX_API_BODY_BYTES
-                {
+        // POST /api/tx/submit
+        (Method::POST, ["api", "tx", "submit"]) => {
+            if let Some(response) = enforce_api_auth(&req) {
+                return Ok(response);
+            }
+
+            if let Some(content_length) = req
+                .headers()
+                .get(CONTENT_LENGTH)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<usize>().ok())
+                && content_length > MAX_API_BODY_BYTES
+            {
+                return Ok(json_err(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "request body too large",
+                ));
+            }
+
+            let body_bytes = match http_body_util::BodyExt::collect(req.into_body()).await {
+                Ok(collected) => collected.to_bytes(),
+                Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "failed to read body")),
+            };
+            if body_bytes.len() > MAX_API_BODY_BYTES {
+                return Ok(json_err(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "request body too large",
+                ));
+            }
+
+            let tx: Transaction = match serde_json::from_slice(&body_bytes) {
+                Ok(t) => t,
+                Err(e) => {
                     return Ok(json_err(
-                        StatusCode::PAYLOAD_TOO_LARGE,
-                        "request body too large",
+                        StatusCode::BAD_REQUEST,
+                        &format!("invalid transaction JSON: {}", e),
                     ));
                 }
+            };
 
-                let body_bytes = match http_body_util::BodyExt::collect(req.into_body()).await {
-                    Ok(collected) => collected.to_bytes(),
-                    Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "failed to read body")),
-                };
-                if body_bytes.len() > MAX_API_BODY_BYTES {
-                    return Ok(json_err(
-                        StatusCode::PAYLOAD_TOO_LARGE,
-                        "request body too large",
-                    ));
-                }
-
-                let tx: Transaction = match serde_json::from_slice(&body_bytes) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        return Ok(json_err(
-                            StatusCode::BAD_REQUEST,
-                            &format!("invalid transaction JSON: {}", e),
-                        ));
+            let tx_hash = tx.hash_hex();
+            let mut chain = chain.lock().await;
+            match chain.add_transaction(tx) {
+                Ok(()) => {
+                    if let Some(pending) = chain.pending_transactions.last()
+                        && let Ok(data) = bincode::serialize(pending)
+                    {
+                        let _ = outbound_tx.try_send(NetworkMessage::NewTransaction(data));
                     }
-                };
-
-                let tx_hash = tx.hash_hex();
-                let mut chain = chain.lock().await;
-                match chain.add_transaction(tx) {
-                    Ok(()) => {
-                        if let Some(pending) = chain.pending_transactions.last()
-                            && let Ok(data) = bincode::serialize(pending)
-                        {
-                            let _ = outbound_tx.try_send(NetworkMessage::NewTransaction(data));
-                        }
-                        let event =
+                    let event =
                         serde_json::json!({"type": "new_transaction", "data": {"hash": tx_hash}})
                             .to_string();
-                        let _ = event_tx.send(event);
-                        Ok(json_ok(serde_json::json!({"tx_hash": tx_hash})))
-                    }
-                    Err(e) => Ok(json_err(StatusCode::BAD_REQUEST, &e.to_string())),
+                    let _ = event_tx.send(event);
+                    Ok(json_ok(serde_json::json!({"tx_hash": tx_hash})))
                 }
+                Err(e) => Ok(json_err(StatusCode::BAD_REQUEST, &e.to_string())),
+            }
+        }
+
+        // POST /api/tx/estimate
+        (Method::POST, ["api", "tx", "estimate"]) => {
+            if let Some(content_length) = req
+                .headers()
+                .get(CONTENT_LENGTH)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<usize>().ok())
+                && content_length > MAX_API_BODY_BYTES
+            {
+                return Ok(json_err(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "request body too large",
+                ));
             }
 
-            // POST /api/tx/estimate
-            (Method::POST, ["api", "tx", "estimate"]) => {
-                if let Some(content_length) = req
-                    .headers()
-                    .get(CONTENT_LENGTH)
-                    .and_then(|value| value.to_str().ok())
-                    .and_then(|value| value.parse::<usize>().ok())
-                    && content_length > MAX_API_BODY_BYTES
-                {
+            let body_bytes = match http_body_util::BodyExt::collect(req.into_body()).await {
+                Ok(collected) => collected.to_bytes(),
+                Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "failed to read body")),
+            };
+            if body_bytes.len() > MAX_API_BODY_BYTES {
+                return Ok(json_err(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "request body too large",
+                ));
+            }
+
+            let tx: Transaction = match serde_json::from_slice(&body_bytes) {
+                Ok(t) => t,
+                Err(e) => {
                     return Ok(json_err(
-                        StatusCode::PAYLOAD_TOO_LARGE,
-                        "request body too large",
+                        StatusCode::BAD_REQUEST,
+                        &format!("invalid transaction JSON: {}", e),
                     ));
                 }
+            };
 
-                let body_bytes = match http_body_util::BodyExt::collect(req.into_body()).await {
-                    Ok(collected) => collected.to_bytes(),
-                    Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "failed to read body")),
-                };
-                if body_bytes.len() > MAX_API_BODY_BYTES {
-                    return Ok(json_err(
-                        StatusCode::PAYLOAD_TOO_LARGE,
-                        "request body too large",
-                    ));
-                }
-
-                let tx: Transaction = match serde_json::from_slice(&body_bytes) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        return Ok(json_err(
-                            StatusCode::BAD_REQUEST,
-                            &format!("invalid transaction JSON: {}", e),
-                        ));
-                    }
-                };
-
-                let chain = chain.lock().await;
-                match chain.estimate_transaction(&tx) {
-                    Ok(estimate) => Ok(json_ok(estimate)),
-                    Err(e) => Ok(json_err(StatusCode::BAD_REQUEST, &e.to_string())),
-                }
+            let chain = chain.lock().await;
+            match chain.estimate_transaction(&tx) {
+                Ok(estimate) => Ok(json_ok(estimate)),
+                Err(e) => Ok(json_err(StatusCode::BAD_REQUEST, &e.to_string())),
             }
+        }
 
-            // ─── CUR-20 Token Endpoints ─────────────────────────────────
+        // ─── CUR-20 Token Endpoints ─────────────────────────────────
 
-            // GET /api/tokens — list all tokens
-            (Method::GET, ["api", "tokens"]) => {
-                let chain = chain.lock().await;
-                let tokens: Vec<serde_json::Value> = chain
-                    .token_registry
-                    .list_tokens()
-                    .iter()
-                    .map(|t| {
-                        serde_json::json!({
-                            "address": format!("CUR{}", hex::encode(&t.contract_address)),
-                            "name": t.name,
-                            "symbol": t.symbol,
-                            "decimals": t.decimals,
-                            "total_supply": t.total_supply,
-                            "creator": format!("CUR{}", hex::encode(&t.creator)),
-                            "created_at_height": t.created_at_height,
-                        })
+        // GET /api/tokens — list all tokens
+        (Method::GET, ["api", "tokens"]) => {
+            let chain = chain.lock().await;
+            let tokens: Vec<serde_json::Value> = chain
+                .token_registry
+                .list_tokens()
+                .iter()
+                .map(|t| {
+                    serde_json::json!({
+                        "address": format!("CUR{}", hex::encode(&t.contract_address)),
+                        "name": t.name,
+                        "symbol": t.symbol,
+                        "decimals": t.decimals,
+                        "total_supply": t.total_supply,
+                        "creator": format!("CUR{}", hex::encode(&t.creator)),
+                        "created_at_height": t.created_at_height,
                     })
-                    .collect();
-                Ok(json_ok(tokens))
+                })
+                .collect();
+            Ok(json_ok(tokens))
+        }
+
+        // GET /api/token/<address> — token info
+        (Method::GET, ["api", "token", address]) => {
+            let addr = match parse_address(address) {
+                Some(a) => a,
+                None => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid token address")),
+            };
+            let chain = chain.lock().await;
+            match chain.token_registry.get_token(&addr) {
+                Some(token) => Ok(json_ok(serde_json::json!({
+                    "address": format!("CUR{}", hex::encode(&token.contract_address)),
+                    "name": token.name,
+                    "symbol": token.symbol,
+                    "decimals": token.decimals,
+                    "total_supply": token.total_supply,
+                    "creator": format!("CUR{}", hex::encode(&token.creator)),
+                    "created_at_height": token.created_at_height,
+                }))),
+                None => Ok(json_err(StatusCode::NOT_FOUND, "token not found")),
             }
+        }
 
-            // GET /api/token/<address> — token info
-            (Method::GET, ["api", "token", address]) => {
-                let addr = match parse_address(address) {
-                    Some(a) => a,
-                    None => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid token address")),
-                };
-                let chain = chain.lock().await;
-                match chain.token_registry.get_token(&addr) {
-                    Some(token) => Ok(json_ok(serde_json::json!({
-                        "address": format!("CUR{}", hex::encode(&token.contract_address)),
-                        "name": token.name,
-                        "symbol": token.symbol,
-                        "decimals": token.decimals,
-                        "total_supply": token.total_supply,
-                        "creator": format!("CUR{}", hex::encode(&token.creator)),
-                        "created_at_height": token.created_at_height,
-                    }))),
-                    None => Ok(json_err(StatusCode::NOT_FOUND, "token not found")),
-                }
-            }
+        // GET /api/token/<address>/balance/<owner> — token balance
+        (Method::GET, ["api", "token", token_addr, "balance", owner_addr]) => {
+            let token = match parse_address(token_addr) {
+                Some(a) => a,
+                None => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid token address")),
+            };
+            let owner = match parse_address(owner_addr) {
+                Some(a) => a,
+                None => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid owner address")),
+            };
+            let chain = chain.lock().await;
+            let balance = chain.token_registry.balance_of(&token, &owner);
+            Ok(json_ok(serde_json::json!({ "balance": balance })))
+        }
 
-            // GET /api/token/<address>/balance/<owner> — token balance
-            (Method::GET, ["api", "token", token_addr, "balance", owner_addr]) => {
-                let token = match parse_address(token_addr) {
-                    Some(a) => a,
-                    None => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid token address")),
-                };
-                let owner = match parse_address(owner_addr) {
-                    Some(a) => a,
-                    None => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid owner address")),
-                };
-                let chain = chain.lock().await;
-                let balance = chain.token_registry.balance_of(&token, &owner);
-                Ok(json_ok(serde_json::json!({ "balance": balance })))
-            }
+        // ─── Governance Endpoints ───────────────────────────────────
 
-            // ─── Governance Endpoints ───────────────────────────────────
-
-            // GET /api/governance/proposals — list all proposals
-            (Method::GET, ["api", "governance", "proposals"]) => {
-                let chain = chain.lock().await;
-                let proposals: Vec<serde_json::Value> = chain
-                    .governance
-                    .list_proposals()
-                    .iter()
-                    .map(|p| {
-                        serde_json::json!({
-                            "id": hex::encode(&p.id),
-                            "proposer": format!("CUR{}", hex::encode(&p.proposer)),
-                            "kind": format!("{:?}", p.kind),
-                            "status": format!("{:?}", p.status),
-                            "created_at_height": p.created_at_height,
-                            "voting_deadline_height": p.voting_deadline_height,
-                            "execution_height": p.execution_height,
-                            "votes_for": p.votes_for,
-                            "votes_against": p.votes_against,
-                            "voter_count": p.voters.len(),
-                        })
-                    })
-                    .collect();
-                Ok(json_ok(proposals))
-            }
-
-            // GET /api/governance/proposal/<id> — proposal details
-            (Method::GET, ["api", "governance", "proposal", id_hex]) => {
-                let id = match hex::decode(id_hex) {
-                    Ok(bytes) => bytes,
-                    Err(_) => {
-                        return Ok(json_err(StatusCode::BAD_REQUEST, "invalid proposal id hex"));
-                    }
-                };
-                let chain = chain.lock().await;
-                match chain.governance.get_proposal(&id) {
-                    Some(p) => Ok(json_ok(serde_json::json!({
+        // GET /api/governance/proposals — list all proposals
+        (Method::GET, ["api", "governance", "proposals"]) => {
+            let chain = chain.lock().await;
+            let proposals: Vec<serde_json::Value> = chain
+                .governance
+                .list_proposals()
+                .iter()
+                .map(|p| {
+                    serde_json::json!({
                         "id": hex::encode(&p.id),
                         "proposer": format!("CUR{}", hex::encode(&p.proposer)),
                         "kind": format!("{:?}", p.kind),
@@ -1190,13 +1627,77 @@ async fn handle_request(
                         "votes_for": p.votes_for,
                         "votes_against": p.votes_against,
                         "voter_count": p.voters.len(),
-                    }))),
-                    None => Ok(json_err(StatusCode::NOT_FOUND, "proposal not found")),
-                }
-            }
+                    })
+                })
+                .collect();
+            Ok(json_ok(proposals))
+        }
 
-            _ => Ok(json_err(StatusCode::NOT_FOUND, "endpoint not found")),
-        };
+        // GET /api/governance/proposal/<id> — proposal details
+        (Method::GET, ["api", "governance", "proposal", id_hex]) => {
+            let id = match hex::decode(id_hex) {
+                Ok(bytes) => bytes,
+                Err(_) => {
+                    return Ok(json_err(StatusCode::BAD_REQUEST, "invalid proposal id hex"));
+                }
+            };
+            let chain = chain.lock().await;
+            match chain.governance.get_proposal(&id) {
+                Some(p) => Ok(json_ok(serde_json::json!({
+                    "id": hex::encode(&p.id),
+                    "proposer": format!("CUR{}", hex::encode(&p.proposer)),
+                    "kind": format!("{:?}", p.kind),
+                    "status": format!("{:?}", p.status),
+                    "created_at_height": p.created_at_height,
+                    "voting_deadline_height": p.voting_deadline_height,
+                    "execution_height": p.execution_height,
+                    "votes_for": p.votes_for,
+                    "votes_against": p.votes_against,
+                    "voter_count": p.voters.len(),
+                }))),
+                None => Ok(json_err(StatusCode::NOT_FOUND, "proposal not found")),
+            }
+        }
+
+        // POST /eth — Ethereum-compatible JSON-RPC subset (Metamask, ethers.js, wagmi)
+        (Method::POST, ["eth"]) | (Method::POST, ["rpc", "eth"]) => {
+            let body_bytes = match http_body_util::BodyExt::collect(req.into_body()).await {
+                Ok(collected) => collected.to_bytes(),
+                Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "failed to read body")),
+            };
+            if body_bytes.len() > MAX_API_BODY_BYTES {
+                return Ok(json_err(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "request body too large",
+                ));
+            }
+            let response = eth_rpc::handle(Arc::clone(&chain), &body_bytes).await;
+            let body = serde_json::to_string(&response).unwrap_or_default();
+            let mut builder = Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", "application/json");
+            builder = with_public_cors_headers(builder);
+            Ok(finish_response(builder, body))
+        }
+
+        // GET /eth — friendly hint for browsers hitting the RPC URL
+        (Method::GET, ["eth"]) => {
+            let body = "CURS3D Ethereum-compatible JSON-RPC endpoint. POST a JSON-RPC 2.0 request here.\n\
+                 Supported methods (read-only subset): eth_chainId, eth_blockNumber, eth_gasPrice,\n\
+                 eth_getBalance, eth_getTransactionCount, eth_getCode, eth_getStorageAt,\n\
+                 eth_getBlockByNumber, eth_getBlockByHash, eth_getTransactionByHash,\n\
+                 eth_getTransactionReceipt, eth_getLogs, eth_feeHistory, eth_estimateGas,\n\
+                 net_version, web3_clientVersion, web3_sha3.\n\
+                 Send transactions via POST /api/tx/submit (CURS3D uses Dilithium signatures).\n";
+            let mut builder = Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", "text/plain; charset=utf-8");
+            builder = with_public_cors_headers(builder);
+            Ok(finish_response(builder, body))
+        }
+
+        _ => Ok(json_err(StatusCode::NOT_FOUND, "endpoint not found")),
+    };
 
     // Inject rate-limit headers into every response
     if let Ok(ref mut response) = result {
@@ -1235,6 +1736,14 @@ fn is_websocket_upgrade(buf: &[u8]) -> bool {
     }
 }
 
+/// Active eth_subscribe channels mapped from subscription id → kind.
+/// Kind is the eth subscription type ("newHeads", "logs"). Each kind is mapped
+/// to one of our internal event types when forwarding broadcast messages.
+#[derive(Clone, Debug)]
+struct EthSubscription {
+    kind: String,
+}
+
 async fn handle_ws_connection(stream: TcpStream, mut event_rx: broadcast::Receiver<String>) {
     let ws = match tokio_tungstenite::accept_async(stream).await {
         Ok(ws) => ws,
@@ -1250,15 +1759,96 @@ async fn handle_ws_connection(stream: TcpStream, mut event_rx: broadcast::Receiv
     let mut subscribed_events: HashSet<String> = HashSet::new();
     // Subscribe to all events by default
     subscribed_events.insert("new_block".to_string());
+    subscribed_events.insert("new_header".to_string());
     subscribed_events.insert("new_transaction".to_string());
     subscribed_events.insert("finality".to_string());
+
+    // Active eth_subscribe channels (Metamask, ethers.js, wagmi). Mapped from
+    // subscription id (random hex) to the requested kind ("newHeads", "logs").
+    let mut eth_subs: HashMap<String, EthSubscription> = HashMap::new();
+    let mut next_eth_sub_id: u64 = 1;
 
     loop {
         tokio::select! {
             msg = ws_rx.next() => {
                 match msg {
                     Some(Ok(WsMessage::Text(text))) => {
-                        // Parse subscription request
+                        // First: try eth JSON-RPC subscribe / unsubscribe
+                        if let Ok(rpc) = serde_json::from_str::<serde_json::Value>(&text)
+                            && rpc.get("jsonrpc").and_then(|v| v.as_str()) == Some("2.0")
+                            && let Some(method) = rpc.get("method").and_then(|m| m.as_str())
+                        {
+                            let id = rpc.get("id").cloned().unwrap_or(serde_json::Value::Null);
+                            match method {
+                                "eth_subscribe" => {
+                                    let kind = rpc
+                                        .get("params")
+                                        .and_then(|p| p.as_array())
+                                        .and_then(|a| a.first())
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("newHeads")
+                                        .to_string();
+                                    let sub_id = format!("0x{:016x}", next_eth_sub_id);
+                                    next_eth_sub_id += 1;
+                                    eth_subs.insert(sub_id.clone(), EthSubscription { kind });
+                                    let resp = serde_json::json!({
+                                        "jsonrpc": "2.0",
+                                        "id": id,
+                                        "result": sub_id,
+                                    });
+                                    if ws_tx
+                                        .send(WsMessage::Text(resp.to_string()))
+                                        .await
+                                        .is_err()
+                                    {
+                                        break;
+                                    }
+                                    continue;
+                                }
+                                "eth_unsubscribe" => {
+                                    let sub_id = rpc
+                                        .get("params")
+                                        .and_then(|p| p.as_array())
+                                        .and_then(|a| a.first())
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("");
+                                    let removed = eth_subs.remove(sub_id).is_some();
+                                    let resp = serde_json::json!({
+                                        "jsonrpc": "2.0",
+                                        "id": id,
+                                        "result": removed,
+                                    });
+                                    if ws_tx
+                                        .send(WsMessage::Text(resp.to_string()))
+                                        .await
+                                        .is_err()
+                                    {
+                                        break;
+                                    }
+                                    continue;
+                                }
+                                _ => {
+                                    let resp = serde_json::json!({
+                                        "jsonrpc": "2.0",
+                                        "id": id,
+                                        "error": {
+                                            "code": -32601,
+                                            "message": format!("ws method {} not supported (use POST /eth for non-streaming RPC)", method),
+                                        }
+                                    });
+                                    if ws_tx
+                                        .send(WsMessage::Text(resp.to_string()))
+                                        .await
+                                        .is_err()
+                                    {
+                                        break;
+                                    }
+                                    continue;
+                                }
+                            }
+                        }
+
+                        // Otherwise: legacy CURS3D subscription request
                         if let Ok(sub) = serde_json::from_str::<WsSubscribeRequest>(&text) {
                             subscribed_events.clear();
                             for event in sub.events {
@@ -1286,17 +1876,44 @@ async fn handle_ws_connection(stream: TcpStream, mut event_rx: broadcast::Receiv
             event = event_rx.recv() => {
                 match event {
                     Ok(event_str) => {
-                        // Parse event type and check subscription
-                        if let Ok(event_json) = serde_json::from_str::<serde_json::Value>(&event_str) {
-                            let event_type = event_json
-                                .get("type")
-                                .and_then(|t| t.as_str())
-                                .unwrap_or("");
+                        let Ok(event_json) = serde_json::from_str::<serde_json::Value>(&event_str) else { continue };
+                        let event_type = event_json
+                            .get("type")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("");
 
-                            if (subscribed_events.contains(event_type) || subscribed_events.is_empty())
-                                && ws_tx.send(WsMessage::Text(event_str)).await.is_err()
+                        // Native CURS3D event stream
+                        if (subscribed_events.contains(event_type) || subscribed_events.is_empty())
+                            && ws_tx.send(WsMessage::Text(event_str.clone())).await.is_err()
+                        {
+                            break;
+                        }
+
+                        // ETH-style eth_subscribe notifications
+                        for (sub_id, sub) in &eth_subs {
+                            let matches_kind = match sub.kind.as_str() {
+                                "newHeads" => event_type == "new_header",
+                                "logs" => event_type == "new_block", // best-effort
+                                _ => false,
+                            };
+                            if !matches_kind {
+                                continue;
+                            }
+                            let payload = event_json.get("data").cloned().unwrap_or(serde_json::Value::Null);
+                            let notif = serde_json::json!({
+                                "jsonrpc": "2.0",
+                                "method": "eth_subscription",
+                                "params": {
+                                    "subscription": sub_id,
+                                    "result": payload,
+                                }
+                            });
+                            if ws_tx
+                                .send(WsMessage::Text(notif.to_string()))
+                                .await
+                                .is_err()
                             {
-                                break;
+                                return;
                             }
                         }
                     }
@@ -1319,6 +1936,7 @@ pub async fn serve_http(
     chain: Arc<Mutex<Blockchain>>,
     event_tx: broadcast::Sender<String>,
     outbound_tx: mpsc::Sender<NetworkMessage>,
+    runtime_state: SharedRuntimeState,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let _ = API_START_TIME.get_or_init(Instant::now);
     let listener = TcpListener::bind(addr).await?;
@@ -1327,6 +1945,7 @@ pub async fn serve_http(
     let rate_limiter: RateLimiterMap = Arc::new(Mutex::new(HashMap::new()));
     let request_counter = Arc::new(AtomicU64::new(0));
     let faucet_cooldowns: FaucetCooldownMap = Arc::new(Mutex::new(load_faucet_cooldowns()));
+    let faucet_ip_cooldowns: FaucetIpCooldownMap = Arc::new(Mutex::new(load_faucet_ip_cooldowns()));
     tracing::info!("HTTP API listening on http://{}", addr);
     tracing::info!("WebSocket available at ws://{}/ws", addr);
 
@@ -1368,6 +1987,8 @@ pub async fn serve_http(
         let rate_limiter = Arc::clone(&rate_limiter);
         let request_counter = Arc::clone(&request_counter);
         let faucet_cooldowns = Arc::clone(&faucet_cooldowns);
+        let faucet_ip_cooldowns = Arc::clone(&faucet_ip_cooldowns);
+        let runtime_state = Arc::clone(&runtime_state);
 
         tokio::spawn(async move {
             let Ok(_permit) = connection_limit.acquire_owned().await else {
@@ -1382,6 +2003,8 @@ pub async fn serve_http(
                     rate_limiter: Arc::clone(&rate_limiter),
                     request_counter: Arc::clone(&request_counter),
                     faucet_cooldowns: Arc::clone(&faucet_cooldowns),
+                    faucet_ip_cooldowns: Arc::clone(&faucet_ip_cooldowns),
+                    runtime_state: Arc::clone(&runtime_state),
                 };
                 async move { handle_request(req, chain, event_tx, outbound_tx, ctx).await }
             });

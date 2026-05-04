@@ -207,6 +207,8 @@ pub enum VmError {
     UnmeteredLoop,
     #[error("wasm execution failed: {0}")]
     Execution(String),
+    #[error("gas calculation overflowed")]
+    GasOverflow,
 }
 
 pub struct Vm;
@@ -485,6 +487,7 @@ impl Vm {
         deployer: &[u8],
         nonce: u64,
         gas_limit: u64,
+        block_height: u64,
     ) -> Result<(ContractState, Receipt), VmError> {
         if code.is_empty() {
             return Err(VmError::EmptyBytecode);
@@ -492,9 +495,13 @@ impl Vm {
 
         let (_store, _module, normalized_code, _) = Self::compile_module(code)?;
 
+        let code_byte_gas = (normalized_code.len() as u64)
+            .checked_mul(gas::GAS_PER_BYTE)
+            .ok_or(VmError::GasOverflow)?;
         let gas_needed = gas::GAS_BASE_TX
-            .saturating_add(gas::GAS_DEPLOY)
-            .saturating_add((normalized_code.len() as u64).saturating_mul(gas::GAS_PER_BYTE));
+            .checked_add(gas::GAS_DEPLOY)
+            .and_then(|g| g.checked_add(code_byte_gas))
+            .ok_or(VmError::GasOverflow)?;
 
         if gas_limit < gas_needed {
             return Err(VmError::OutOfGas {
@@ -503,9 +510,13 @@ impl Vm {
             });
         }
 
-        let mut addr_input = deployer.to_vec();
-        addr_input.extend_from_slice(&nonce.to_le_bytes());
-        let contract_address = hash::sha3_hash(&addr_input)[..hash::ADDRESS_LEN].to_vec();
+        let nonce_bytes = nonce.to_le_bytes();
+        let block_height_bytes = block_height.to_le_bytes();
+        let contract_address = hash::sha3_hash_domain(
+            b"curs3d-contract-addr-v2",
+            &[deployer, &nonce_bytes, &block_height_bytes],
+        )[..hash::ADDRESS_LEN]
+            .to_vec();
         let code_hash = hash::sha3_hash(&normalized_code);
 
         let contract = ContractState {
@@ -541,13 +552,19 @@ impl Vm {
     ) -> Result<Receipt, VmError> {
         let static_execution_gas = Self::estimate_wasm_gas(&contract.code)?;
         let (mut store, module, _, runtime_metered) = Self::compile_module(&contract.code)?;
+        let payload_gas = (function_data.len() as u64)
+            .checked_mul(gas::GAS_PER_BYTE)
+            .ok_or(VmError::GasOverflow)?;
         let intrinsic_gas = gas::GAS_BASE_TX
-            .saturating_add(gas::GAS_CALL)
-            .saturating_add((function_data.len() as u64).saturating_mul(gas::GAS_PER_BYTE));
+            .checked_add(gas::GAS_CALL)
+            .and_then(|g| g.checked_add(payload_gas))
+            .ok_or(VmError::GasOverflow)?;
         let gas_needed = if runtime_metered {
             intrinsic_gas
         } else {
-            intrinsic_gas.saturating_add(static_execution_gas)
+            intrinsic_gas
+                .checked_add(static_execution_gas)
+                .ok_or(VmError::GasOverflow)?
         };
 
         if gas_limit < gas_needed {
@@ -654,7 +671,7 @@ mod tests {
     #[test]
     fn test_deploy_valid_wasm() {
         let deployer = vec![1u8; 20];
-        let (contract, receipt) = Vm::deploy(&valid_wasm(), &deployer, 0, 1_000_000).unwrap();
+        let (contract, receipt) = Vm::deploy(&valid_wasm(), &deployer, 0, 1_000_000, 0).unwrap();
         assert!(receipt.success);
         assert!(receipt.contract_address.is_some());
         assert_eq!(receipt.contract_address.as_ref().unwrap().len(), 20);
@@ -666,7 +683,7 @@ mod tests {
     #[test]
     fn test_deploy_invalid_wasm() {
         let deployer = vec![1u8; 20];
-        let result = Vm::deploy(b"not-wasm", &deployer, 0, 1_000_000);
+        let result = Vm::deploy(b"not-wasm", &deployer, 0, 1_000_000, 0);
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), VmError::InvalidWasm));
     }
@@ -674,7 +691,7 @@ mod tests {
     #[test]
     fn test_deploy_empty_bytecode() {
         let deployer = vec![1u8; 20];
-        let result = Vm::deploy(b"", &deployer, 0, 1_000_000);
+        let result = Vm::deploy(b"", &deployer, 0, 1_000_000, 0);
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), VmError::EmptyBytecode));
     }
@@ -682,7 +699,7 @@ mod tests {
     #[test]
     fn test_deploy_out_of_gas() {
         let deployer = vec![1u8; 20];
-        let result = Vm::deploy(&valid_wasm(), &deployer, 0, 100);
+        let result = Vm::deploy(&valid_wasm(), &deployer, 0, 100, 0);
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), VmError::OutOfGas { .. }));
     }
@@ -690,7 +707,7 @@ mod tests {
     #[test]
     fn test_call_returns_receipt() {
         let deployer = vec![1u8; 20];
-        let (mut contract, _) = Vm::deploy(&valid_wasm(), &deployer, 0, 1_000_000).unwrap();
+        let (mut contract, _) = Vm::deploy(&valid_wasm(), &deployer, 0, 1_000_000, 0).unwrap();
         let caller = vec![2u8; 20];
         let receipt = Vm::call(
             &mut contract,
@@ -710,7 +727,7 @@ mod tests {
     #[test]
     fn test_call_out_of_gas() {
         let deployer = vec![1u8; 20];
-        let (mut contract, _) = Vm::deploy(&valid_wasm(), &deployer, 0, 1_000_000).unwrap();
+        let (mut contract, _) = Vm::deploy(&valid_wasm(), &deployer, 0, 1_000_000, 0).unwrap();
         let caller = vec![2u8; 20];
         let result = Vm::call(&mut contract, &[9u8; 20], b"do_something", &caller, 0, 100);
         assert!(result.is_err());
@@ -749,7 +766,7 @@ mod tests {
                 drop
                 i32.const 5)
         )"#;
-        let (mut contract, _) = Vm::deploy(module, &deployer, 0, 1_000_000).unwrap();
+        let (mut contract, _) = Vm::deploy(module, &deployer, 0, 1_000_000, 0).unwrap();
         let caller = vec![2u8; 20];
         let receipt =
             Vm::call(&mut contract, &[9u8; 20], b"ignored", &caller, 0, 1_000_000).unwrap();
@@ -766,12 +783,19 @@ mod tests {
     #[test]
     fn test_deterministic_contract_address() {
         let deployer = vec![1u8; 20];
-        let (_, receipt1) = Vm::deploy(&valid_wasm(), &deployer, 0, 1_000_000).unwrap();
-        let (_, receipt2) = Vm::deploy(&valid_wasm(), &deployer, 0, 1_000_000).unwrap();
+        // Same nonce + same block_height => same address (deterministic)
+        let (_, receipt1) = Vm::deploy(&valid_wasm(), &deployer, 0, 1_000_000, 5).unwrap();
+        let (_, receipt2) = Vm::deploy(&valid_wasm(), &deployer, 0, 1_000_000, 5).unwrap();
         assert_eq!(receipt1.contract_address, receipt2.contract_address);
 
-        let (_, receipt3) = Vm::deploy(&valid_wasm(), &deployer, 1, 1_000_000).unwrap();
+        // Different nonce => different address
+        let (_, receipt3) = Vm::deploy(&valid_wasm(), &deployer, 1, 1_000_000, 5).unwrap();
         assert_ne!(receipt1.contract_address, receipt3.contract_address);
+
+        // protocol v2: same nonce but different block_height => different address.
+        // Prevents deployer-frontrun by binding address to the parent block.
+        let (_, receipt4) = Vm::deploy(&valid_wasm(), &deployer, 0, 1_000_000, 6).unwrap();
+        assert_ne!(receipt1.contract_address, receipt4.contract_address);
     }
 
     #[test]
@@ -783,7 +807,7 @@ mod tests {
                 (loop
                     br 0))
         )"#;
-        let err = Vm::deploy(loop_contract, &deployer, 0, 1_000_000).unwrap_err();
+        let err = Vm::deploy(loop_contract, &deployer, 0, 1_000_000, 0).unwrap_err();
         assert!(matches!(err, VmError::UnmeteredLoop));
     }
 
@@ -804,12 +828,46 @@ mod tests {
                     local.tee 0
                     br_if 0))
         )"#;
-        let (mut contract, _) = Vm::deploy(loop_contract, &deployer, 0, 1_000_000).unwrap();
+        let (mut contract, _) = Vm::deploy(loop_contract, &deployer, 0, 1_000_000, 0).unwrap();
         let caller = vec![2u8; 20];
         let err = Vm::call(&mut contract, &[9u8; 20], b"", &caller, 0, 200).unwrap_err();
         assert!(matches!(
             err,
             VmError::Execution(_) | VmError::OutOfGas { .. }
         ));
+    }
+
+    /// End-to-end check: deploy and call a contract built with the curs3d-contract
+    /// Rust SDK. Skipped if the example .wasm hasn't been built yet (so this test
+    /// doesn't fail in CI without `cargo build --release --target wasm32-unknown-unknown`
+    /// in `sdk/rust/examples/counter`).
+    #[test]
+    fn test_sdk_counter_contract_e2e() {
+        const COUNTER_WASM: &[u8] = include_bytes!(
+            "../../sdk/rust/examples/counter/target/wasm32-unknown-unknown/release/counter_contract.wasm"
+        );
+        if COUNTER_WASM.len() < 16 {
+            return; // not built yet
+        }
+        let deployer = vec![1u8; 20];
+        let (mut contract, deploy_receipt) =
+            Vm::deploy(COUNTER_WASM, &deployer, 0, 5_000_000, 0).unwrap();
+        assert!(deploy_receipt.success);
+
+        let caller = vec![2u8; 20];
+        // First call increments to 1
+        let receipt1 = Vm::call(&mut contract, &[7u8; 20], b"", &caller, 0, 2_000_000).unwrap();
+        assert!(receipt1.success);
+        assert_eq!(receipt1.logs.len(), 1, "expected one tick log");
+        assert_eq!(receipt1.logs[0].topics[0], b"tick");
+        let mut count_bytes = [0u8; 8];
+        count_bytes.copy_from_slice(&receipt1.logs[0].data[..8]);
+        assert_eq!(u64::from_le_bytes(count_bytes), 1);
+
+        // Second call increments to 2 — proves storage persists
+        let receipt2 = Vm::call(&mut contract, &[7u8; 20], b"", &caller, 0, 2_000_000).unwrap();
+        let mut count_bytes2 = [0u8; 8];
+        count_bytes2.copy_from_slice(&receipt2.logs[0].data[..8]);
+        assert_eq!(u64::from_le_bytes(count_bytes2), 2);
     }
 }

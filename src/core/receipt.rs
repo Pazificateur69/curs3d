@@ -54,8 +54,14 @@ pub struct IndexedLogEntry {
 pub struct LogFilter {
     #[serde(default)]
     pub contract: Option<Vec<u8>>,
+    /// Single-topic match: matches if any topic in the log equals this value.
     #[serde(default)]
     pub topic: Option<Vec<u8>>,
+    /// Positional topic match (Ethereum eth_getLogs style):
+    /// `topics[i] == None` is a wildcard for that position;
+    /// `topics[i] == Some(v)` requires the log's topic at position i to equal v.
+    #[serde(default)]
+    pub topics: Option<Vec<Option<Vec<u8>>>>,
     #[serde(default)]
     pub from_block: Option<u64>,
     #[serde(default)]

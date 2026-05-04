@@ -7,6 +7,7 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
+use zeroize::Zeroize;
 
 /// Hardened Argon2 KDF: m=64MB, t=3 iterations, p=4 parallelism
 fn hardened_argon2() -> Argon2<'static> {
@@ -57,9 +58,13 @@ impl Wallet {
         hash::address_bytes_from_public_key(public_key)
     }
 
-    /// Save wallet encrypted with a password using AES-256-GCM + Argon2
+    /// Save wallet encrypted with a password using AES-256-GCM + Argon2.
+    ///
+    /// Sensitive intermediates (the derived 32-byte AES key, the JSON-encoded
+    /// plaintext that holds the Dilithium secret key) are zeroized before
+    /// they go out of scope so they don't linger in freed heap pages.
     pub fn save_encrypted(&self, path: &str, password: &str) -> Result<(), WalletError> {
-        let plaintext =
+        let mut plaintext =
             serde_json::to_vec(self).map_err(|e| WalletError::Serialize(e.to_string()))?;
 
         // Derive key from password using Argon2
@@ -67,13 +72,24 @@ impl Wallet {
         rand::thread_rng().fill_bytes(&mut salt);
 
         let mut key = [0u8; 32];
-        hardened_argon2()
+        let kdf_result = hardened_argon2()
             .hash_password_into(password.as_bytes(), &salt, &mut key)
-            .map_err(|e| WalletError::Encryption(e.to_string()))?;
+            .map_err(|e| WalletError::Encryption(e.to_string()));
+        if let Err(err) = kdf_result {
+            key.zeroize();
+            plaintext.zeroize();
+            return Err(err);
+        }
 
         // Encrypt with AES-256-GCM
-        let cipher =
-            Aes256Gcm::new_from_slice(&key).map_err(|e| WalletError::Encryption(e.to_string()))?;
+        let cipher = match Aes256Gcm::new_from_slice(&key) {
+            Ok(c) => c,
+            Err(e) => {
+                key.zeroize();
+                plaintext.zeroize();
+                return Err(WalletError::Encryption(e.to_string()));
+            }
+        };
 
         let mut nonce_bytes = [0u8; 12];
         rand::thread_rng().fill_bytes(&mut nonce_bytes);
@@ -81,7 +97,13 @@ impl Wallet {
 
         let ciphertext = cipher
             .encrypt(nonce, plaintext.as_ref())
-            .map_err(|e| WalletError::Encryption(e.to_string()))?;
+            .map_err(|e| WalletError::Encryption(e.to_string()));
+
+        // Wipe sensitive intermediates regardless of cipher outcome.
+        key.zeroize();
+        plaintext.zeroize();
+
+        let ciphertext = ciphertext?;
 
         let encrypted = EncryptedWallet {
             salt: hex::encode(salt),
@@ -97,7 +119,10 @@ impl Wallet {
         Ok(())
     }
 
-    /// Load an encrypted wallet from disk
+    /// Load an encrypted wallet from disk.
+    ///
+    /// The derived AES key and decrypted plaintext are zeroized after use so
+    /// the Dilithium secret key isn't left in a freed heap allocation.
     pub fn load_encrypted(path: &str, password: &str) -> Result<Self, WalletError> {
         let data = fs::read_to_string(path)?;
         let encrypted: EncryptedWallet =
@@ -112,23 +137,38 @@ impl Wallet {
 
         // Derive key from password
         let mut key = [0u8; 32];
-        hardened_argon2()
-            .hash_password_into(password.as_bytes(), &salt, &mut key)
-            .map_err(|e| WalletError::Encryption(e.to_string()))?;
+        if let Err(e) = hardened_argon2().hash_password_into(password.as_bytes(), &salt, &mut key) {
+            key.zeroize();
+            return Err(WalletError::Encryption(e.to_string()));
+        }
 
         // Decrypt
-        let cipher =
-            Aes256Gcm::new_from_slice(&key).map_err(|e| WalletError::Encryption(e.to_string()))?;
+        let cipher = match Aes256Gcm::new_from_slice(&key) {
+            Ok(c) => c,
+            Err(e) => {
+                key.zeroize();
+                return Err(WalletError::Encryption(e.to_string()));
+            }
+        };
         let nonce = Nonce::from_slice(&nonce_bytes);
 
-        let plaintext = cipher
+        let plaintext_result = cipher
             .decrypt(nonce, ciphertext.as_ref())
-            .map_err(|_| WalletError::WrongPassword)?;
+            .map_err(|_| WalletError::WrongPassword);
 
-        let wallet: Wallet = serde_json::from_slice(&plaintext)
-            .map_err(|e| WalletError::Serialize(e.to_string()))?;
+        // The AES key is no longer needed past this point.
+        key.zeroize();
 
-        Ok(wallet)
+        let mut plaintext = plaintext_result?;
+
+        let wallet_result = serde_json::from_slice::<Wallet>(&plaintext)
+            .map_err(|e| WalletError::Serialize(e.to_string()));
+
+        // Wipe the decrypted JSON (which contains the Dilithium secret key
+        // bytes) before returning.
+        plaintext.zeroize();
+
+        wallet_result
     }
 
     /// Legacy: Save wallet unencrypted (for backwards compat during migration)

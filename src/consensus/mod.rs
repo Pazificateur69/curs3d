@@ -158,6 +158,11 @@ pub struct FinalizedBlock {
 pub struct FinalityTracker {
     /// block_hash -> list of votes for that block
     votes: HashMap<Vec<u8>, Vec<FinalityVote>>,
+    /// Per-validator dedup set keyed by (validator_public_key, height).
+    /// A validator may only count once per height across the chain — a second
+    /// vote at the same height (even for a different block hash) is rejected
+    /// here. Equivocation evidence handles the slashing path elsewhere.
+    seen_votes: HashSet<(Vec<u8>, u64)>,
     pub finalized_height: u64,
     pub finalized_hash: Vec<u8>,
 }
@@ -172,6 +177,7 @@ impl FinalityTracker {
     pub fn new() -> Self {
         FinalityTracker {
             votes: HashMap::new(),
+            seen_votes: HashSet::new(),
             finalized_height: 0,
             finalized_hash: Vec::new(),
         }
@@ -181,6 +187,7 @@ impl FinalityTracker {
     pub fn with_finalized(height: u64, hash: Vec<u8>) -> Self {
         FinalityTracker {
             votes: HashMap::new(),
+            seen_votes: HashSet::new(),
             finalized_height: height,
             finalized_hash: hash,
         }
@@ -215,7 +222,14 @@ impl FinalityTracker {
             return None;
         }
 
-        // Deduplicate by voter
+        // Replay protection: reject any second vote from the same validator at
+        // the same height, regardless of block_hash. (Equivocation = slashable
+        // offence, but we still must not let it count twice toward finality.)
+        let dedup_key = (vote.voter_public_key.clone(), vote.block_height);
+        if !self.seen_votes.insert(dedup_key) {
+            return None;
+        }
+
         let block_hash = vote.block_hash.clone();
         let block_height = vote.block_height;
 
@@ -225,7 +239,7 @@ impl FinalityTracker {
                 .iter()
                 .any(|v| v.voter_public_key == vote.voter_public_key)
             {
-                return None; // Already voted
+                return None; // Already voted (defence in depth — should be unreachable)
             }
             votes.push(vote);
         }
@@ -258,6 +272,9 @@ impl FinalityTracker {
                     .map(|f| f.block_height > block_height)
                     .unwrap_or(false)
             });
+            // Prune dedup entries for finalized heights — they can never be
+            // replayed against finality again, so keeping them only wastes RAM.
+            self.seen_votes.retain(|(_, h)| *h > block_height);
 
             Some(FinalizedBlock {
                 hash: block_hash,
@@ -931,6 +948,42 @@ mod tests {
         assert!(tracker.add_vote(vote1, &snapshot).is_some());
         // Duplicate is ignored (block already finalized, height <= finalized)
         assert!(tracker.add_vote(vote2, &snapshot).is_none());
+    }
+
+    #[test]
+    fn test_finality_rejects_replay_across_block_hashes() {
+        // A validator must not be able to count twice toward finality at the
+        // same height, even by changing the block hash they vote for.
+        let kp = KeyPair::generate();
+        let snapshot = EpochSnapshot {
+            epoch: 0,
+            start_height: 0,
+            validators: vec![
+                Validator {
+                    address: hash::address_bytes_from_public_key(&kp.public_key),
+                    public_key: kp.public_key.clone(),
+                    stake: 5_000,
+                },
+                Validator {
+                    address: vec![2u8; 20],
+                    public_key: vec![2u8; 32],
+                    stake: 5_000,
+                },
+            ],
+            total_stake: 10_000,
+        };
+        let mut tracker = FinalityTracker::new();
+        let hash_a = hash::sha3_hash(b"block-a");
+        let hash_b = hash::sha3_hash(b"block-b");
+
+        let vote_a = FinalityVote::new(hash_a, 5, 0, &kp);
+        let vote_b = FinalityVote::new(hash_b, 5, 0, &kp);
+
+        // First vote is accepted but doesn't reach 2/3 (we only have 50%).
+        assert!(tracker.add_vote(vote_a, &snapshot).is_none());
+        // Second vote at the same height is rejected by the cross-hash dedup
+        // even though the block hash differs.
+        assert!(tracker.add_vote(vote_b, &snapshot).is_none());
     }
 
     #[test]
