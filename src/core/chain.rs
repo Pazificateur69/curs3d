@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::consensus::{
     EpochSnapshot, EquivocationEvidence, FinalityTracker, FinalityVote, FinalizedBlock,
-    ProofOfStake,
+    ProofOfStake, allowed_backup_rank, slot_leader_at_rank,
 };
 use crate::core::block::{Block, EMPTY_STATE_ROOT_SEED};
 use crate::core::blocktree::{BlockTree, BlockTreeError};
@@ -202,6 +202,10 @@ pub enum ChainError {
     InvalidCoinbase,
     #[error("unauthorized validator")]
     UnauthorizedValidator,
+    #[error(
+        "wrong proposer: expected slot-leader at rank ≤ {allowed_rank}, got non-leader for height {height}"
+    )]
+    WrongProposer { height: u64, allowed_rank: u32 },
     #[error("block tree error: {0}")]
     BlockTree(#[from] BlockTreeError),
     #[error("reorg blocked by finality at height {0}")]
@@ -631,7 +635,20 @@ impl Blockchain {
     }
 
     /// Return the protocol version that should be active at the given height.
+    ///
+    /// Genesis (height 0) is always version 1 — the genesis block was minted
+    /// before any consensus rule existed. From height 1 onward the baseline
+    /// is version 3, which adds deterministic stake-weighted slot-leader
+    /// scheduling (see `consensus::slot_leader`). Genesis configs may still
+    /// declare explicit `upgrades`; those override the baseline at their
+    /// specified heights, in declaration order, for chains that need to
+    /// model historical version transitions.
     pub fn protocol_version_at_height(&self, height: u64) -> u32 {
+        if self.genesis_config.upgrades.is_empty() {
+            // Default schedule: slot-leader rules apply from the first
+            // post-genesis block onward.
+            return if height == 0 { 1 } else { 3 };
+        }
         let mut version = 1u32;
         for upgrade in &self.genesis_config.upgrades {
             if upgrade.height <= height {
@@ -1364,7 +1381,24 @@ impl Blockchain {
 
         let proposer_public_key = validator_keypair.public_key.clone();
         let proposer_address = hash::address_bytes_from_public_key(&proposer_public_key);
-        self.ensure_validator_is_authorized(&proposer_public_key, height, &prev_hash)?;
+        // Production-side leader check: derive the allowed backup rank from
+        // wall-clock vs. parent timestamp, so a validator that's woken up
+        // late (because the primary is offline) can still produce when
+        // legitimately authorized as a backup.
+        let now = chrono::Utc::now().timestamp();
+        let snapshot_size = self
+            .snapshot_for_height(&self.accounts, &self.epoch_snapshots, height)
+            .map(|s| s.validators.len())
+            .unwrap_or(0);
+        let allowed_rank = allowed_backup_rank(prev_block.header.timestamp, now, snapshot_size);
+        self.ensure_validator_is_authorized_for_accounts_at_rank(
+            &self.accounts,
+            &self.epoch_snapshots,
+            &proposer_public_key,
+            height,
+            &prev_hash,
+            allowed_rank,
+        )?;
 
         let mut projected_accounts = self.accounts.clone();
         let mut projected_contracts = self.contracts.clone();
@@ -2055,49 +2089,87 @@ impl Blockchain {
             .saturating_mul(epoch_length)
     }
 
-    fn ensure_validator_is_authorized(
+    /// Return the snapshot to use for slot-leader selection at the given height.
+    ///
+    /// Prefers a frozen snapshot at the matching epoch. Falls back to a freshly
+    /// computed snapshot when we're crossing into a new epoch and the snapshot
+    /// hasn't been persisted yet (boundary block in `add_block`). The genesis
+    /// snapshot stored in `from_genesis` is built at `start_height = 0` and is
+    /// therefore empty (genesis validators activate at height 1); for any
+    /// post-genesis lookup with an empty cached snapshot we re-derive a fresh
+    /// snapshot from the current accounts so the slot-leader function has a
+    /// non-empty validator set.
+    fn snapshot_for_height(
         &self,
-        validator_public_key: &[u8],
+        accounts: &HashMap<Vec<u8>, AccountState>,
+        epoch_snapshots: &HashMap<u64, EpochSnapshot>,
         block_height: u64,
-        prev_hash: &[u8],
-    ) -> Result<(), ChainError> {
-        self.ensure_validator_is_authorized_for_accounts(
-            &self.accounts,
-            &self.epoch_snapshots,
-            validator_public_key,
-            block_height,
-            prev_hash,
-        )
+    ) -> Option<EpochSnapshot> {
+        let epoch = block_height / self.epoch_length.max(1);
+        if let Some(snapshot) = epoch_snapshots.get(&epoch)
+            && !snapshot.validators.is_empty()
+        {
+            return Some(snapshot.clone());
+        }
+        // Cached but empty (genesis-epoch corner case) — fall through to
+        // live derivation below.
+        if block_height > 0 {
+            // Build a fresh snapshot keyed on the *block height* so genesis
+            // validators (active_from_height = 1) actually pass the filter.
+            let pos = ProofOfStake::with_slashed(
+                self.minimum_stake,
+                self.slashed_validators.clone(),
+                block_height,
+            );
+            let validators = pos.active_validators(accounts);
+            if validators.is_empty() {
+                return None;
+            }
+            let total_stake: u64 = validators.iter().map(|v| v.stake).sum();
+            return Some(EpochSnapshot {
+                epoch,
+                start_height: block_height,
+                validators,
+                total_stake,
+            });
+        }
+        None
     }
 
-    fn ensure_validator_is_authorized_for_accounts(
+    fn ensure_validator_is_authorized_for_accounts_at_rank(
         &self,
         accounts: &HashMap<Vec<u8>, AccountState>,
         epoch_snapshots: &HashMap<u64, EpochSnapshot>,
         validator_public_key: &[u8],
         block_height: u64,
         prev_hash: &[u8],
+        allowed_rank: u32,
     ) -> Result<(), ChainError> {
-        // Try to use frozen epoch snapshot for validator selection
-        let epoch = block_height / self.epoch_length.max(1);
-        if let Some(snapshot) = epoch_snapshots.get(&epoch) {
-            match ProofOfStake::select_validator_from_snapshot(snapshot, block_height, prev_hash) {
-                Some(expected) if expected.public_key == validator_public_key => return Ok(()),
-                Some(_) => return Err(ChainError::UnauthorizedValidator),
-                None => return Ok(()),
+        let proposer_address = hash::address_bytes_from_public_key(validator_public_key);
+
+        if let Some(snapshot) = self.snapshot_for_height(accounts, epoch_snapshots, block_height) {
+            // Empty snapshot → pre-stake bootstrap, anyone with a public key may
+            // propose. Same liberal default that the legacy path applied.
+            if snapshot.validators.is_empty() {
+                return Ok(());
             }
+            for rank in 0..=allowed_rank {
+                if let Some(addr) = slot_leader_at_rank(&snapshot, block_height, prev_hash, rank)
+                    && addr == proposer_address
+                {
+                    return Ok(());
+                }
+            }
+            return Err(ChainError::WrongProposer {
+                height: block_height,
+                allowed_rank,
+            });
         }
 
-        if epoch > 0 && block_height.is_multiple_of(self.epoch_length.max(1)) {
-            let snapshot = self.snapshot_for_accounts(epoch, accounts);
-            match ProofOfStake::select_validator_from_snapshot(&snapshot, block_height, prev_hash) {
-                Some(expected) if expected.public_key == validator_public_key => return Ok(()),
-                Some(_) => return Err(ChainError::UnauthorizedValidator),
-                None => return Ok(()),
-            }
-        }
-
-        // Fall back to live computation (genesis epoch or no snapshot yet)
+        // No snapshot anywhere (very early bootstrap) — fall back to live POS,
+        // which loops over current accounts. This branch only fires for chains
+        // running without epoch snapshots yet, which since the slot-leader
+        // hard-fork should be rare.
         let pos = ProofOfStake::with_slashed(
             self.minimum_stake,
             self.slashed_validators.clone(),
@@ -2105,9 +2177,31 @@ impl Blockchain {
         );
         match pos.select_validator(accounts, block_height, prev_hash) {
             Some(expected) if expected.public_key == validator_public_key => Ok(()),
-            Some(_) => Err(ChainError::UnauthorizedValidator),
+            Some(_) => Err(ChainError::WrongProposer {
+                height: block_height,
+                allowed_rank,
+            }),
             None => Ok(()),
         }
+    }
+
+    /// Public helper: return the slot leader at the given (height, prev_hash, rank)
+    /// using the chain's frozen epoch snapshots. Used by the network production
+    /// loop to gate `create_block` calls — only the elected validator should
+    /// build a block at every 10 s slot, with backups taking over after
+    /// `BACKUP_LEADER_TIMEOUT_SECS` of silence.
+    pub fn slot_leader_address(
+        &self,
+        block_height: u64,
+        prev_hash: &[u8],
+        rank: u32,
+    ) -> Option<Vec<u8>> {
+        let snapshot =
+            self.snapshot_for_height(&self.accounts, &self.epoch_snapshots, block_height)?;
+        if snapshot.validators.is_empty() {
+            return None;
+        }
+        slot_leader_at_rank(&snapshot, block_height, prev_hash, rank)
     }
 
     fn validate_block_against_state(
@@ -2169,12 +2263,25 @@ impl Blockchain {
             });
         }
 
-        self.ensure_validator_is_authorized_for_accounts(
+        // Slot-leader scheduling: the producer must be either the
+        // primary leader for this height, or a backup whose rank is
+        // justified by the elapsed time since the parent block.
+        let snapshot_size = self
+            .snapshot_for_height(parent_accounts, &self.epoch_snapshots, block.header.height)
+            .map(|s| s.validators.len())
+            .unwrap_or(0);
+        let allowed_rank = allowed_backup_rank(
+            parent.header.timestamp,
+            block.header.timestamp,
+            snapshot_size,
+        );
+        self.ensure_validator_is_authorized_for_accounts_at_rank(
             parent_accounts,
             &self.epoch_snapshots,
             &block.header.validator_public_key,
             block.header.height,
             &block.header.prev_hash,
+            allowed_rank,
         )?;
 
         let proposer_address =
@@ -4791,5 +4898,136 @@ mod tests {
 
         let err = chain.add_block(block).unwrap_err();
         assert!(matches!(err, ChainError::InvalidProtocolVersion { .. }));
+    }
+
+    #[test]
+    fn test_block_rejected_if_wrong_proposer() {
+        // Two validators in genesis with equal stake. After the legitimate
+        // leader produces block 1 (advancing the parent timestamp to ~now),
+        // the non-leader at height 2 must be rejected with WrongProposer
+        // because no backup-leader timeout has elapsed yet.
+        let kp_a = KeyPair::generate();
+        let kp_b = KeyPair::generate();
+        let genesis = GenesisConfig {
+            chain_id: "curs3d-wrong-proposer-test".to_string(),
+            chain_name: "curs3d-wrong-proposer-test".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            unstake_delay_blocks: DEFAULT_UNSTAKE_DELAY_BLOCKS,
+            epoch_length: DEFAULT_EPOCH_LENGTH,
+            jail_duration_blocks: DEFAULT_JAIL_DURATION_BLOCKS,
+            allocations: vec![
+                GenesisAllocation {
+                    public_key: hex::encode(&kp_a.public_key),
+                    balance: 1_000_000_000,
+                    staked_balance: 5_000,
+                },
+                GenesisAllocation {
+                    public_key: hex::encode(&kp_b.public_key),
+                    balance: 1_000_000_000,
+                    staked_balance: 5_000,
+                },
+            ],
+            ..Default::default()
+        };
+        let mut chain = Blockchain::from_genesis(genesis).unwrap();
+
+        // Mine block 1 with whichever validator is elected at height 1. This
+        // refreshes the parent timestamp to ~now so the rank-0 window is
+        // active for height 2.
+        let leader_h1 = chain
+            .slot_leader_address(1, chain.latest_hash(), 0)
+            .expect("slot leader at height 1");
+        let addr_a = hash::address_bytes_from_public_key(&kp_a.public_key);
+        let real_kp_h1 = if leader_h1 == addr_a { &kp_a } else { &kp_b };
+        let block1 = chain.create_block(real_kp_h1).unwrap();
+        chain.add_block(block1).unwrap();
+
+        // Now identify the rank-0 leader at height 2 and pick the *other*
+        // keypair as the imposter.
+        let leader_h2 = chain
+            .slot_leader_address(2, chain.latest_hash(), 0)
+            .expect("slot leader at height 2");
+        let imposter_kp = if leader_h2 == addr_a { &kp_b } else { &kp_a };
+
+        // The non-leader's create_block fails fast with WrongProposer.
+        let err = chain
+            .create_block(imposter_kp)
+            .expect_err("non-leader should not be allowed to produce");
+        assert!(
+            matches!(err, ChainError::WrongProposer { height: 2, .. }),
+            "expected WrongProposer at height 2, got {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_two_validators_alternate() {
+        // Sample a long run of slot-leader picks across two equal-stake
+        // validators. Verify a single block per height (no fork) and a roughly
+        // 50/50 split. With only `slot_leader` as the gate, both validators
+        // converge to the same producer per height.
+        use crate::consensus::slot_leader;
+        let kp_a = KeyPair::generate();
+        let kp_b = KeyPair::generate();
+        let addr_a = hash::address_bytes_from_public_key(&kp_a.public_key);
+        let addr_b = hash::address_bytes_from_public_key(&kp_b.public_key);
+        let genesis = GenesisConfig {
+            chain_id: "curs3d-two-validator-test".to_string(),
+            chain_name: "curs3d-two-validator-test".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            unstake_delay_blocks: DEFAULT_UNSTAKE_DELAY_BLOCKS,
+            epoch_length: DEFAULT_EPOCH_LENGTH,
+            jail_duration_blocks: DEFAULT_JAIL_DURATION_BLOCKS,
+            allocations: vec![
+                GenesisAllocation {
+                    public_key: hex::encode(&kp_a.public_key),
+                    balance: 1_000_000_000,
+                    staked_balance: 5_000,
+                },
+                GenesisAllocation {
+                    public_key: hex::encode(&kp_b.public_key),
+                    balance: 1_000_000_000,
+                    staked_balance: 5_000,
+                },
+            ],
+            ..Default::default()
+        };
+        let chain = Blockchain::from_genesis(genesis).unwrap();
+        // Walk a synthetic 30-slot ledger. Each height: only the elected
+        // leader produces — exactly one block per height — and the other
+        // validator stays quiet. 30 samples make a degenerate 30/0 split
+        // astronomically unlikely (P < 1e-9) for an honest hash function.
+        // We go through `slot_leader_address` so the per-height live-snapshot
+        // fallback applies (the genesis-epoch cached snapshot is empty by
+        // construction; see `snapshot_for_height`).
+        let _ = slot_leader; // imported for symmetry with the bare-snapshot API
+        let mut leaders: Vec<Vec<u8>> = Vec::new();
+        let parent = chain.latest_hash().to_vec();
+        for h in 1..=30 {
+            let leader = chain.slot_leader_address(h, &parent, 0).unwrap();
+            leaders.push(leader);
+        }
+
+        // Single producer per height (vacuously true here, but proves the
+        // function returns a unique address per slot).
+        for leader in &leaders {
+            assert!(*leader == addr_a || *leader == addr_b);
+        }
+
+        let count_a = leaders.iter().filter(|a| **a == addr_a).count();
+        let count_b = leaders.iter().filter(|a| **a == addr_b).count();
+        assert_eq!(count_a + count_b, 30);
+        // 50/50 in expectation; allow any non-degenerate split.
+        assert!(count_a > 0, "validator A never produced");
+        assert!(count_b > 0, "validator B never produced");
+        // Ratio within ±50% of expected 15 (very loose to absorb sampling).
+        assert!(
+            (5..=25).contains(&count_a),
+            "split too skewed: a={}, b={}",
+            count_a,
+            count_b
+        );
     }
 }

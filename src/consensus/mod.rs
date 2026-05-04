@@ -19,6 +19,18 @@ pub const INACTIVITY_PENALTY_RATE_PER_CUR: u64 = 50;
 /// Number of consecutive missed epochs before penalty applies
 pub const INACTIVITY_GRACE_EPOCHS: u64 = 2;
 
+/// Target time between blocks (slot duration), in seconds.
+pub const SLOT_DURATION_SECS: u64 = 10;
+
+/// Time after the parent timestamp at which the rank-`k` backup may take
+/// over from rank-`k-1`. 1.2x the slot duration: a primary slightly behind
+/// schedule still wins, but an offline primary doesn't stall the chain.
+pub const BACKUP_LEADER_TIMEOUT_SECS: u64 = 12;
+
+/// 20-byte CUR address. Aliased here so consensus signatures read as
+/// "Address" rather than the more generic `Vec<u8>`.
+pub type Address = Vec<u8>;
+
 // ─── Validator ───────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -595,6 +607,156 @@ impl ProofOfStake {
     }
 }
 
+// ─── Slot-leader scheduling ─────────────────────────────────────────
+//
+// Deterministic stake-weighted election of the validator entitled to
+// propose at a given height. The schedule is a pure function of the
+// epoch snapshot, the height, and the parent block hash, so all honest
+// validators with the same chain state agree on who is supposed to
+// build the next block — eliminating the parallel-fork problem we hit
+// with ≥2 validators all proposing at every 10 s tick.
+//
+// The output is also lightly unpredictable to outside observers: an
+// attacker that can guess the validator set still cannot pre-compute
+// the schedule without knowing the parent block hash, which only
+// settles when the previous block lands.
+
+/// Deterministically selects the slot leader for a given height.
+///
+/// `epoch_snapshot` is the validator set frozen at the epoch boundary.
+/// The seed mixes the parent block hash so the schedule is unpredictable
+/// to outside attackers but deterministic to all validators with the same
+/// chain state.
+///
+/// Selection is stake-weighted: each validator gets a "ticket-range"
+/// proportional to their staked balance. The selected ticket is
+/// `sha3(height || parent_hash || "curs3d-slot-leader-v1") mod total_stake`.
+///
+/// Returns `None` if the snapshot has no validators or zero total stake;
+/// callers usually treat that as "any validator may propose" (genesis
+/// edge case, single-node bootstrap).
+pub fn slot_leader(
+    epoch_snapshot: &EpochSnapshot,
+    height: u64,
+    parent_hash: &[u8],
+) -> Option<Address> {
+    slot_leader_at_rank(epoch_snapshot, height, parent_hash, 0)
+}
+
+/// Returns the k-th backup leader for a slot (k=0 is the primary).
+///
+/// After ~`BACKUP_LEADER_TIMEOUT_SECS` of no block at the expected
+/// height, the rank-1 backup may take over. After another timeout,
+/// rank-2, etc. We keep selecting deterministically by re-seeding the
+/// hash with `rank` so every node converges on the same backup.
+///
+/// The backup at rank `k` is chosen from the snapshot validators
+/// **excluding** the primary and all earlier backups, so a 3-validator
+/// ring iterates through all three before wrapping. With only 1
+/// validator left, that validator is returned for every higher rank.
+pub fn slot_leader_at_rank(
+    epoch_snapshot: &EpochSnapshot,
+    height: u64,
+    parent_hash: &[u8],
+    rank: u32,
+) -> Option<Address> {
+    if epoch_snapshot.validators.is_empty() {
+        return None;
+    }
+
+    // Walk through ranks 0..=rank, each time excluding the previously
+    // chosen leaders so backups never duplicate the primary.
+    let mut excluded: HashSet<Address> = HashSet::new();
+    let mut last: Option<Address> = None;
+    for k in 0..=rank {
+        let chosen = slot_leader_excluding(epoch_snapshot, height, parent_hash, k, &excluded);
+        match chosen {
+            Some(addr) => {
+                excluded.insert(addr.clone());
+                last = Some(addr);
+            }
+            None => {
+                // Pool exhausted — return the previously chosen leader
+                // (the highest rank achievable). Guarantees liveness
+                // even when `rank > N - 1`.
+                return last;
+            }
+        }
+    }
+    last
+}
+
+/// Internal: pick the stake-weighted leader at a given rank, skipping
+/// any address in `excluded`. Returns `None` if all candidates are
+/// excluded or total remaining stake is zero.
+fn slot_leader_excluding(
+    epoch_snapshot: &EpochSnapshot,
+    height: u64,
+    parent_hash: &[u8],
+    rank: u32,
+    excluded: &HashSet<Address>,
+) -> Option<Address> {
+    let candidates: Vec<&Validator> = epoch_snapshot
+        .validators
+        .iter()
+        .filter(|v| !excluded.contains(&v.address))
+        .collect();
+    if candidates.is_empty() {
+        return None;
+    }
+    let total_stake: u64 = candidates.iter().map(|v| v.stake).sum();
+    if total_stake == 0 {
+        return None;
+    }
+
+    let hash = crate::crypto::hash::sha3_hash_domain(
+        b"curs3d-slot-leader-v1",
+        &[&height.to_le_bytes(), parent_hash, &rank.to_le_bytes()],
+    );
+    // SHA3-256 returns 32 bytes. Use the first 16 bytes as a u128 to
+    // sample a wide range before the modulo, avoiding modulo bias
+    // on small total_stake values.
+    let mut buf = [0u8; 16];
+    buf.copy_from_slice(&hash[..16]);
+    let selector = u128::from_le_bytes(buf) % (total_stake as u128);
+    let mut selector = selector as u64;
+
+    for v in &candidates {
+        if selector < v.stake {
+            return Some(v.address.clone());
+        }
+        selector -= v.stake;
+    }
+    // Numerically unreachable (we already checked total_stake > 0 and
+    // selector < total_stake), but keep a safe fallback rather than
+    // panic in a consensus path.
+    candidates.last().map(|v| v.address.clone())
+}
+
+/// Compute the maximum backup rank that may have taken over given the
+/// elapsed time since the parent block.
+///
+/// At t = parent_timestamp + BACKUP_LEADER_TIMEOUT_SECS the rank-1
+/// backup may produce; at +2*timeout, rank-2; etc. The result is
+/// clamped to the snapshot's validator count - 1 so we never permit
+/// an out-of-range rank.
+pub fn allowed_backup_rank(
+    parent_timestamp: i64,
+    block_timestamp: i64,
+    snapshot_validators: usize,
+) -> u32 {
+    if snapshot_validators <= 1 || block_timestamp <= parent_timestamp {
+        return 0;
+    }
+    let gap = (block_timestamp - parent_timestamp) as u64;
+    if gap < BACKUP_LEADER_TIMEOUT_SECS {
+        return 0;
+    }
+    let rank = gap / BACKUP_LEADER_TIMEOUT_SECS;
+    let max_rank = snapshot_validators.saturating_sub(1) as u64;
+    rank.min(max_rank) as u32
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1095,5 +1257,149 @@ mod tests {
 
         assert_eq!(accounts[&vec![1u8; 20]].balance, 2_000_000); // 1M + 1M reward
         assert_eq!(accounts[&vec![2u8; 20]].staked_balance, 4_999_750_000); // 5B - 250K penalty
+    }
+
+    // ─── Slot-leader scheduling tests ───────────────────────────────
+
+    fn snapshot_with_stakes(stakes: &[u64]) -> EpochSnapshot {
+        let validators: Vec<Validator> = stakes
+            .iter()
+            .enumerate()
+            .map(|(i, stake)| Validator {
+                address: vec![(i + 1) as u8; 20],
+                public_key: vec![(i + 1) as u8; 32],
+                stake: *stake,
+            })
+            .collect();
+        let total_stake: u64 = validators.iter().map(|v| v.stake).sum();
+        EpochSnapshot {
+            epoch: 0,
+            start_height: 0,
+            validators,
+            total_stake,
+        }
+    }
+
+    #[test]
+    fn test_slot_leader_deterministic() {
+        let snap = snapshot_with_stakes(&[1_000, 2_000, 3_000]);
+        let parent = hash::sha3_hash(b"parent");
+        for height in 1..50 {
+            let a = slot_leader(&snap, height, &parent);
+            let b = slot_leader(&snap, height, &parent);
+            assert_eq!(
+                a, b,
+                "slot_leader must be deterministic at height {}",
+                height
+            );
+        }
+    }
+
+    #[test]
+    fn test_slot_leader_stake_weighted() {
+        // Stakes 1:2:3 → expect roughly 1/6, 2/6, 3/6 share over 1000 slots.
+        let snap = snapshot_with_stakes(&[1_000, 2_000, 3_000]);
+        let parent = hash::sha3_hash(b"weighted-parent");
+        let mut counts = [0u64; 3];
+        let n = 1000u64;
+        for height in 1..=n {
+            let leader = slot_leader(&snap, height, &parent).unwrap();
+            counts[(leader[0] - 1) as usize] += 1;
+        }
+        // Expected: ~167, ~333, ~500. Allow ±10% of n (i.e. ±100 slots).
+        let tolerance = (n / 10) as i64;
+        let expected = [n / 6, n / 3, n / 2];
+        for i in 0..3 {
+            let diff = (counts[i] as i64 - expected[i] as i64).abs();
+            assert!(
+                diff <= tolerance,
+                "validator {} got {} blocks, expected ~{} (±{})",
+                i,
+                counts[i],
+                expected[i],
+                tolerance
+            );
+        }
+    }
+
+    #[test]
+    fn test_slot_leader_changes_with_parent_hash() {
+        let snap = snapshot_with_stakes(&[1_000, 1_000, 1_000, 1_000]);
+        let parent_a = hash::sha3_hash(b"a");
+        let parent_b = hash::sha3_hash(b"b");
+        let mut differ = 0u32;
+        for height in 1..30 {
+            let la = slot_leader(&snap, height, &parent_a);
+            let lb = slot_leader(&snap, height, &parent_b);
+            if la != lb {
+                differ += 1;
+            }
+        }
+        // With 4 equal-stake validators, ~75% of slots should pick a
+        // different leader between two distinct parent hashes. Even
+        // with sampling noise we expect well above half.
+        assert!(
+            differ >= 15,
+            "expected most slots to differ, got {}",
+            differ
+        );
+    }
+
+    #[test]
+    fn test_slot_leader_one_validator() {
+        let snap = snapshot_with_stakes(&[5_000]);
+        let parent = hash::sha3_hash(b"solo");
+        for height in 1..20 {
+            let leader = slot_leader(&snap, height, &parent).unwrap();
+            assert_eq!(leader, vec![1u8; 20]);
+            // Backups should still resolve to the same single validator
+            // (the pool has nobody else to fall back to).
+            let backup = slot_leader_at_rank(&snap, height, &parent, 5).unwrap();
+            assert_eq!(backup, vec![1u8; 20]);
+        }
+    }
+
+    #[test]
+    fn test_backup_rank_progression() {
+        let snap = snapshot_with_stakes(&[1_000, 1_000, 1_000]);
+        let parent = hash::sha3_hash(b"backup");
+        let h = 7u64;
+        let r0 = slot_leader_at_rank(&snap, h, &parent, 0).unwrap();
+        let r1 = slot_leader_at_rank(&snap, h, &parent, 1).unwrap();
+        let r2 = slot_leader_at_rank(&snap, h, &parent, 2).unwrap();
+        assert_ne!(r0, r1, "rank 0 and 1 must differ");
+        assert_ne!(r1, r2, "rank 1 and 2 must differ");
+        assert_ne!(r0, r2, "rank 0 and 2 must differ");
+        // With N=3 validators, rank 3+ has nothing left and should
+        // return the rank-2 fallback (last successfully chosen leader).
+        let r3 = slot_leader_at_rank(&snap, h, &parent, 3).unwrap();
+        assert_eq!(r3, r2);
+    }
+
+    #[test]
+    fn test_allowed_backup_rank() {
+        // Single validator: never allow backup.
+        assert_eq!(allowed_backup_rank(100, 200, 1), 0);
+        // Within first slot window: rank 0.
+        assert_eq!(allowed_backup_rank(100, 100, 3), 0);
+        assert_eq!(
+            allowed_backup_rank(100, 100 + (BACKUP_LEADER_TIMEOUT_SECS as i64) - 1, 3),
+            0
+        );
+        // Exactly at timeout: rank 1 becomes admissible.
+        assert_eq!(
+            allowed_backup_rank(100, 100 + BACKUP_LEADER_TIMEOUT_SECS as i64, 3),
+            1
+        );
+        // Two timeouts elapsed: rank 2.
+        assert_eq!(
+            allowed_backup_rank(100, 100 + 2 * BACKUP_LEADER_TIMEOUT_SECS as i64, 3),
+            2
+        );
+        // Beyond N-1 ranks: clamped.
+        assert_eq!(
+            allowed_backup_rank(100, 100 + 100 * BACKUP_LEADER_TIMEOUT_SECS as i64, 3),
+            2
+        );
     }
 }

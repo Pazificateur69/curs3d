@@ -13,7 +13,9 @@ use tokio::sync::{Mutex, mpsc};
 use tokio::time::Instant;
 use tracing::{error, info, warn};
 
-use crate::consensus::{EquivocationEvidence, FinalityVote};
+use crate::consensus::{
+    BACKUP_LEADER_TIMEOUT_SECS, EquivocationEvidence, FinalityVote, allowed_backup_rank,
+};
 use crate::core::block::Block;
 use crate::core::chain::{Blockchain, ChainError};
 use crate::crypto::dilithium::{self, KeyPair, Signature};
@@ -577,6 +579,63 @@ impl NetworkNode {
                     }
 
                     if let Some(ref keypair) = validator_key {
+                        // Slot-leader gate: only the elected proposer for this
+                        // height may produce. If we're not the rank-0 leader
+                        // we wait. After BACKUP_LEADER_TIMEOUT_SECS without a
+                        // block at the expected height, the rank-1 backup may
+                        // step in; rank-2 after another timeout, etc.
+                        let my_address =
+                            crate::crypto::hash::address_bytes_from_public_key(&keypair.public_key);
+                        let (next_height, latest_hash, parent_ts, snapshot_size) = {
+                            let chain_lock = chain.lock().await;
+                            let parent = chain_lock.latest_block();
+                            (
+                                parent.header.height + 1,
+                                parent.hash.clone(),
+                                parent.header.timestamp,
+                                chain_lock
+                                    .get_epoch_snapshot(
+                                        chain_lock.epoch_for_height(parent.header.height + 1),
+                                    )
+                                    .map(|s| s.validators.len())
+                                    .unwrap_or(0),
+                            )
+                        };
+                        let now = chrono::Utc::now().timestamp();
+                        let allowed_rank =
+                            allowed_backup_rank(parent_ts, now, snapshot_size);
+
+                        // Resolve which (if any) rank elects us. If we're not
+                        // in the snapshot at all, `slot_leader_address`
+                        // returns None for every rank and we don't produce.
+                        let mut my_rank: Option<u32> = None;
+                        for rank in 0..=allowed_rank {
+                            let leader = {
+                                let chain_lock = chain.lock().await;
+                                chain_lock.slot_leader_address(next_height, &latest_hash, rank)
+                            };
+                            match leader {
+                                Some(addr) if addr == my_address => {
+                                    my_rank = Some(rank);
+                                    break;
+                                }
+                                Some(_) => continue,
+                                None => break,
+                            }
+                        }
+
+                        if my_rank.is_none() {
+                            tracing::debug!(
+                                "Slot {} not ours (allowed_rank={}); waiting for elected leader",
+                                next_height,
+                                allowed_rank,
+                            );
+                            // Suppress an unused warning when the BACKUP_LEADER_TIMEOUT_SECS
+                            // const is referenced in test/log compositions.
+                            let _ = BACKUP_LEADER_TIMEOUT_SECS;
+                            continue;
+                        }
+
                         let maybe_block = {
                             let chain_lock = chain.lock().await;
                             chain_lock.create_block(keypair)
@@ -661,11 +720,13 @@ impl NetworkNode {
 
                                         seen_block_hashes.insert(block.hash);
                                     }
-                                    Err(ChainError::UnauthorizedValidator) => {}
+                                    Err(ChainError::UnauthorizedValidator)
+                                    | Err(ChainError::WrongProposer { .. }) => {}
                                     Err(e) => error!("Failed to add own block: {}", e),
                                 }
                             }
-                            Err(ChainError::UnauthorizedValidator) => {}
+                            Err(ChainError::UnauthorizedValidator)
+                            | Err(ChainError::WrongProposer { .. }) => {}
                             Err(e) => error!("Failed to create block: {}", e),
                         }
                     }
