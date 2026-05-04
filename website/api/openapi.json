@@ -321,7 +321,7 @@
       "post": {
         "tags": ["eth-rpc"],
         "summary": "Ethereum-compatible JSON-RPC",
-        "description": "Read-only subset compatible with Metamask / ethers.js / wagmi: eth_chainId, eth_blockNumber, eth_gasPrice, eth_getBalance, eth_getTransactionCount, eth_getCode, eth_getStorageAt, eth_getBlockByNumber, eth_getBlockByHash, eth_getTransactionByHash, eth_getTransactionReceipt, eth_getLogs (max range 10,000 blocks), eth_feeHistory, eth_estimateGas, net_version, web3_clientVersion, web3_sha3. Send-tx methods reject (ECDSA RLP not supported); use POST /api/tx/submit for native Dilithium signed txs.",
+        "description": "Ethereum-compatible JSON-RPC subset for Metamask / ethers.js / wagmi / Hardhat / Foundry. Read methods: eth_chainId, eth_blockNumber, eth_gasPrice, eth_getBalance, eth_getTransactionCount, eth_getCode, eth_getStorageAt, eth_getBlockByNumber, eth_getBlockByHash, eth_getTransactionByHash, eth_getTransactionReceipt, eth_getLogs (max range 10,000 blocks), eth_feeHistory, eth_estimateGas, eth_call, net_version, web3_clientVersion, web3_sha3. Write: eth_sendRawTransaction — accepts a Solidity-flavored RLP-signed tx (EIP-1559 / legacy), recovers the secp256k1 sender, executes through revm, and returns the tx hash. Native CURS3D Dilithium-L5 txs (Transfer/Stake/etc.) still go through POST /api/tx/submit.",
         "requestBody": {
           "required": true,
           "content": {

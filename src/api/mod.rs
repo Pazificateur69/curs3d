@@ -42,6 +42,10 @@ const RATE_LIMIT_CLEANUP_INTERVAL: u64 = 100;
 const FAUCET_AMOUNT: u64 = 100_000_000;
 const FAUCET_COOLDOWN_SECS: u64 = 3600;
 const MAX_HEALTHY_BLOCK_AGE_SECS: i64 = 120;
+/// Liveness check: head must not outrun finality by more than this many
+/// blocks. At 10s slots, 50 blocks ≈ 8 minutes of unfinalised tip — past
+/// that the BFT consensus is effectively broken even if blocks keep coming.
+const MAX_FINALITY_LAG_BLOCKS: u64 = 50;
 static API_START_TIME: OnceLock<Instant> = OnceLock::new();
 static RATE_LIMIT_REMAINING: AtomicU64 = AtomicU64::new(60);
 static RATE_LIMIT_MAX: AtomicU64 = AtomicU64::new(60);
@@ -742,7 +746,28 @@ async fn handle_request(
 
     let faucet_cooldowns = ctx.faucet_cooldowns;
     let faucet_ip_cooldowns = ctx.faucet_ip_cooldowns;
-    let peer_ip = ctx.peer_ip;
+    // Behind a reverse proxy (nginx on 127.0.0.1 / ::1), the TCP peer is
+    // always loopback; the real client IP lives in X-Real-IP (preferred,
+    // set by the operator's nginx) or X-Forwarded-For (right-most non-trusted
+    // entry). Trust those headers ONLY when the TCP peer is loopback —
+    // otherwise an external attacker could spoof their IP for rate-limit /
+    // faucet-cooldown bypass.
+    let peer_ip = if ctx.peer_ip.is_loopback() {
+        let from_real_ip = req
+            .headers()
+            .get("x-real-ip")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| s.trim().parse::<IpAddr>().ok());
+        let from_xff = req
+            .headers()
+            .get("x-forwarded-for")
+            .and_then(|h| h.to_str().ok())
+            .and_then(|s| s.split(',').next())
+            .and_then(|s| s.trim().parse::<IpAddr>().ok());
+        from_real_ip.or(from_xff).unwrap_or(ctx.peer_ip)
+    } else {
+        ctx.peer_ip
+    };
     let runtime_state = Arc::clone(&ctx.runtime_state);
 
     let path = req.uri().path().to_string();
@@ -760,7 +785,16 @@ async fn handle_request(
             let latest_ts = chain.latest_block().header.timestamp;
             let age = chrono::Utc::now().timestamp().saturating_sub(latest_ts);
             let runtime = runtime_state.read().await.snapshot();
-            let healthy = runtime.network_online && age <= MAX_HEALTHY_BLOCK_AGE_SECS;
+            // Liveness: producing/syncing recent blocks AND finality is not far
+            // behind. A BFT chain that produces but never finalises is broken
+            // even if blocks keep coming. We accept up to MAX_FINALITY_LAG_BLOCKS
+            // (50) of head→finalized lag — that's ~8 minutes at 10 s slots.
+            let head = chain.height();
+            let finalized = chain.finalized_height();
+            let finality_lag = head.saturating_sub(finalized);
+            let healthy = runtime.network_online
+                && age <= MAX_HEALTHY_BLOCK_AGE_SECS
+                && finality_lag <= MAX_FINALITY_LAG_BLOCKS;
             Ok(json_response(
                 if healthy {
                     StatusCode::OK
