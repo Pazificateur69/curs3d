@@ -1,0 +1,21 @@
+[package]
+name = "curs3d-contract"
+version = "0.1.0"
+edition = "2021"
+description = "Rust SDK for writing CURS3D smart contracts (compiles to wasm32-unknown-unknown)."
+license = "MIT"
+repository = "https://github.com/Pazificateur69/curs3d"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+
+[features]
+default = ["default-panic-handler", "default-allocator"]
+# Provide a default `#[panic_handler]` that traps the VM. Disable when your
+# contract wants to ship its own.
+default-panic-handler = []
+# Provide a default bump allocator (arena that frees when the call returns).
+# Disable to ship your own `#[global_allocator]`.
+default-allocator = []

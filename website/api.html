@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CURS3D — API Reference</title>
+  <meta name="description" content="Interactive OpenAPI 3.1 reference for the CURS3D HTTP API, WebSocket, and Ethereum-compatible JSON-RPC." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/landing.css?v=5" />
+  <style>
+    /* Override Stoplight Elements colors to match the dark theme */
+    body { background: var(--bg); color: var(--fg); }
+    elements-api {
+      --color-canvas: var(--bg-1);
+      --color-canvas-100: var(--bg-2);
+      --color-canvas-200: var(--bg-2);
+      --color-canvas-300: var(--line);
+      --color-canvas-400: var(--line-2);
+      --color-canvas-pure: var(--bg);
+      --color-text: var(--fg);
+      --color-text-muted: var(--fg-1);
+      --color-text-light: var(--mute);
+      --color-primary: var(--accent);
+      --color-success: var(--green);
+      --color-warning: var(--gold);
+      --color-danger: var(--red);
+      --font-prose: var(--body);
+      --font-ui: var(--body);
+      --font-code: var(--mono);
+      display: block;
+      min-height: calc(100vh - 130px);
+    }
+    .api-shell { padding: 0; }
+  </style>
+</head>
+<body>
+  <div class="scroll-progress"></div>
+
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="logo" href="/" data-magnetic>
+        <span class="logo-mark" aria-hidden="true"></span>
+        <span>CURS3D <small>L1</small></span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a href="/docs">Docs</a>
+        <a href="/stack">Stack</a>
+        <a href="/run-validator"><span data-lang="en" class="lang-show">Run Validator</span><span data-lang="fr">Validateur</span></a>
+        <a href="/governance"><span data-lang="en" class="lang-show">Governance</span><span data-lang="fr">Gouvernance</span></a>
+        <a href="/tokenomics">Tokenomics</a>
+        <a href="/whitepaper">Whitepaper</a>
+        <a href="/examples"><span data-lang="en" class="lang-show">Examples</span><span data-lang="fr">Exemples</span></a>
+      </nav>
+      <div class="nav-actions">
+        <div class="lang-toggle" role="tablist" aria-label="Language">
+          <button data-lang-set="en" class="active" role="tab">EN</button>
+          <button data-lang-set="fr" role="tab">FR</button>
+        </div>
+        <a class="btn" href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer" data-magnetic>
+          <span data-lang="en" class="lang-show">Explorer</span>
+          <span data-lang="fr">Explorateur</span>
+          <span class="arrow">→</span>
+        </a>
+        <a class="btn btn-primary" href="/run-validator" data-magnetic>
+          <span data-lang="en" class="lang-show">Run a node</span>
+          <span data-lang="fr">Lancer un nœud</span>
+          <span class="arrow">→</span>
+        </a>
+        <button class="nav-burger" aria-label="Menu"><span></span></button>
+      </div>
+    </div>
+  </header>
+
+  <div class="statusbar">
+    <div class="wrap statusbar-inner">
+      <span class="status-item">
+        <span class="status-dot"></span>
+        <span data-lang="en" class="lang-show">TESTNET</span>
+        <span data-lang="fr">TESTNET</span>
+        <b data-live-source>SIM</b>
+      </span>
+      <span class="status-item">BLOCK <b data-stat="block">—</b></span>
+      <span class="status-item">EPOCH <b data-stat="epoch">—</b></span>
+      <span class="status-item">VALIDATORS <b data-stat="validators">—</b></span>
+      <span class="statusbar-ticker"><span class="t-dyn">OPENAPI 3.1 // INTERACTIVE REFERENCE</span></span>
+    </div>
+  </div>
+
+  <main>
+    <section class="page-hero" style="padding-bottom: 40px;">
+      <div class="wrap">
+        <span class="eyebrow">API Reference</span>
+        <h1 style="margin-bottom:14px;">Interactive <em>OpenAPI 3.1</em> reference.</h1>
+        <p class="lede">Every endpoint, request shape, response schema, status code. Click any operation to see live examples and copyable curl. The raw spec is at <a href="/api/openapi.json" style="color:var(--accent);">/api/openapi.json</a>.</p>
+      </div>
+    </section>
+
+    <section class="api-shell">
+      <elements-api
+        apiDescriptionUrl="/api/openapi.json"
+        router="hash"
+        layout="sidebar"
+        hideTryIt="false"
+        hideExport="false"
+        tryItCredentialsPolicy="omit">
+      </elements-api>
+    </section>
+  </main>
+
+  <footer style="border-top:1px solid var(--line); padding: 60px 0 40px; margin-top: 0;">
+    <div class="wrap">
+      <div style="display:flex; justify-content:space-between; padding-top:24px; font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.08em;">
+        <span>© 2026 CURS3D PROTOCOL · APACHE-2.0</span>
+        <span>SPEC <b style="color:var(--fg)">openapi 3.1.0</b> · CHAIN-ID <b style="color:var(--fg)">curs3d-public-testnet</b></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/landing.js?v=5"></script>
+  <script src="https://unpkg.com/@stoplight/elements/web-components.min.js" type="module"></script>
+  <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements/styles.min.css">
+</body>
+</html>

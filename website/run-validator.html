@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CURS3D — Run a Validator</title>
+  <meta name="description" content="Step-by-step guide to run a CURS3D validator node: hardware requirements, install, key generation, staking, joining the testnet." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="landing.css?v=5" />
+</head>
+<body>
+  <div class="scroll-progress"></div>
+
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="logo" href="index.html" data-magnetic>
+        <span class="logo-mark" aria-hidden="true"></span>
+        <span>CURS3D <small>L1</small></span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a href="docs.html">Docs</a>
+        <a href="stack.html">Stack</a>
+        <a href="run-validator.html" class="active"><span data-lang="en" class="lang-show">Run Validator</span><span data-lang="fr">Validateur</span></a>
+        <a href="governance.html"><span data-lang="en" class="lang-show">Governance</span><span data-lang="fr">Gouvernance</span></a>
+        <a href="tokenomics.html">Tokenomics</a>
+        <a href="whitepaper.html">Whitepaper</a>
+        <a href="examples.html"><span data-lang="en" class="lang-show">Examples</span><span data-lang="fr">Exemples</span></a>
+      </nav>
+      <div class="nav-actions">
+        <div class="lang-toggle" role="tablist" aria-label="Language">
+          <button data-lang-set="en" class="active" role="tab">EN</button>
+          <button data-lang-set="fr" role="tab">FR</button>
+        </div>
+        <a class="btn" href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer" data-magnetic>
+          <span data-lang="en" class="lang-show">Explorer</span>
+          <span data-lang="fr">Explorateur</span>
+          <span class="arrow">→</span>
+        </a>
+        <a class="btn btn-primary" href="run-validator.html" data-magnetic>
+          <span data-lang="en" class="lang-show">Run a node</span>
+          <span data-lang="fr">Lancer un nœud</span>
+          <span class="arrow">→</span>
+        </a>
+        <button class="nav-burger" aria-label="Menu"><span></span></button>
+      </div>
+    </div>
+  </header>
+
+  <div class="statusbar">
+    <div class="wrap statusbar-inner">
+      <span class="status-item">
+        <span class="status-dot"></span>
+        <span data-lang="en" class="lang-show">TESTNET</span>
+        <span data-lang="fr">TESTNET</span>
+        <b data-live-source>SIM</b>
+      </span>
+      <span class="status-item">BLOCK <b data-stat="block">—</b></span>
+      <span class="status-item">EPOCH <b data-stat="epoch">—</b></span>
+      <span class="status-item">VALIDATORS <b data-stat="validators">—</b></span>
+      <span class="statusbar-ticker"><span class="t-dyn">TESTNET-1 // OPERATIONAL</span></span>
+    </div>
+  </div>
+
+  <main>
+    <section class="page-hero">
+      <div class="wrap">
+        <span class="eyebrow"><span data-lang="en" class="lang-show">Run a validator</span><span data-lang="fr">Lancer un validateur</span></span>
+        <h1>
+          <span data-lang="en" class="lang-show">Run a CURS3D <em>validator</em>.</span>
+          <span data-lang="fr">Faire tourner un <em>validateur</em> CURS3D.</span>
+        </h1>
+        <p class="lede">
+          <span data-lang="en" class="lang-show">Join the BFT-PoS testnet, produce blocks, earn epoch rewards. Quantum-resistant signatures (Dilithium L5), 10s block time, 32-block epochs.</span>
+          <span data-lang="fr">Rejoignez le testnet BFT-PoS, produisez des blocs, gagnez des récompenses d'époque. Signatures post-quantiques (Dilithium L5), bloc toutes les 10s, époques de 32 blocs.</span>
+        </p>
+      </div>
+    </section>
+
+    <section class="section block">
+      <div class="wrap">
+        <div class="callout warning reveal" style="margin-bottom:40px;">
+          <p><strong><span data-lang="en" class="lang-show">Testnet only.</span><span data-lang="fr">Testnet uniquement.</span></strong> <span data-lang="en" class="lang-show">No mainnet yet. Stake has no real-world value but slashing/jailing rules are enforced.</span><span data-lang="fr">Pas encore de mainnet. Le stake n'a pas de valeur réelle mais les règles de slashing/jail s'appliquent.</span></p>
+        </div>
+
+        <div class="card-grid cols-4 reveal" data-stagger style="margin-bottom:60px;">
+          <div class="feature-card">
+            <span class="num">CPU</span>
+            <h3>1 OCPU / 2 vCPU</h3>
+          </div>
+          <div class="feature-card">
+            <span class="num">RAM</span>
+            <h3>6 GB</h3>
+          </div>
+          <div class="feature-card">
+            <span class="num">DISK</span>
+            <h3>40 GB SSD</h3>
+          </div>
+          <div class="feature-card">
+            <span class="num">OS</span>
+            <h3>Ubuntu 22.04+</h3>
+          </div>
+        </div>
+
+        <div class="step-list">
+          <div class="step-card reveal">
+            <div class="step-num">01</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Requirements</span><span data-lang="fr">Prérequis</span></h3>
+              <p><span data-lang="en" class="lang-show">Tested on Oracle Cloud ARM Free Tier (Ampere A1, 1 OCPU / 6 GB). Hetzner CAX11, AWS t4g.medium, GCP e2-medium also work. ARM64 and x86_64 both supported. Minimum stake: 1 000 CUR.</span><span data-lang="fr">Testé sur Oracle Cloud ARM Free Tier (Ampere A1, 1 OCPU / 6 Go). Hetzner CAX11, AWS t4g.medium, GCP e2-medium fonctionnent aussi. ARM64 et x86_64 supportés. Stake minimum : 1 000 CUR.</span></p>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">02</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Open ports</span><span data-lang="fr">Ports à ouvrir</span></h3>
+              <div class="code-block">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">ports</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body">4337/tcp   <span class="c-comment"># P2P (libp2p, Gossipsub)</span>
+8080/tcp   <span class="c-comment"># HTTP API (optional, only if you want to expose your node)</span>
+9545/tcp   <span class="c-comment"># TCP RPC (CLI, keep on localhost only)</span></pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">03</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Install dependencies</span><span data-lang="fr">Installer les dépendances</span></h3>
+              <div class="code-block">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">install.sh</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-prompt">$</span> sudo apt-get update
+<span class="c-prompt">$</span> sudo apt-get install -y build-essential pkg-config libssl-dev curl jq nginx
+<span class="c-prompt">$</span> curl --proto <span class="c-str">'=https'</span> --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+<span class="c-prompt">$</span> source ~/.cargo/env</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">04</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Build CURS3D</span><span data-lang="fr">Compiler CURS3D</span></h3>
+              <div class="code-block">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">build.sh</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-prompt">$</span> git clone https://github.com/Pazificateur69/curs3d.git
+<span class="c-prompt">$</span> cd curs3d
+<span class="c-prompt">$</span> cargo build --release
+<span class="c-comment"># ~10 min on a 1 OCPU ARM box</span></pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">05</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Generate validator keys (ON the server)</span><span data-lang="fr">Générer les clés validateur (SUR le serveur)</span></h3>
+              <div class="callout warning">
+                <p><strong><span data-lang="en" class="lang-show">Important:</span><span data-lang="fr">Important :</span></strong> <span data-lang="en" class="lang-show">Argon2id parameters are hardware-tuned. Keys MUST be generated directly on the server that will run the node — never cross-compile or transfer encrypted wallets between hosts.</span><span data-lang="fr">Les paramètres Argon2id sont calibrés pour le hardware. Les clés DOIVENT être générées directement sur le serveur qui fera tourner le node — jamais de cross-compilation ni de transfert de wallets chiffrés entre machines.</span></p>
+              </div>
+              <div class="code-block" style="margin-top:14px;">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">keygen.sh</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-comment"># Create wallet from the server that will run the validator</span>
+<span class="c-prompt">$</span> printf <span class="c-str">'%s\n'</span> <span class="c-str">'change-this-validator-password'</span> &gt; /etc/curs3d/validator.password
+<span class="c-prompt">$</span> chmod 600 /etc/curs3d/validator.password
+<span class="c-prompt">$</span> ./target/release/curs3d wallet --output /etc/curs3d/validator.json --password-file /etc/curs3d/validator.password
+
+<span class="c-comment"># Save the address shown — that's your validator address</span>
+<span class="c-comment"># Keep /etc/curs3d/validator.json and /etc/curs3d/validator.password together</span></pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">06</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Get the genesis file</span><span data-lang="fr">Récupérer le genesis</span></h3>
+              <div class="code-block">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">genesis.sh</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-comment"># Copy the exact genesis config used by the existing network</span>
+<span class="c-prompt">$</span> scp existing-validator:/etc/curs3d/genesis.public-testnet.json /etc/curs3d/genesis.public-testnet.json
+<span class="c-comment"># /api/genesis is only a light-client anchor, not a reusable validator config</span></pre>
+              </div>
+              <p style="margin-top:14px; color:var(--fg-1); font-size:14px;"><span data-lang="en" class="lang-show">Note: if you join an existing testnet, you start from the genesis and let your node sync all blocks via P2P. State sync via snapshots is also supported.</span><span data-lang="fr">Note : si vous rejoignez un testnet existant, vous démarrez du genesis et laissez votre node sync tous les blocs via P2P. Le state sync par snapshot est aussi supporté.</span></p>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">07</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Start the node</span><span data-lang="fr">Démarrer le node</span></h3>
+              <div class="code-block">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">start-node.sh</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-comment"># Bootnode info (current testnet bootstrap)</span>
+<span class="c-prompt">$</span> BOOTNODE=/ip4/144.24.192.222/tcp/4337/p2p/12D3KooWGy9BLopUe6CmnxuFgk5pCou8Kj5R1DXa9XLga9MD63va
+
+<span class="c-prompt">$</span> ./target/release/curs3d node \
+    --data-dir /var/lib/curs3d \
+    --validator-wallet /etc/curs3d/validator.json \
+    --validator-password-file /etc/curs3d/validator.password \
+    --genesis-config /etc/curs3d/genesis.public-testnet.json \
+    --bootnode <span class="c-str">$BOOTNODE</span> \
+    --public-addr /ip4/YOUR_PUBLIC_IP/tcp/4337 \
+    --rpc-addr 127.0.0.1:9545 \
+    --http-addr 127.0.0.1:8080</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">08</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Stake to activate</span><span data-lang="fr">Staker pour activer</span></h3>
+              <p><span data-lang="en" class="lang-show">A node is observer-only until it stakes. Use the CLI to bond at least 1000 CUR (testnet faucet: <a href="https://api.curs3d.fr/api/faucet/request">faucet endpoint</a>):</span><span data-lang="fr">Un node est en mode observateur tant qu'il n'a pas staké. Utilisez la CLI pour bonder au moins 1000 CUR (faucet testnet : <a href="https://api.curs3d.fr/api/faucet/request">endpoint faucet</a>) :</span></p>
+              <div class="code-block" style="margin-top:14px;">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">stake.sh</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-comment"># Request faucet (100 CUR per hour, request ~10 times to get 1000+)</span>
+<span class="c-prompt">$</span> curl -X POST https://api.curs3d.fr/api/faucet/request \
+    -H <span class="c-str">"Content-Type: application/json"</span> \
+    -d <span class="c-str">'{"address":"YOUR_VALIDATOR_ADDRESS"}'</span>
+
+<span class="c-comment"># Stake 1000 CUR (in microtokens: 1_000_000_000)</span>
+<span class="c-prompt">$</span> ./target/release/curs3d stake \
+    --wallet /etc/curs3d/validator.json \
+    --amount 1000000000 \
+    --rpc-addr 127.0.0.1:9545</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">09</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Run as a systemd service</span><span data-lang="fr">Service systemd</span></h3>
+              <div class="code-block">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">curs3d.service</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-prompt">$</span> sudo tee /etc/systemd/system/curs3d.service &gt; /dev/null &lt;&lt;<span class="c-str">'EOF'</span>
+[Unit]
+Description=CURS3D validator node
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/curs3d
+Environment=RUST_LOG=info
+ExecStart=/home/ubuntu/curs3d/target/release/curs3d node \
+    --data-dir /var/lib/curs3d \
+    --validator-wallet /etc/curs3d/validator.json \
+    --validator-password-file /etc/curs3d/validator.password \
+    --genesis-config /etc/curs3d/genesis.public-testnet.json \
+    --bootnode /ip4/144.24.192.222/tcp/4337/p2p/12D3KooWGy9BLopUe6CmnxuFgk5pCou8Kj5R1DXa9XLga9MD63va \
+    --public-addr /ip4/YOUR_PUBLIC_IP/tcp/4337 \
+    --rpc-addr 127.0.0.1:9545 \
+    --http-addr 127.0.0.1:8080
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+<span class="c-prompt">$</span> sudo systemctl daemon-reload
+<span class="c-prompt">$</span> sudo systemctl enable curs3d
+<span class="c-prompt">$</span> sudo systemctl start curs3d
+<span class="c-prompt">$</span> journalctl -u curs3d -f</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">10</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Verify you're producing blocks</span><span data-lang="fr">Vérifier que vous produisez des blocs</span></h3>
+              <div class="code-block">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">verify.sh</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-comment"># Local status</span>
+<span class="c-prompt">$</span> curl -s http://localhost:8080/api/status | jq
+
+<span class="c-comment"># Are you in the active validator set?</span>
+<span class="c-prompt">$</span> curl -s https://api.curs3d.fr/api/validators | jq <span class="c-str">'.data[] | select(.address=="YOUR_ADDR")'</span>
+
+<span class="c-comment"># Watch on the public explorer</span>
+<span class="c-comment"># https://explorer.curs3d.fr — search your validator address</span></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <section class="doc-section reveal" style="margin-top:60px;">
+          <h2><span data-lang="en" class="lang-show">Rewards &amp; slashing</span><span data-lang="fr">Récompenses &amp; slashing</span></h2>
+          <div class="prose">
+            <ul>
+              <li><span data-lang="en" class="lang-show"><strong>Block reward:</strong> 50 CUR per block produced.</span><span data-lang="fr"><strong>Récompense bloc :</strong> 50 CUR par bloc produit.</span></li>
+              <li><span data-lang="en" class="lang-show"><strong>Epoch rewards:</strong> 100 microtokens per CUR staked, per block produced in the epoch.</span><span data-lang="fr"><strong>Récompenses d'époque :</strong> 100 microtokens par CUR staké, par bloc produit dans l'époque.</span></li>
+              <li><span data-lang="en" class="lang-show"><strong>Inactivity penalty:</strong> 2 epochs grace period, then escalating stake penalty.</span><span data-lang="fr"><strong>Pénalité d'inactivité :</strong> 2 époques de grâce, puis pénalité progressive sur le stake.</span></li>
+              <li><span data-lang="en" class="lang-show"><strong>Equivocation slashing:</strong> 33% of staked balance + 64-block jail. Don't run two nodes with the same key.</span><span data-lang="fr"><strong>Slashing par équivocation :</strong> 33% du stake + jail de 64 blocs. Ne jamais faire tourner deux nodes avec la même clé.</span></li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="doc-section reveal">
+          <h2><span data-lang="en" class="lang-show">Operational checklist</span><span data-lang="fr">Checklist opérationnelle</span></h2>
+          <div class="prose">
+            <ul>
+              <li><span data-lang="en" class="lang-show">Set up a healthcheck cron (every 2 min) that pings <code>/api/healthz</code> and restarts the service if it fails.</span><span data-lang="fr">Mettre en place un healthcheck cron (toutes les 2 min) qui ping <code>/api/healthz</code> et redémarre le service en cas d'échec.</span></li>
+              <li><span data-lang="en" class="lang-show">Back up <code>/etc/curs3d/validator.json</code> AND <code>/etc/curs3d/validator.password</code> together — without both, your stake is lost.</span><span data-lang="fr">Sauvegarder <code>/etc/curs3d/validator.json</code> ET <code>/etc/curs3d/validator.password</code> ensemble — sans les deux, le stake est perdu.</span></li>
+              <li><span data-lang="en" class="lang-show">Monitor with Prometheus: <code>/api/metrics</code> exposes block height, peer count, finalized height.</span><span data-lang="fr">Monitorer avec Prometheus : <code>/api/metrics</code> expose la hauteur, le nombre de peers, la hauteur finalisée.</span></li>
+              <li><span data-lang="en" class="lang-show">Use TLS for the public API (nginx + certbot). See <code>deploy/nginx/curs3d.conf</code> in the repo.</span><span data-lang="fr">Utiliser TLS pour l'API publique (nginx + certbot). Voir <code>deploy/nginx/curs3d.conf</code> dans le repo.</span></li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="doc-section reveal">
+          <h2><span data-lang="en" class="lang-show">Automated deploy script</span><span data-lang="fr">Script de déploiement automatisé</span></h2>
+          <div class="prose">
+            <p><span data-lang="en" class="lang-show">If you have OCI CLI configured for Oracle Cloud, the repo includes <code>deploy/scripts/add-node.sh</code> to provision a node from prepared validator artifacts (instance creation, SSH provisioning, build, systemd setup, join to the bootnode).</span><span data-lang="fr">Si vous avez OCI CLI configuré pour Oracle Cloud, le repo inclut <code>deploy/scripts/add-node.sh</code> pour provisionner un node à partir d'artefacts validateurs préparés (création d'instance, provisioning SSH, build, setup systemd, connexion au bootnode).</span></p>
+          </div>
+          <div class="code-block" style="margin-top:14px;">
+            <div class="code-head">
+              <div class="code-dots"><span></span><span></span><span></span></div>
+              <span class="code-title">add-node.sh</span>
+              <button class="code-copy" data-done="COPIED">COPY</button>
+            </div>
+<pre class="code-body"><span class="c-prompt">$</span> ./deploy/scripts/add-node.sh 3 144.24.192.222 12D3KooWGy9BLopUe6CmnxuFgk5pCou8Kj5R1DXa9XLga9MD63va</pre>
+          </div>
+        </section>
+
+        <section class="doc-section reveal">
+          <h2><span data-lang="en" class="lang-show">Need help?</span><span data-lang="fr">Besoin d'aide ?</span></h2>
+          <div class="prose">
+            <p><span data-lang="en" class="lang-show">Open an issue on <a href="https://github.com/Pazificateur69/curs3d/issues" target="_blank" rel="noopener noreferrer">GitHub</a> or check the <a href="docs.html">full documentation</a>.</span><span data-lang="fr">Ouvrez un ticket sur <a href="https://github.com/Pazificateur69/curs3d/issues" target="_blank" rel="noopener noreferrer">GitHub</a> ou consultez la <a href="docs.html">documentation complète</a>.</span></p>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <footer style="border-top:1px solid var(--line); padding: 60px 0 40px; margin-top: 80px;">
+    <div class="wrap">
+      <div style="display:grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 32px; margin-bottom: 40px;">
+        <div>
+          <a class="logo" href="index.html" style="margin-bottom:18px;">
+            <span class="logo-mark" aria-hidden="true"></span>
+            <span>CURS3D <small>L1</small></span>
+          </a>
+          <p style="color:var(--fg-1); font-size:14px; max-width:36ch; margin-top:14px;"><span data-lang="en" class="lang-show">A post-quantum Layer 1 blockchain. Conservative cryptography, BFT proof-of-stake, WASM execution. Built in the open.</span><span data-lang="fr">Une blockchain Layer 1 post-quantique. Cryptographie conservatrice, proof-of-stake BFT, exécution WASM. Construite à découvert.</span></p>
+        </div>
+        <div>
+          <h4 style="font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.14em; text-transform:uppercase; margin-bottom:14px;">Protocol</h4>
+          <ul style="list-style:none; display:flex; flex-direction:column; gap:8px; font-size:13px;">
+            <li><a href="stack.html" style="color:var(--fg-1);">Stack</a></li>
+            <li><a href="docs.html" style="color:var(--fg-1);">Documentation</a></li>
+            <li><a href="whitepaper.html" style="color:var(--fg-1);">Whitepaper</a></li>
+            <li><a href="tokenomics.html" style="color:var(--fg-1);">Tokenomics</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 style="font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.14em; text-transform:uppercase; margin-bottom:14px;">Network</h4>
+          <ul style="list-style:none; display:flex; flex-direction:column; gap:8px; font-size:13px;">
+            <li><a href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer" style="color:var(--fg-1);">Explorer</a></li>
+            <li><a href="run-validator.html" style="color:var(--fg-1);">Run a validator</a></li>
+            <li><a href="docs.html" style="color:var(--fg-1);">API reference</a></li>
+            <li><a href="examples.html" style="color:var(--fg-1);">Examples</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 style="font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.14em; text-transform:uppercase; margin-bottom:14px;">Project</h4>
+          <ul style="list-style:none; display:flex; flex-direction:column; gap:8px; font-size:13px;">
+            <li><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener noreferrer" style="color:var(--fg-1);">GitHub</a></li>
+            <li><a href="governance.html" style="color:var(--fg-1);">Governance</a></li>
+          </ul>
+        </div>
+      </div>
+      <div style="display:flex; justify-content:space-between; padding-top:24px; border-top:1px solid var(--line); font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.08em;">
+        <span>© 2026 CURS3D PROTOCOL · APACHE-2.0</span>
+        <span>CHAIN-ID <b style="color:var(--fg)">curs3d-public-testnet</b></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="landing.js?v=5"></script>
+</body>
+</html>

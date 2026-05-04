@@ -1,0 +1,417 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "CURS3D HTTP API",
+    "version": "1.0.0",
+    "summary": "Public REST + WebSocket + Ethereum-compatible JSON-RPC for the CURS3D Layer 1.",
+    "description": "CURS3D is a quantum-resistant Layer 1 blockchain. Every endpoint returns `{ok: bool, data: any, error: string|null}`. Per-IP rate limits: 60 GET/min, 10 POST/min. Optional bearer auth via `CURS3D_API_TOKEN`.",
+    "license": {
+      "name": "Apache-2.0",
+      "url": "https://github.com/Pazificateur69/curs3d/blob/main/LICENSE"
+    },
+    "contact": {
+      "name": "CURS3D Project",
+      "url": "https://github.com/Pazificateur69/curs3d"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.curs3d.fr",
+      "description": "Public testnet"
+    }
+  ],
+  "tags": [
+    { "name": "status", "description": "Chain status, health, metrics" },
+    { "name": "blocks", "description": "Block introspection" },
+    { "name": "transactions", "description": "Submit and inspect transactions" },
+    { "name": "accounts", "description": "Account state, balances, history" },
+    { "name": "tokens", "description": "CUR-20 token registry" },
+    { "name": "contracts", "description": "WASM smart contract bytecode" },
+    { "name": "governance", "description": "On-chain proposals and votes" },
+    { "name": "light-client", "description": "Header-only sync + finality proofs" },
+    { "name": "receipts", "description": "Transaction receipts and event logs" },
+    { "name": "faucet", "description": "Testnet token faucet (captcha-gated)" },
+    { "name": "eth-rpc", "description": "Ethereum-compatible JSON-RPC subset" }
+  ],
+  "paths": {
+    "/api/status": {
+      "get": {
+        "tags": ["status"],
+        "summary": "Chain status",
+        "description": "Returns chain ID, current and finalized heights, epoch, validator count, pending tx count, protocol version.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusResponse" },
+                "example": {
+                  "ok": true,
+                  "data": {
+                    "chain_id": "curs3d-public-testnet",
+                    "chain_name": "CURS3D Public Testnet",
+                    "epoch": 7,
+                    "epoch_start_height": 224,
+                    "height": 240,
+                    "finalized_height": 240,
+                    "latest_hash": "7e172dd6b3d69d55...",
+                    "genesis_hash": "8a58508589b2e0e2...",
+                    "pending_transactions": 0,
+                    "active_validators": 1,
+                    "protocol_version": 1
+                  },
+                  "error": null
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/healthz": {
+      "get": {
+        "tags": ["status"],
+        "summary": "Liveness check",
+        "description": "Returns 200 if the node is producing or syncing recent blocks (latest block younger than 120s).",
+        "responses": {
+          "200": { "description": "Healthy" },
+          "503": { "description": "Stale or unreachable" }
+        }
+      }
+    },
+    "/api/metrics": {
+      "get": {
+        "tags": ["status"],
+        "summary": "Prometheus metrics",
+        "description": "Standard Prometheus exposition format. Scraped by Prometheus on status.curs3d.fr.",
+        "responses": {
+          "200": {
+            "description": "Prometheus text exposition",
+            "content": { "text/plain": {} }
+          }
+        }
+      }
+    },
+    "/api/blocks": {
+      "get": {
+        "tags": ["blocks"],
+        "summary": "List blocks",
+        "parameters": [
+          { "name": "from", "in": "query", "schema": { "type": "integer", "minimum": 0 }, "description": "Starting height" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100 }, "description": "Max blocks (default 20)" }
+        ],
+        "responses": { "200": { "description": "Block summary array", "content": { "application/json": {} } } }
+      }
+    },
+    "/api/block/{height}": {
+      "get": {
+        "tags": ["blocks"],
+        "summary": "Block by height",
+        "parameters": [
+          { "name": "height", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "Full block" } }
+      }
+    },
+    "/api/block-by-hash/{hash}": {
+      "get": {
+        "tags": ["blocks"],
+        "summary": "Block by hash",
+        "parameters": [{ "name": "hash", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Full block" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/api/tx/submit": {
+      "post": {
+        "tags": ["transactions"],
+        "summary": "Submit a signed transaction",
+        "description": "Body must be a fully Dilithium-L5 signed Transaction (12 kinds: Transfer, Stake, Unstake, DeployContract, CallContract, DeployToken, TokenTransfer, TokenApprove, TokenTransferFrom, SubmitProposal, GovernanceVote). Coinbase is internal-only.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SignedTransaction" } } }
+        },
+        "responses": {
+          "200": { "description": "Tx hash returned" },
+          "400": { "description": "Invalid format or signature" },
+          "402": { "description": "Insufficient balance / fee too low" },
+          "429": { "description": "Rate limit hit" }
+        }
+      }
+    },
+    "/api/tx/{hash}": {
+      "get": {
+        "tags": ["transactions"],
+        "summary": "Transaction by hash",
+        "parameters": [{ "name": "hash", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Transaction" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/api/tx/estimate": {
+      "post": {
+        "tags": ["transactions"],
+        "summary": "Dry-run a transaction",
+        "description": "Returns gas, fee market info, replacement check — without submitting.",
+        "responses": { "200": { "description": "TransactionEstimate" } }
+      }
+    },
+    "/api/account/{address}": {
+      "get": {
+        "tags": ["accounts"],
+        "summary": "Account state",
+        "parameters": [{ "name": "address", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^(CUR)?[0-9a-fA-F]{40}$" } }],
+        "responses": { "200": { "description": "Balance, nonce, staked, jailed_until_height, etc." } }
+      }
+    },
+    "/api/account/{address}/transactions": {
+      "get": {
+        "tags": ["accounts"],
+        "summary": "Transactions involving an address",
+        "parameters": [
+          { "name": "address", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "Tx list" } }
+      }
+    },
+    "/api/account/{address}/proof": {
+      "get": {
+        "tags": ["accounts", "light-client"],
+        "summary": "Merkle inclusion proof for an account",
+        "parameters": [{ "name": "address", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "AccountProof" } }
+      }
+    },
+    "/api/tokens": {
+      "get": {
+        "tags": ["tokens"],
+        "summary": "All deployed CUR-20 tokens",
+        "responses": { "200": { "description": "Array of token registry entries" } }
+      }
+    },
+    "/api/token/{address}": {
+      "get": {
+        "tags": ["tokens"],
+        "summary": "Token info",
+        "parameters": [{ "name": "address", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Token metadata" } }
+      }
+    },
+    "/api/token/{address}/balance/{owner}": {
+      "get": {
+        "tags": ["tokens"],
+        "summary": "Token balance for an owner",
+        "parameters": [
+          { "name": "address", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "owner", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Balance" } }
+      }
+    },
+    "/api/contract/{address}/code": {
+      "get": {
+        "tags": ["contracts"],
+        "summary": "Raw WASM bytecode of a deployed contract",
+        "parameters": [{ "name": "address", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Bytecode hex + code_hash + owner" } }
+      }
+    },
+    "/api/governance/proposals": {
+      "get": {
+        "tags": ["governance"],
+        "summary": "List proposals",
+        "responses": { "200": { "description": "Array of proposals" } }
+      }
+    },
+    "/api/governance/proposal/{id}": {
+      "get": {
+        "tags": ["governance"],
+        "summary": "Proposal detail + vote tally",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "Proposal" } }
+      }
+    },
+    "/api/genesis": {
+      "get": {
+        "tags": ["light-client"],
+        "summary": "Genesis config",
+        "responses": { "200": { "description": "Public-testnet genesis" } }
+      }
+    },
+    "/api/headers": {
+      "get": {
+        "tags": ["light-client"],
+        "summary": "Block headers (signed)",
+        "parameters": [
+          { "name": "from", "in": "query", "schema": { "type": "integer" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "maximum": 1000 } }
+        ],
+        "responses": { "200": { "description": "Array of SignedHeader" } }
+      }
+    },
+    "/api/header/{height}": {
+      "get": {
+        "tags": ["light-client"],
+        "summary": "Single header by height",
+        "parameters": [{ "name": "height", "in": "path", "required": true, "schema": { "type": "integer" } }],
+        "responses": { "200": { "description": "SignedHeader" } }
+      }
+    },
+    "/api/finality": {
+      "get": {
+        "tags": ["light-client"],
+        "summary": "Latest finality info",
+        "responses": { "200": { "description": "Finalized height + signatures" } }
+      }
+    },
+    "/api/receipt/{hash}": {
+      "get": {
+        "tags": ["receipts"],
+        "summary": "Receipt for a transaction",
+        "parameters": [{ "name": "hash", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "IndexedReceipt with logs, gas, success/fail" }, "404": { "description": "Not found" } }
+      }
+    },
+    "/api/logs": {
+      "get": {
+        "tags": ["receipts"],
+        "summary": "Filter event logs",
+        "parameters": [
+          { "name": "from", "in": "query", "schema": { "type": "integer" } },
+          { "name": "to", "in": "query", "schema": { "type": "integer" } },
+          { "name": "address", "in": "query", "schema": { "type": "string" } },
+          { "name": "topic0", "in": "query", "schema": { "type": "string" } },
+          { "name": "topic1", "in": "query", "schema": { "type": "string" } },
+          { "name": "topic2", "in": "query", "schema": { "type": "string" } },
+          { "name": "topic3", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "IndexedLogEntry array (max range 10,000 blocks)" }, "400": { "description": "Range too wide" } }
+      }
+    },
+    "/api/faucet/request": {
+      "post": {
+        "tags": ["faucet"],
+        "summary": "Request 100 CUR (testnet)",
+        "description": "Cooldown: 1 hour per address AND per source IP. Captcha required when CURS3D_FAUCET_REQUIRE_CAPTCHA=1 (currently enabled — Cloudflare Turnstile token in `X-Captcha-Token` header).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["address"],
+                "properties": {
+                  "address": { "type": "string", "pattern": "^(CUR)?[0-9a-fA-F]{40}$" }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          { "name": "X-Captcha-Token", "in": "header", "schema": { "type": "string" }, "description": "Cloudflare Turnstile token" }
+        ],
+        "responses": {
+          "200": { "description": "Faucet tx submitted, tx_hash returned" },
+          "403": { "description": "Captcha verification failed" },
+          "429": { "description": "Cooldown not elapsed (per-address or per-IP)" },
+          "503": { "description": "Faucet wallet not configured" }
+        }
+      }
+    },
+    "/eth": {
+      "post": {
+        "tags": ["eth-rpc"],
+        "summary": "Ethereum-compatible JSON-RPC",
+        "description": "Read-only subset compatible with Metamask / ethers.js / wagmi: eth_chainId, eth_blockNumber, eth_gasPrice, eth_getBalance, eth_getTransactionCount, eth_getCode, eth_getStorageAt, eth_getBlockByNumber, eth_getBlockByHash, eth_getTransactionByHash, eth_getTransactionReceipt, eth_getLogs (max range 10,000 blocks), eth_feeHistory, eth_estimateGas, net_version, web3_clientVersion, web3_sha3. Send-tx methods reject (ECDSA RLP not supported); use POST /api/tx/submit for native Dilithium signed txs.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["jsonrpc", "method", "id"],
+                "properties": {
+                  "jsonrpc": { "type": "string", "enum": ["2.0"] },
+                  "method": { "type": "string" },
+                  "params": { "type": "array" },
+                  "id": { "oneOf": [{ "type": "integer" }, { "type": "string" }] }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "JSON-RPC 2.0 response" } }
+      }
+    },
+    "/ws": {
+      "get": {
+        "tags": ["status"],
+        "summary": "WebSocket events stream",
+        "description": "Subscribe to: new_block, new_header (signed), new_transaction, finality. Also supports eth_subscribe for newHeads + logs (Metamask compatible).",
+        "responses": { "101": { "description": "Switching Protocols (WebSocket)" } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Optional: set CURS3D_API_TOKEN env var on the node, then send `Authorization: Bearer <token>` for POST endpoints"
+      }
+    },
+    "schemas": {
+      "ApiEnvelope": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": { "type": "boolean" },
+          "data": {},
+          "error": { "type": ["string", "null"] }
+        }
+      },
+      "StatusResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ApiEnvelope" },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "chain_id": { "type": "string" },
+                  "chain_name": { "type": "string" },
+                  "epoch": { "type": "integer" },
+                  "epoch_start_height": { "type": "integer" },
+                  "height": { "type": "integer" },
+                  "finalized_height": { "type": "integer" },
+                  "latest_hash": { "type": "string" },
+                  "genesis_hash": { "type": "string" },
+                  "pending_transactions": { "type": "integer" },
+                  "active_validators": { "type": "integer" },
+                  "protocol_version": { "type": "integer" }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "SignedTransaction": {
+        "type": "object",
+        "required": ["kind", "nonce", "fee", "sender_public_key", "signature"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["Transfer", "Stake", "Unstake", "DeployContract", "CallContract", "DeployToken", "TokenTransfer", "TokenApprove", "TokenTransferFrom", "SubmitProposal", "GovernanceVote"] },
+          "nonce": { "type": "integer" },
+          "fee": { "type": "integer", "description": "microtokens" },
+          "max_fee_per_gas": { "type": "integer" },
+          "max_priority_fee_per_gas": { "type": "integer" },
+          "gas_limit": { "type": "integer" },
+          "to": { "type": "string", "description": "CUR address" },
+          "amount": { "type": "integer", "description": "microtokens (1 CUR = 1_000_000)" },
+          "data": { "type": "string", "description": "hex-encoded bytecode or call input" },
+          "sender_public_key": { "type": "string", "description": "hex-encoded Dilithium-L5 public key (~2592 bytes)" },
+          "signature": { "type": "string", "description": "hex-encoded Dilithium-L5 signature (~4595 bytes)" }
+        }
+      }
+    }
+  }
+}

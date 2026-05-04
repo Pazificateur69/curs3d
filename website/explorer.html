@@ -1,88 +1,252 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en" data-current-lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CURS3D Explorer</title>
-    <meta name="description" content="Live explorer for CURS3D. Inspect chain status, recent blocks, accounts and transactions through the node HTTP API.">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+  <meta charset="utf-8" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CURS3D — Explorer</title>
+  <meta name="description" content="Live explorer for CURS3D. Inspect chain status, recent blocks, accounts and transactions through the node HTTP API." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="landing.css?v=5" />
 </head>
-<body data-title-en="CURS3D Explorer" data-title-fr="CURS3D Explorer" data-description-en="Live explorer for CURS3D. Inspect chain status, recent blocks, accounts and transactions through the node HTTP API." data-description-fr="Explorer live pour CURS3D. Inspectez le statut de chaîne, les blocs récents, les comptes et les transactions via l’API HTTP du node.">
-<div class="site-shell">
-    <nav class="site-nav" id="nav">
-        <div class="container nav-inner">
-            <a class="brand" href="https://curs3d.fr"><span class="brand-mark"></span> CURS3D</a>
-            <div class="nav-links">
-                <span class="eyebrow" style="margin-right:0.5rem;font-size:0.7rem;">Explorer</span>
-                <a href="https://curs3d.fr"><span data-lang="en">Back to site</span><span data-lang="fr">Retour au site</span></a>
-                <a href="https://curs3d.fr/docs.html">Docs</a>
-                <div class="lang-switch"><button type="button" data-lang-switch="en">EN</button><button type="button" data-lang-switch="fr">FR</button></div>
-                <a class="nav-cta" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
-            </div>
-            <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation"><span></span><span></span><span></span></button>
-        </div>
-        <div class="mobile-menu" id="mobileMenu">
-            <a href="https://curs3d.fr"><span data-lang="en">Back to site</span><span data-lang="fr">Retour au site</span></a>
-            <a href="https://curs3d.fr/docs.html">Docs</a>
-            <div class="lang-switch"><button type="button" data-lang-switch="en">EN</button><button type="button" data-lang-switch="fr">FR</button></div>
-        </div>
-    </nav>
+<body>
+  <div class="scroll-progress"></div>
 
-    <main>
-        <section class="page-hero">
-            <div class="container">
-                <span class="section-tag">Explorer</span>
-                <h1><span data-lang="en">Inspect the network in real time.</span><span data-lang="fr">Inspecter le réseau en temps réel.</span></h1>
-                <p class="lede" data-lang-block="en">Point the explorer at a live CURS3D HTTP API endpoint to monitor status, recent blocks, account state and transaction activity.</p>
-                <p class="lede" data-lang-block="fr">Pointez l’explorer vers un endpoint HTTP API CURS3D live pour suivre le statut, les blocs récents, l’état des comptes et l’activité transactionnelle.</p>
-            </div>
-        </section>
-        <section class="section" style="padding-top:1rem;">
-            <div class="container explorer-shell">
-                <div class="status-banner">
-                    <span data-lang="en">The explorer is API-driven. If the node is unreachable, the dashboard stays empty until a valid endpoint is configured.</span>
-                    <span data-lang="fr">L’explorer est piloté par l’API. Si le node est inaccessible, le dashboard reste vide jusqu’à ce qu’un endpoint valide soit configuré.</span>
-                </div>
-                <div class="config-bar">
-                    <label for="apiEndpoint"><span data-lang="en">API endpoint</span><span data-lang="fr">Endpoint API</span></label>
-                    <input type="text" id="apiEndpoint" value="https://api.curs3d.fr" spellcheck="false" data-placeholder-en="API endpoint" data-placeholder-fr="Endpoint API">
-                    <button type="button" id="connectBtn"><span data-lang="en">Connect</span><span data-lang="fr">Connecter</span></button>
-                    <span class="status-dot" id="statusDot" aria-hidden="true"></span>
-                </div>
-                <div class="offline-banner" id="offlineBanner">
-                    <span data-lang="en">The configured node is not reachable right now.</span>
-                    <span data-lang="fr">Le node configuré n’est pas accessible actuellement.</span>
-                </div>
-                <div class="explorer-stat-grid">
-                    <div class="explorer-stat"><span class="stat-label"><span data-lang="en">Chain height</span><span data-lang="fr">Hauteur</span></span><span class="stat-value" id="statHeight">--</span></div>
-                    <div class="explorer-stat"><span class="stat-label"><span data-lang="en">Finalized height</span><span data-lang="fr">Hauteur finalisée</span></span><span class="stat-value" id="statFinalized">--</span></div>
-                    <div class="explorer-stat"><span class="stat-label"><span data-lang="en">Pending txs</span><span data-lang="fr">Tx en attente</span></span><span class="stat-value" id="statPending">--</span></div>
-                    <div class="explorer-stat"><span class="stat-label"><span data-lang="en">Active validators</span><span data-lang="fr">Validateurs actifs</span></span><span class="stat-value" id="statValidators">--</span></div>
-                    <div class="explorer-stat"><span class="stat-label"><span data-lang="en">Chain name</span><span data-lang="fr">Nom de chaîne</span></span><span class="stat-value" id="statChainName">--</span></div>
-                    <div class="explorer-stat"><span class="stat-label">Epoch</span><span class="stat-value" id="statEpoch">--</span></div>
-                </div>
-                <div class="explorer-grid">
-                    <div class="explorer-panel">
-                        <div class="panel-header"><span data-lang="en">Recent blocks</span><span data-lang="fr">Blocs récents</span></div>
-                        <div class="panel-body"><div class="table-wrap"><table class="blocks-table"><thead><tr><th><span data-lang="en">Height</span><span data-lang="fr">Hauteur</span></th><th>Hash</th><th><span data-lang="en">Time</span><span data-lang="fr">Temps</span></th><th><span data-lang="en">Validator</span><span data-lang="fr">Validateur</span></th><th>Txs</th></tr></thead><tbody id="blocksBody"><tr><td colspan="5">Waiting for data...</td></tr></tbody></table></div></div>
-                    </div>
-                    <div class="content-stack">
-                        <div class="explorer-panel"><div class="panel-header"><span data-lang="en">Account lookup</span><span data-lang="fr">Recherche compte</span></div><div class="panel-body"><div class="lookup-input"><input type="text" id="accountAddr" data-placeholder-en="CUR address or raw hex" data-placeholder-fr="Adresse CUR ou hex brut" placeholder="CUR address or raw hex"><button type="button" id="lookupBtn"><span data-lang="en">Look up</span><span data-lang="fr">Rechercher</span></button></div><div class="account-result" id="accountResult"></div></div></div>
-                        <div class="explorer-panel"><div class="panel-header"><span data-lang="en">Transaction lookup</span><span data-lang="fr">Recherche transaction</span></div><div class="panel-body"><div class="lookup-input"><input type="text" id="txHash" data-placeholder-en="Transaction hash" data-placeholder-fr="Hash de transaction" placeholder="Transaction hash"><button type="button" id="txSearchBtn"><span data-lang="en">Search</span><span data-lang="fr">Chercher</span></button></div><div class="account-result" id="txResult"></div></div></div>
-                        <div class="explorer-panel"><div class="panel-header"><span data-lang="en">Live feed</span><span data-lang="fr">Flux live</span></div><div class="panel-body"><div class="live-feed" id="liveFeed"></div></div></div>
-                    </div>
-                </div>
-            </div>
-        </section>
-    </main>
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="logo" href="index.html" data-magnetic>
+        <span class="logo-mark" aria-hidden="true"></span>
+        <span>CURS3D <small>L1</small></span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a href="docs.html">Docs</a>
+        <a href="stack.html">Stack</a>
+        <a href="run-validator.html"><span data-lang="en" class="lang-show">Run Validator</span><span data-lang="fr">Validateur</span></a>
+        <a href="governance.html"><span data-lang="en" class="lang-show">Governance</span><span data-lang="fr">Gouvernance</span></a>
+        <a href="tokenomics.html">Tokenomics</a>
+        <a href="whitepaper.html">Whitepaper</a>
+        <a href="examples.html"><span data-lang="en" class="lang-show">Examples</span><span data-lang="fr">Exemples</span></a>
+      </nav>
+      <div class="nav-actions">
+        <div class="lang-toggle" role="tablist" aria-label="Language">
+          <button data-lang-set="en" class="active" role="tab">EN</button>
+          <button data-lang-set="fr" role="tab">FR</button>
+        </div>
+        <a class="btn" href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer" data-magnetic>
+          <span data-lang="en" class="lang-show">Explorer</span>
+          <span data-lang="fr">Explorateur</span>
+          <span class="arrow">→</span>
+        </a>
+        <a class="btn btn-primary" href="run-validator.html" data-magnetic>
+          <span data-lang="en" class="lang-show">Run a node</span>
+          <span data-lang="fr">Lancer un nœud</span>
+          <span class="arrow">→</span>
+        </a>
+        <button class="nav-burger" aria-label="Menu"><span></span></button>
+      </div>
+    </div>
+  </header>
 
-    <footer class="footer"><div class="container"><div class="footer-inner" style="grid-template-columns:1fr auto auto;"><div><a class="brand" href="https://curs3d.fr"><span class="brand-mark"></span> CURS3D</a><p style="margin-top:0.9rem;" data-lang-block="en">Quantum-resistant blockchain explorer.</p><p style="margin-top:0.9rem;" data-lang-block="fr">Explorateur blockchain post-quantique.</p></div><div><h4><span data-lang="en">Website</span><span data-lang="fr">Site</span></h4><div class="footer-links"><a href="https://curs3d.fr">curs3d.fr</a><a href="https://curs3d.fr/docs.html">Docs</a></div></div><div><h4>Source</h4><div class="footer-links"><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a></div></div></div><div class="footer-bottom"><span data-lang="en">© </span><span data-lang="fr">© </span><span data-year></span> CURS3D.</div></div></footer>
-</div>
-<script src="script.js"></script>
-<script>
+  <div class="statusbar">
+    <div class="wrap statusbar-inner">
+      <span class="status-item">
+        <span class="status-dot"></span>
+        <span data-lang="en" class="lang-show">TESTNET</span>
+        <span data-lang="fr">TESTNET</span>
+        <b data-live-source>SIM</b>
+      </span>
+      <span class="status-item">BLOCK <b data-stat="block">—</b></span>
+      <span class="status-item">EPOCH <b data-stat="epoch">—</b></span>
+      <span class="status-item">VALIDATORS <b data-stat="validators">—</b></span>
+      <span class="statusbar-ticker"><span class="t-dyn">TESTNET-1 // OPERATIONAL</span></span>
+    </div>
+  </div>
+
+  <main>
+    <section class="page-hero">
+      <div class="wrap">
+        <span class="eyebrow">Explorer</span>
+        <h1>
+          <span data-lang="en" class="lang-show">Inspect the network in <em>real time</em>.</span>
+          <span data-lang="fr">Inspecter le réseau en <em>temps réel</em>.</span>
+        </h1>
+        <p class="lede">
+          <span data-lang="en" class="lang-show">Point the explorer at a live CURS3D HTTP API endpoint to monitor status, recent blocks, account state and transaction activity.</span>
+          <span data-lang="fr">Pointez l'explorer vers un endpoint HTTP API CURS3D live pour suivre le statut, les blocs récents, l'état des comptes et l'activité transactionnelle.</span>
+        </p>
+      </div>
+    </section>
+
+    <section class="section block">
+      <div class="wrap">
+        <div class="explorer-shell">
+          <div class="callout">
+            <p><span data-lang="en" class="lang-show">The explorer is API-driven. If the node is unreachable, the dashboard stays empty until a valid endpoint is configured.</span><span data-lang="fr">L'explorer est piloté par l'API. Si le node est inaccessible, le dashboard reste vide jusqu'à ce qu'un endpoint valide soit configuré.</span></p>
+          </div>
+
+          <div class="explorer-config">
+            <label for="apiEndpoint" style="font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.12em; text-transform:uppercase;"><span data-lang="en" class="lang-show">API endpoint</span><span data-lang="fr">Endpoint API</span></label>
+            <input type="text" id="apiEndpoint" value="https://api.curs3d.fr" spellcheck="false" />
+            <button type="button" id="connectBtn" class="btn"><span data-lang="en" class="lang-show">Connect</span><span data-lang="fr">Connecter</span></button>
+            <span class="status-dot" id="statusDot" aria-hidden="true"></span>
+          </div>
+
+          <div id="offlineBanner" class="callout danger" style="display:none;">
+            <p><span data-lang="en" class="lang-show">The configured node is not reachable right now.</span><span data-lang="fr">Le node configuré n'est pas accessible actuellement.</span></p>
+          </div>
+
+          <div class="explorer-config">
+            <label for="smartSearch" style="font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.12em; text-transform:uppercase;"><span data-lang="en" class="lang-show">Search</span><span data-lang="fr">Recherche</span></label>
+            <input type="text" id="smartSearch" placeholder="Block height · Tx hash · Account address" spellcheck="false" autocomplete="off" />
+            <button type="button" id="smartSearchBtn" class="btn"><span data-lang="en" class="lang-show">Go</span><span data-lang="fr">Go</span></button>
+          </div>
+          <div id="smartSearchResult" style="display:none; padding:18px; background:var(--bg-1); border:1px solid var(--line); border-radius:6px; font-family:var(--mono); font-size:12px; color:var(--fg-1); white-space:pre-wrap; line-height:1.7;"></div>
+
+          <div class="card-grid cols-3">
+            <div class="feature-card">
+              <span class="num"><span data-lang="en" class="lang-show">CHAIN HEIGHT</span><span data-lang="fr">HAUTEUR</span></span>
+              <h3 id="statHeight" style="font-family:var(--mono);">--</h3>
+            </div>
+            <div class="feature-card">
+              <span class="num"><span data-lang="en" class="lang-show">FINALIZED</span><span data-lang="fr">FINALISÉE</span></span>
+              <h3 id="statFinalized" style="font-family:var(--mono);">--</h3>
+            </div>
+            <div class="feature-card">
+              <span class="num"><span data-lang="en" class="lang-show">PENDING TXs</span><span data-lang="fr">TX EN ATTENTE</span></span>
+              <h3 id="statPending" style="font-family:var(--mono);">--</h3>
+            </div>
+            <div class="feature-card">
+              <span class="num"><span data-lang="en" class="lang-show">VALIDATORS</span><span data-lang="fr">VALIDATEURS</span></span>
+              <h3 id="statValidators" style="font-family:var(--mono);">--</h3>
+            </div>
+            <div class="feature-card">
+              <span class="num"><span data-lang="en" class="lang-show">CHAIN NAME</span><span data-lang="fr">NOM DE CHAÎNE</span></span>
+              <h3 id="statChainName" style="font-family:var(--mono);">--</h3>
+            </div>
+            <div class="feature-card">
+              <span class="num">EPOCH</span>
+              <h3 id="statEpoch" style="font-family:var(--mono);">--</h3>
+            </div>
+          </div>
+
+          <div class="explorer-grid">
+            <div class="explorer-panel">
+              <div class="explorer-panel-head"><span data-lang="en" class="lang-show">Recent blocks</span><span data-lang="fr">Blocs récents</span></div>
+              <div class="explorer-panel-body">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th><span data-lang="en" class="lang-show">Height</span><span data-lang="fr">Hauteur</span></th>
+                      <th>Hash</th>
+                      <th><span data-lang="en" class="lang-show">Time</span><span data-lang="fr">Temps</span></th>
+                      <th><span data-lang="en" class="lang-show">Validator</span><span data-lang="fr">Validateur</span></th>
+                      <th>Txs</th>
+                    </tr>
+                  </thead>
+                  <tbody id="blocksBody">
+                    <tr><td colspan="5">Waiting for data...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:24px;">
+              <div class="explorer-panel">
+                <div class="explorer-panel-head"><span data-lang="en" class="lang-show">Account lookup</span><span data-lang="fr">Recherche compte</span></div>
+                <div class="explorer-panel-body">
+                  <div class="explorer-config" style="margin-bottom:14px;">
+                    <input type="text" id="accountAddr" placeholder="CUR address or raw hex" />
+                    <button type="button" id="lookupBtn" class="btn"><span data-lang="en" class="lang-show">Look up</span><span data-lang="fr">Rechercher</span></button>
+                  </div>
+                  <div id="accountResult" style="font-family:var(--mono); font-size:12px; color:var(--fg-1); white-space:pre-wrap; line-height:1.7;"></div>
+                </div>
+              </div>
+
+              <div class="explorer-panel">
+                <div class="explorer-panel-head"><span data-lang="en" class="lang-show">Transaction lookup</span><span data-lang="fr">Recherche transaction</span></div>
+                <div class="explorer-panel-body">
+                  <div class="explorer-config" style="margin-bottom:14px;">
+                    <input type="text" id="txHash" placeholder="Transaction hash" />
+                    <button type="button" id="txSearchBtn" class="btn"><span data-lang="en" class="lang-show">Search</span><span data-lang="fr">Chercher</span></button>
+                  </div>
+                  <div id="txResult" style="font-family:var(--mono); font-size:12px; color:var(--fg-1); white-space:pre-wrap; line-height:1.7;"></div>
+                </div>
+              </div>
+
+              <div class="explorer-panel">
+                <div class="explorer-panel-head"><span data-lang="en" class="lang-show">Live feed</span><span data-lang="fr">Flux live</span></div>
+                <div class="explorer-panel-body">
+                  <div class="explorer-feed" id="liveFeed" style="max-height:280px; overflow-y:auto; font-family:var(--mono); font-size:11px; color:var(--fg-1); line-height:1.8;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer style="border-top:1px solid var(--line); padding: 60px 0 40px; margin-top: 80px;">
+    <div class="wrap">
+      <div style="display:grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 32px; margin-bottom: 40px;">
+        <div>
+          <a class="logo" href="index.html" style="margin-bottom:18px;">
+            <span class="logo-mark" aria-hidden="true"></span>
+            <span>CURS3D <small>L1</small></span>
+          </a>
+          <p style="color:var(--fg-1); font-size:14px; max-width:36ch; margin-top:14px;"><span data-lang="en" class="lang-show">A post-quantum Layer 1 blockchain. Conservative cryptography, BFT proof-of-stake, WASM execution. Built in the open.</span><span data-lang="fr">Une blockchain Layer 1 post-quantique. Cryptographie conservatrice, proof-of-stake BFT, exécution WASM. Construite à découvert.</span></p>
+        </div>
+        <div>
+          <h4 style="font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.14em; text-transform:uppercase; margin-bottom:14px;">Protocol</h4>
+          <ul style="list-style:none; display:flex; flex-direction:column; gap:8px; font-size:13px;">
+            <li><a href="stack.html" style="color:var(--fg-1);">Stack</a></li>
+            <li><a href="docs.html" style="color:var(--fg-1);">Documentation</a></li>
+            <li><a href="whitepaper.html" style="color:var(--fg-1);">Whitepaper</a></li>
+            <li><a href="tokenomics.html" style="color:var(--fg-1);">Tokenomics</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 style="font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.14em; text-transform:uppercase; margin-bottom:14px;">Network</h4>
+          <ul style="list-style:none; display:flex; flex-direction:column; gap:8px; font-size:13px;">
+            <li><a href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer" style="color:var(--fg-1);">Explorer</a></li>
+            <li><a href="run-validator.html" style="color:var(--fg-1);">Run a validator</a></li>
+            <li><a href="docs.html" style="color:var(--fg-1);">API reference</a></li>
+            <li><a href="examples.html" style="color:var(--fg-1);">Examples</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 style="font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.14em; text-transform:uppercase; margin-bottom:14px;">Project</h4>
+          <ul style="list-style:none; display:flex; flex-direction:column; gap:8px; font-size:13px;">
+            <li><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener noreferrer" style="color:var(--fg-1);">GitHub</a></li>
+            <li><a href="governance.html" style="color:var(--fg-1);">Governance</a></li>
+          </ul>
+        </div>
+      </div>
+      <div style="display:flex; justify-content:space-between; padding-top:24px; border-top:1px solid var(--line); font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.08em;">
+        <span>© 2026 CURS3D PROTOCOL · APACHE-2.0</span>
+        <span>CHAIN-ID <b style="color:var(--fg)">curs3d-public-testnet</b></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="landing.js?v=5"></script>
+  <!-- Bridge: keep `data-current-lang` in sync with the landing.js EN/FR toggle so the inline explorer JS detects the active language. -->
+  <script>
+    (function () {
+      function syncLang() {
+        var lang = document.documentElement.getAttribute('lang') || 'en';
+        document.documentElement.setAttribute('data-current-lang', lang);
+      }
+      syncLang();
+      document.addEventListener('click', function (e) {
+        var t = e.target.closest && e.target.closest('[data-lang-set]');
+        if (t) setTimeout(syncLang, 0);
+      });
+    })();
+  </script>
+  <script>
 (function () {
     "use strict";
 
@@ -97,6 +261,9 @@
     var txHashInput = document.getElementById("txHash");
     var txResult = document.getElementById("txResult");
     var txSearchBtn = document.getElementById("txSearchBtn");
+    var smartSearch = document.getElementById("smartSearch");
+    var smartSearchBtn = document.getElementById("smartSearchBtn");
+    var smartSearchResult = document.getElementById("smartSearchResult");
     var liveFeed = document.getElementById("liveFeed");
     var elHeight = document.getElementById("statHeight");
     var elFinalized = document.getElementById("statFinalized");
@@ -117,7 +284,15 @@
     }
 
     function getApi() {
-        return endpointInput.value.replace(/\/+$/, "");
+        var v = endpointInput.value.trim().replace(/\/+$/, "");
+        // Only allow http(s) URLs. Force https on https pages (mixed-content protection).
+        if (!/^https?:\/\/[a-zA-Z0-9.\-:]+(\/[^\s]*)?$/.test(v)) {
+            return "https://api.curs3d.fr";
+        }
+        if (window.location.protocol === "https:" && v.startsWith("http://")) {
+            return v.replace(/^http:/, "https:");
+        }
+        return v;
     }
 
     function formatHash(value) {
@@ -184,18 +359,31 @@
         try {
             var data = await apiFetch("/api/blocks?from=0&limit=20");
             var blocks = Array.isArray(data) ? data : [];
-            blocksBody.innerHTML = "";
+            while (blocksBody.firstChild) blocksBody.removeChild(blocksBody.firstChild);
             if (blocks.length === 0) {
-                blocksBody.innerHTML = "<tr><td colspan='5'>" + t("No blocks yet.", "Aucun bloc.") + "</td></tr>";
+                var emptyRow = document.createElement("tr");
+                var emptyCell = document.createElement("td");
+                emptyCell.colSpan = 5;
+                emptyCell.textContent = t("No blocks yet.", "Aucun bloc.");
+                emptyRow.appendChild(emptyCell);
+                blocksBody.appendChild(emptyRow);
                 return;
             }
             blocks.forEach(function (block) {
                 var row = document.createElement("tr");
-                row.innerHTML = "<td>" + (block.height != null ? block.height : "--") + "</td>" +
-                    "<td class='hash-cell'>" + formatHash(block.hash) + "</td>" +
-                    "<td>" + formatTimestamp(block.timestamp) + "</td>" +
-                    "<td class='hash-cell'>" + formatHash(block.validator) + "</td>" +
-                    "<td>" + (block.tx_count != null ? block.tx_count : 0) + "</td>";
+                var cells = [
+                    { text: block.height != null ? String(block.height) : "--" },
+                    { text: formatHash(block.hash), cls: "hash-cell" },
+                    { text: formatTimestamp(block.timestamp) },
+                    { text: formatHash(block.validator), cls: "hash-cell" },
+                    { text: block.tx_count != null ? String(block.tx_count) : "0" }
+                ];
+                cells.forEach(function (c) {
+                    var td = document.createElement("td");
+                    if (c.cls) td.className = c.cls;
+                    td.textContent = c.text;
+                    row.appendChild(td);
+                });
 
                 var detailsRow = document.createElement("tr");
                 detailsRow.style.display = "none";
@@ -244,6 +432,84 @@
         }
     }
 
+    function detectQueryKind(value) {
+        if (/^\d+$/.test(value)) return "block";
+        if (/^CUR[0-9a-fA-F]{40}$/.test(value)) return "address";
+        if (/^[0-9a-fA-F]{40}$/.test(value)) return "address";
+        if (/^0x[0-9a-fA-F]{40}$/.test(value)) return "address";
+        if (/^0x[0-9a-fA-F]{64}$/.test(value)) return "hash";
+        if (/^[0-9a-fA-F]{64}$/.test(value)) return "hash";
+        return "unknown";
+    }
+
+    function showSmartResult(text) {
+        smartSearchResult.style.display = "";
+        smartSearchResult.textContent = text;
+    }
+
+    async function smartSearchRun() {
+        var raw = smartSearch.value.trim();
+        if (!raw) {
+            smartSearchResult.style.display = "none";
+            return;
+        }
+        var kind = detectQueryKind(raw);
+        showSmartResult(t("Searching...", "Recherche..."));
+        try {
+            if (kind === "block") {
+                var b = await apiFetch("/api/block/" + encodeURIComponent(raw));
+                showSmartResult(
+                    t("Block #", "Bloc #") + b.height + "\n" +
+                    "Hash: " + b.hash + "\n" +
+                    t("Validator: ", "Validateur : ") + (b.validator || "--") + "\n" +
+                    t("Time: ", "Temps : ") + formatTimestamp(b.timestamp) + "\n" +
+                    "Txs: " + (b.tx_count != null ? b.tx_count : (b.transactions ? b.transactions.length : 0))
+                );
+                return;
+            }
+            if (kind === "address") {
+                var clean = raw.startsWith("0x") ? raw.slice(2) : raw;
+                accountAddr.value = clean;
+                await lookupAccount();
+                showSmartResult(t("Account result loaded below.", "Résultat du compte chargé en bas."));
+                return;
+            }
+            if (kind === "hash") {
+                var clean2 = raw.startsWith("0x") ? raw.slice(2) : raw;
+                try {
+                    var tx = await apiFetch("/api/tx/" + encodeURIComponent(clean2));
+                    var txt = "Tx " + (tx.hash || clean2) + "\n" +
+                        "Kind: " + (tx.kind || "--") + "\n" +
+                        "From: " + (tx.from || "--") + "\n" +
+                        "To: " + (tx.to || "--") + "\n" +
+                        t("Amount: ", "Montant : ") + formatUnits(tx.amount) + "\n" +
+                        t("Fee: ", "Frais : ") + formatUnits(tx.fee);
+                    try {
+                        var rec = await apiFetch("/api/receipt/" + encodeURIComponent(clean2));
+                        txt += "\n──\n" + t("Status: ", "Statut : ") + (rec.success ? "OK" : "FAIL") +
+                            "\nGas used: " + (rec.gas_used != null ? rec.gas_used : "--") +
+                            "\nLogs: " + (rec.logs ? rec.logs.length : 0);
+                    } catch (_) { /* no receipt */ }
+                    showSmartResult(txt);
+                    return;
+                } catch (_) {
+                    // not a tx, maybe block hash — fallback to /api/block-by-hash/:hash
+                    try {
+                        var bh = await apiFetch("/api/block-by-hash/" + encodeURIComponent(clean2));
+                        showSmartResult(t("Block #", "Bloc #") + bh.height + "\nHash: " + bh.hash);
+                        return;
+                    } catch (e2) {
+                        showSmartResult(t("Not found.", "Introuvable."));
+                        return;
+                    }
+                }
+            }
+            showSmartResult(t("Unrecognized query format.", "Format de recherche non reconnu."));
+        } catch (error) {
+            showSmartResult("Error: " + error.message);
+        }
+    }
+
     async function lookupTransaction() {
         var value = txHashInput.value.trim();
         if (!value) {
@@ -272,7 +538,13 @@
 
     function connectWebSocket() {
         if (ws && ws.readyState === WebSocket.OPEN) return;
-        var wsUrl = getApi().replace(/^http/, "ws") + "/ws";
+        var api = getApi();
+        // Reject ws:// when the page is served over https (no mixed-content downgrade).
+        if (window.location.protocol === "https:" && !api.startsWith("https://")) {
+            addFeedLine(t("Refusing WebSocket downgrade to ws://", "Refus du downgrade WebSocket vers ws://"));
+            return;
+        }
+        var wsUrl = api.replace(/^https:/, "wss:").replace(/^http:/, "ws:") + "/ws";
         try {
             ws = new WebSocket(wsUrl);
         } catch (e) {
@@ -338,11 +610,13 @@
     });
     lookupBtn.addEventListener("click", lookupAccount);
     txSearchBtn.addEventListener("click", lookupTransaction);
+    smartSearchBtn.addEventListener("click", smartSearchRun);
+    smartSearch.addEventListener("keydown", function (event) { if (event.key === "Enter") smartSearchRun(); });
     accountAddr.addEventListener("keydown", function (event) { if (event.key === "Enter") lookupAccount(); });
     txHashInput.addEventListener("keydown", function (event) { if (event.key === "Enter") lookupTransaction(); });
     startPolling();
     connectWebSocket();
 })();
-</script>
+  </script>
 </body>
 </html>

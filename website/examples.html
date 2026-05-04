@@ -1,175 +1,455 @@
-<!DOCTYPE html>
-<html lang="en" data-current-lang="en">
+<!doctype html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CURS3D Examples</title>
-    <meta name="description" content="Hands-on examples for CURS3D: bootstrap a node, generate genesis, request faucet funds, inspect APIs and explore governance or token endpoints.">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+  <meta charset="utf-8" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CURS3D — Examples</title>
+  <meta name="description" content="Hands-on examples for CURS3D: bootstrap a node, generate genesis, request faucet funds, inspect APIs and explore governance or token endpoints." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="landing.css?v=5" />
 </head>
-<body data-title-en="CURS3D Examples" data-title-fr="CURS3D Exemples" data-description-en="Hands-on examples for CURS3D: bootstrap a node, generate genesis, request faucet funds, inspect APIs and explore governance or token endpoints." data-description-fr="Exemples pratiques pour CURS3D : bootstrap d’un node, génération de genesis, requête faucet, inspection des APIs et endpoints gouvernance/token.">
-<div class="site-shell">
-    <nav class="site-nav" id="nav">
-        <div class="container nav-inner">
-            <a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a>
-            <div class="nav-links">
-                <a href="index.html"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
-                <a href="docs.html">Docs</a>
-                <a href="stack.html">Stack</a>
-                <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
-                <a href="tokenomics.html">Tokenomics</a>
-                <a href="whitepaper.html">Whitepaper</a>
-                <a class="active" href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
-                <a href="https://explorer.curs3d.fr" target="_blank">Explorer</a>
-                <div class="lang-switch"><button type="button" data-lang-switch="en">EN</button><button type="button" data-lang-switch="fr">FR</button></div>
-                <a class="nav-cta" href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a>
-            </div>
-            <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation"><span></span><span></span><span></span></button>
+<body>
+  <div class="scroll-progress"></div>
+
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="logo" href="index.html" data-magnetic>
+        <span class="logo-mark" aria-hidden="true"></span>
+        <span>CURS3D <small>L1</small></span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a href="docs.html">Docs</a>
+        <a href="stack.html">Stack</a>
+        <a href="run-validator.html"><span data-lang="en" class="lang-show">Run Validator</span><span data-lang="fr">Validateur</span></a>
+        <a href="governance.html"><span data-lang="en" class="lang-show">Governance</span><span data-lang="fr">Gouvernance</span></a>
+        <a href="tokenomics.html">Tokenomics</a>
+        <a href="whitepaper.html">Whitepaper</a>
+        <a href="examples.html" class="active"><span data-lang="en" class="lang-show">Examples</span><span data-lang="fr">Exemples</span></a>
+      </nav>
+      <div class="nav-actions">
+        <div class="lang-toggle" role="tablist" aria-label="Language">
+          <button data-lang-set="en" class="active" role="tab">EN</button>
+          <button data-lang-set="fr" role="tab">FR</button>
         </div>
-        <div class="mobile-menu" id="mobileMenu">
-            <a href="index.html"><span data-lang="en">Overview</span><span data-lang="fr">Vue d'ensemble</span></a>
-            <a href="docs.html">Docs</a>
-            <a href="stack.html">Stack</a>
-            <a href="governance.html"><span data-lang="en">Governance</span><span data-lang="fr">Gouvernance</span></a>
-            <a href="tokenomics.html">Tokenomics</a>
-            <a href="whitepaper.html">Whitepaper</a>
-            <a href="examples.html"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></a>
-            <a href="https://explorer.curs3d.fr" target="_blank">Explorer</a>
-            <div class="lang-switch"><button type="button" data-lang-switch="en">EN</button><button type="button" data-lang-switch="fr">FR</button></div>
-        </div>
-    </nav>
+        <a class="btn" href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer" data-magnetic>
+          <span data-lang="en" class="lang-show">Explorer</span>
+          <span data-lang="fr">Explorateur</span>
+          <span class="arrow">→</span>
+        </a>
+        <a class="btn btn-primary" href="run-validator.html" data-magnetic>
+          <span data-lang="en" class="lang-show">Run a node</span>
+          <span data-lang="fr">Lancer un nœud</span>
+          <span class="arrow">→</span>
+        </a>
+        <button class="nav-burger" aria-label="Menu"><span></span></button>
+      </div>
+    </div>
+  </header>
 
-    <main>
-        <section class="page-hero">
-            <div class="container">
-                <span class="section-tag"><span data-lang="en">Examples</span><span data-lang="fr">Exemples</span></span>
-                <h1><span data-lang="en">Use CURS3D step by step.</span><span data-lang="fr">Utiliser CURS3D étape par étape.</span></h1>
-                <p class="lede" data-lang-block="en">These examples are aligned with the current CLI and API surface so the site remains practical instead of purely narrative.</p>
-                <p class="lede" data-lang-block="fr">Ces exemples sont alignés avec la surface CLI et API actuelle pour que le site reste pratique et pas seulement narratif.</p>
+  <div class="statusbar">
+    <div class="wrap statusbar-inner">
+      <span class="status-item">
+        <span class="status-dot"></span>
+        <span data-lang="en" class="lang-show">TESTNET</span>
+        <span data-lang="fr">TESTNET</span>
+        <b data-live-source>SIM</b>
+      </span>
+      <span class="status-item">BLOCK <b data-stat="block">—</b></span>
+      <span class="status-item">EPOCH <b data-stat="epoch">—</b></span>
+      <span class="status-item">VALIDATORS <b data-stat="validators">—</b></span>
+      <span class="statusbar-ticker"><span class="t-dyn">TESTNET-1 // OPERATIONAL</span></span>
+    </div>
+  </div>
+
+  <main>
+    <section class="page-hero">
+      <div class="wrap">
+        <span class="eyebrow"><span data-lang="en" class="lang-show">Examples</span><span data-lang="fr">Exemples</span></span>
+        <h1>
+          <span data-lang="en" class="lang-show">Use CURS3D <em>step by step</em>.</span>
+          <span data-lang="fr">Utiliser CURS3D <em>étape par étape</em>.</span>
+        </h1>
+        <p class="lede">
+          <span data-lang="en" class="lang-show">These examples are aligned with the current CLI and API surface so the site remains practical instead of purely narrative.</span>
+          <span data-lang="fr">Ces exemples sont alignés avec la surface CLI et API actuelle pour que le site reste pratique et pas seulement narratif.</span>
+        </p>
+      </div>
+    </section>
+
+    <section class="section block">
+      <div class="wrap">
+        <div class="step-list">
+
+          <div class="step-card reveal">
+            <div class="step-num">01</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Bootstrap a local node</span><span data-lang="fr">Bootstrap d'un node local</span></h3>
+              <div class="code-block">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">terminal</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-prompt">$</span> git clone https://github.com/Pazificateur69/curs3d.git
+<span class="c-prompt">$</span> cd curs3d
+<span class="c-prompt">$</span> cargo build --release
+
+<span class="c-prompt">$</span> printf <span class="c-str">'%s\n'</span> <span class="c-str">'YOUR_SECURE_PASSWORD_HERE'</span> &gt; validator.password
+<span class="c-prompt">$</span> ./target/release/curs3d wallet --output validator.json --password-file validator.password
+<span class="c-prompt">$</span> ./target/release/curs3d genesis --output genesis.public-testnet.json --validator-wallet validator.json --validator-password-file validator.password
+<span class="c-prompt">$</span> ./target/release/curs3d node --validator-wallet validator.json --validator-password-file validator.password --genesis-config genesis.public-testnet.json</pre>
+              </div>
             </div>
-        </section>
+          </div>
 
-        <section class="section" style="padding-top:1rem;">
-            <div class="container content-stack">
-                <article class="content-section example-card reveal">
-                    <h2><span class="example-number">1</span><span data-lang="en">Bootstrap a local node</span><span data-lang="fr">Bootstrap d’un node local</span></h2>
-                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code>git clone https://github.com/Pazificateur69/curs3d.git
-cd curs3d
-cargo build --release
-
-printf '%s\n' 'YOUR_SECURE_PASSWORD_HERE' > validator.password
-./target/release/curs3d wallet --output validator.json --password-file validator.password
-./target/release/curs3d genesis --output genesis.public-testnet.json --validator-wallet validator.json --validator-password-file validator.password
-./target/release/curs3d node --validator-wallet validator.json --validator-password-file validator.password --genesis-config genesis.public-testnet.json</code></pre></div>
-                </article>
-                <article class="content-section example-card reveal">
-                    <h2><span class="example-number">2</span><span data-lang="en">Connect to the public testnet</span><span data-lang="fr">Se connecter au testnet public</span></h2>
-                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code># Join the multi-node testnet as a validator
-./target/release/curs3d node \
+          <div class="step-card reveal">
+            <div class="step-num">02</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Connect to the public testnet</span><span data-lang="fr">Se connecter au testnet public</span></h3>
+              <div class="code-block">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">terminal</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-comment"># Join the multi-node testnet as a validator</span>
+<span class="c-prompt">$</span> ./target/release/curs3d node \
   --validator-wallet validator.json \
   --validator-password-file validator.password \
   --genesis-config genesis.public-testnet.json \
   --bootnode /ip4/144.24.192.222/tcp/4337/p2p/12D3KooWGy9BLopUe6CmnxuFgk5pCou8Kj5R1DXa9XLga9MD63va
 
-# Publish your own bootnode address
-./target/release/curs3d bootnode-address \
+<span class="c-comment"># Publish your own bootnode address</span>
+<span class="c-prompt">$</span> ./target/release/curs3d bootnode-address \
   --data-dir curs3d_data \
-  --public-addr /dns4/your-node.example.com/tcp/4337</code></pre></div>
-                </article>
-                <article class="content-section example-card reveal">
-                    <h2><span class="example-number">3</span><span data-lang="en">Query public status</span><span data-lang="fr">Interroger le statut public</span></h2>
-                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code>curl https://api.curs3d.fr/api/status | jq .data
-curl https://api.curs3d.fr/api/validators | jq .data
-curl https://api.curs3d.fr/api/blocks?from=0\&limit=10 | jq .data</code></pre></div>
-                </article>
-                <article class="content-section example-card reveal">
-                    <h2><span class="example-number">4</span><span data-lang="en">Request faucet funds</span><span data-lang="fr">Demander des fonds au faucet</span></h2>
-                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code>curl -X POST https://api.curs3d.fr/api/faucet/request \
-  -H 'Content-Type: application/json' \
-  -d '{"address":"CUR0123456789abcdef0123456789abcdef01234567"}'</code></pre></div>
-                </article>
-                <article class="content-section example-card reveal">
-                    <h2><span class="example-number">5</span><span data-lang="en">Unstake tokens</span><span data-lang="fr">Retirer du stake</span></h2>
-                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code># Unstake 500 CUR (funds unlock after 10 blocks)
-./target/release/curs3d unstake \
+  --public-addr /dns4/your-node.example.com/tcp/4337</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">03</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Query public status</span><span data-lang="fr">Interroger le statut public</span></h3>
+              <div class="code-block">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">terminal</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-prompt">$</span> curl https://api.curs3d.fr/api/status | jq .data
+<span class="c-prompt">$</span> curl https://api.curs3d.fr/api/validators | jq .data
+<span class="c-prompt">$</span> curl <span class="c-str">'https://api.curs3d.fr/api/blocks?from=0&amp;limit=10'</span> | jq .data</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">04</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Request faucet funds</span><span data-lang="fr">Demander des fonds au faucet</span></h3>
+              <div class="code-block">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">terminal</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-prompt">$</span> curl -X POST https://api.curs3d.fr/api/faucet/request \
+  -H <span class="c-str">'Content-Type: application/json'</span> \
+  -d <span class="c-str">'{"address":"CUR0123456789abcdef0123456789abcdef01234567"}'</span></pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">05</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Unstake tokens</span><span data-lang="fr">Retirer du stake</span></h3>
+              <div class="code-block">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">terminal</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-comment"># Unstake 500 CUR (funds unlock after 10 blocks)</span>
+<span class="c-prompt">$</span> ./target/release/curs3d unstake \
   --wallet validator.json \
   --password-file validator.password \
-  --amount 500</code></pre></div>
-                </article>
-                <article class="content-section example-card reveal">
-                    <h2><span class="example-number">6</span><span data-lang="en">Deploy a CUR-20 token</span><span data-lang="fr">Déployer un token CUR-20</span></h2>
-                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code># Deploy a new token with 1 billion supply
-./target/release/curs3d deploy-token \
+  --amount 500</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">06</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Deploy a CUR-20 token</span><span data-lang="fr">Déployer un token CUR-20</span></h3>
+              <div class="code-block">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">terminal</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-comment"># Deploy a new token with 1 billion supply</span>
+<span class="c-prompt">$</span> ./target/release/curs3d deploy-token \
   --wallet validator.json \
   --password-file validator.password \
-  --name "My Token" \
-  --symbol "MYT" \
+  --name <span class="c-str">"My Token"</span> \
+  --symbol <span class="c-str">"MYT"</span> \
   --decimals 6 \
   --total-supply 1000000000
 
-# List all deployed tokens
-curl https://api.curs3d.fr/api/tokens | jq .data</code></pre></div>
-                </article>
-                <article class="content-section example-card reveal">
-                    <h2><span class="example-number">7</span><span data-lang="en">Transfer CUR-20 tokens</span><span data-lang="fr">Transférer des tokens CUR-20</span></h2>
-                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code># Transfer 1000 tokens to another address
-./target/release/curs3d token-transfer \
+<span class="c-comment"># List all deployed tokens</span>
+<span class="c-prompt">$</span> curl https://api.curs3d.fr/api/tokens | jq .data</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">07</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Transfer CUR-20 tokens</span><span data-lang="fr">Transférer des tokens CUR-20</span></h3>
+              <div class="code-block">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">terminal</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-comment"># Transfer 1000 tokens to another address</span>
+<span class="c-prompt">$</span> ./target/release/curs3d token-transfer \
   --wallet validator.json \
   --password-file validator.password \
   --token CUR_TOKEN_ADDRESS_HEX \
   --to CUR_RECIPIENT_ADDRESS_HEX \
   --amount 1000
 
-# Check token balance
-curl https://api.curs3d.fr/api/token/TOKEN_ADDR/balance/OWNER_ADDR | jq .data</code></pre></div>
-                </article>
-                <article class="content-section example-card reveal">
-                    <h2><span class="example-number">8</span><span data-lang="en">Inspect token and governance state</span><span data-lang="fr">Inspecter l’état token et gouvernance</span></h2>
-                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code>curl https://api.curs3d.fr/api/tokens | jq .data
-curl https://api.curs3d.fr/api/governance/proposals | jq .data
-curl https://api.curs3d.fr/api/pending | jq .data</code></pre></div>
-                </article>
-                <article class="content-section example-card reveal">
-                    <h2><span class="example-number">9</span><span data-lang="en">Connect via WebSocket</span><span data-lang="fr">Se connecter via WebSocket</span></h2>
-                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">terminal</span><button class="code-copy">Copy</button></div><pre class="code-body"><code># Using wscat (npm install -g wscat)
-wscat -c wss://api.curs3d.fr/ws
-
-# Subscribe to specific events
-> {"events": ["new_block", "new_transaction"]}
-
-# Or using the JavaScript SDK
-import { CursClient } from "@curs3d/sdk";
-const client = new CursClient("https://api.curs3d.fr");
-client.subscribe(["new_block"], (event) => {
-  console.log("New block:", event.data.height);
-});</code></pre></div>
-                </article>
-                <article class="content-section example-card reveal">
-                    <h2><span class="example-number">10</span><span data-lang="en">Use the Python SDK</span><span data-lang="fr">Utiliser le SDK Python</span></h2>
-                    <div class="code-block" style="margin-top:1rem;"><div class="code-header"><span class="code-filename">python</span><button class="code-copy">Copy</button></div><pre class="code-body"><code>from curs3d import CursClient
-
-client = CursClient("https://api.curs3d.fr")
-status = client.get_status()
-print(f"Chain: {status[‘chain_name’]}, Height: {status[‘height’]}")
-
-# Get account balance
-account = client.get_account("CUR...")
-print(f"Balance: {account[‘balance’] / 1_000_000} CUR")
-
-# List tokens
-tokens = client.get_tokens()
-for t in tokens:
-    print(f"{t[‘symbol’]}: {t[‘name’]}")</code></pre></div>
-                </article>
+<span class="c-comment"># Check token balance</span>
+<span class="c-prompt">$</span> curl https://api.curs3d.fr/api/token/TOKEN_ADDR/balance/OWNER_ADDR | jq .data</pre>
+              </div>
             </div>
-        </section>
-    </main>
+          </div>
 
-    <footer class="footer"><div class="container"><div class="footer-inner"><div><a class="brand" href="index.html"><span class="brand-mark"></span> CURS3D</a><p style="margin-top:0.9rem;" data-lang-block="en">Hands-on examples for the CURS3D protocol surface.</p><p style="margin-top:0.9rem;" data-lang-block="fr">Exemples pratiques pour la surface protocolaire de CURS3D.</p></div><div><h4>Protocol</h4><div class="footer-links"><a href="docs.html">Docs</a><a href="stack.html">Stack</a><a href="whitepaper.html">Whitepaper</a></div></div><div><h4>Live</h4><div class="footer-links"><a href="https://explorer.curs3d.fr" target="_blank">Explorer</a></div></div><div><h4>Source</h4><div class="footer-links"><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener">GitHub</a></div></div><div><h4>Reference</h4><div class="footer-links"><a href="https://github.com/Pazificateur69/curs3d/blob/main/docs/foundation/17-token-project-playbook.md" target="_blank" rel="noopener">Playbook</a></div></div></div><div class="footer-bottom"><span data-lang="en">© </span><span data-lang="fr">© </span><span data-year></span> CURS3D.</div></div></footer>
-</div>
-<script src="script.js"></script>
+          <div class="step-card reveal">
+            <div class="step-num">08</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Inspect token and governance state</span><span data-lang="fr">Inspecter l'état token et gouvernance</span></h3>
+              <div class="code-block">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">terminal</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-prompt">$</span> curl https://api.curs3d.fr/api/tokens | jq .data
+<span class="c-prompt">$</span> curl https://api.curs3d.fr/api/governance/proposals | jq .data
+<span class="c-prompt">$</span> curl https://api.curs3d.fr/api/pending | jq .data</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">09</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Connect via WebSocket</span><span data-lang="fr">Se connecter via WebSocket</span></h3>
+              <div class="code-block">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">terminal</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-comment"># Using wscat (npm install -g wscat)</span>
+<span class="c-prompt">$</span> wscat -c wss://api.curs3d.fr/ws
+
+<span class="c-comment"># Subscribe to specific events</span>
+&gt; {<span class="c-key">"events"</span>: [<span class="c-str">"new_block"</span>, <span class="c-str">"new_transaction"</span>]}
+
+<span class="c-comment"># Or using the JavaScript SDK</span>
+<span class="c-key">import</span> { CursClient } <span class="c-key">from</span> <span class="c-str">"@curs3d/sdk"</span>;
+<span class="c-key">const</span> client = <span class="c-key">new</span> CursClient(<span class="c-str">"https://api.curs3d.fr"</span>);
+client.<span class="c-fn">subscribe</span>([<span class="c-str">"new_block"</span>], (event) =&gt; {
+  console.<span class="c-fn">log</span>(<span class="c-str">"New block:"</span>, event.data.height);
+});</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">10</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Use the Python SDK</span><span data-lang="fr">Utiliser le SDK Python</span></h3>
+              <div class="code-block">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">python</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-key">from</span> curs3d <span class="c-key">import</span> CursClient
+
+client = CursClient(<span class="c-str">"https://api.curs3d.fr"</span>)
+status = client.<span class="c-fn">get_status</span>()
+<span class="c-fn">print</span>(<span class="c-str">f"Chain: {status['chain_name']}, Height: {status['height']}"</span>)
+
+<span class="c-comment"># Get account balance</span>
+account = client.<span class="c-fn">get_account</span>(<span class="c-str">"CUR..."</span>)
+<span class="c-fn">print</span>(<span class="c-str">f"Balance: {account['balance'] / 1_000_000} CUR"</span>)
+
+<span class="c-comment"># List tokens</span>
+tokens = client.<span class="c-fn">get_tokens</span>()
+<span class="c-key">for</span> t <span class="c-key">in</span> tokens:
+    <span class="c-fn">print</span>(<span class="c-str">f"{t['symbol']}: {t['name']}"</span>)</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">11</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Write a smart contract in Rust</span><span data-lang="fr">Écrire un smart contract en Rust</span></h3>
+              <p><span data-lang="en" class="lang-show">CURS3D ships a Rust SDK (<code>sdk/rust/</code>) that handles host bindings, panic handler, and a heap-base bump allocator so you write contracts as plain <code>no_std</code> Rust. Five examples are included: counter, ERC-20-style token, multisig, NFT, vesting.</span><span data-lang="fr">CURS3D fournit un SDK Rust (<code>sdk/rust/</code>) qui gère les bindings host, le panic handler et un bump allocator ancré sur le heap-base, pour écrire des contrats en Rust <code>no_std</code> normal. Cinq exemples inclus : counter, token ERC-20, multisig, NFT, vesting.</span></p>
+              <div class="code-block" style="margin-top:14px;">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">src/lib.rs</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body">#![<span class="c-key">no_std</span>]
+
+<span class="c-key">use</span> curs3d_contract::{entrypoint, log, storage};
+
+<span class="c-fn">entrypoint!</span>(run);
+
+<span class="c-key">fn</span> <span class="c-fn">run</span>() {
+    <span class="c-key">let</span> next = storage::<span class="c-fn">increment</span>(<span class="c-str">b"count"</span>, <span class="c-num">1</span>);
+    log::<span class="c-fn">emit</span>(<span class="c-str">b"tick"</span>, &amp;next.<span class="c-fn">to_le_bytes</span>());
+}</pre>
+              </div>
+              <div class="code-block" style="margin-top:14px;">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">terminal</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-prompt">$</span> rustup target add wasm32-unknown-unknown
+<span class="c-prompt">$</span> cd sdk/rust/examples/counter
+<span class="c-prompt">$</span> cargo build --release --target wasm32-unknown-unknown
+
+<span class="c-comment"># Deploy through the chain (signs with your wallet, submits via TCP RPC)</span>
+<span class="c-prompt">$</span> curs3d deploy-contract \
+    --wallet ~/.curs3d/wallet.json \
+    --wasm target/wasm32-unknown-unknown/release/counter_contract.wasm \
+    --gas-limit 5000000 \
+    --fee 1000
+
+<span class="c-comment"># Output:</span>
+<span class="c-comment"># === CURS3D Contract Deployed ===</span>
+<span class="c-comment"># Wasm size:        531 bytes</span>
+<span class="c-comment"># Predicted addr:   CUR…</span>
+<span class="c-comment"># Tx hash:          …</span>
+<span class="c-comment"># Once mined, fetch the receipt:</span>
+<span class="c-comment">#   curl http://localhost:8080/api/receipt/&lt;hash&gt;</span></pre>
+              </div>
+              <p style="margin-top:14px; color:var(--fg-1); font-size:14px;"><span data-lang="en" class="lang-show">Read the contract bytecode anytime via <code>GET /api/contract/:addr/code</code> and the per-key storage proofs via <code>GET /api/contract/:addr/storage/:key/proof</code>.</span><span data-lang="fr">Le bytecode est lisible à tout moment via <code>GET /api/contract/:addr/code</code> et les preuves de stockage par clé via <code>GET /api/contract/:addr/storage/:key/proof</code>.</span></p>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">12</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Connect Metamask / ethers.js</span><span data-lang="fr">Brancher Metamask / ethers.js</span></h3>
+              <p><span data-lang="en" class="lang-show">CURS3D exposes a read-mostly Ethereum-compatible JSON-RPC at <code>POST /eth</code>. ECDSA-signed transactions are rejected (we sign with Dilithium L5), but every read method works for explorers and dApp UIs.</span><span data-lang="fr">CURS3D expose un JSON-RPC compatible Ethereum (lecture) sur <code>POST /eth</code>. Les transactions signées ECDSA sont refusées (nous signons en Dilithium L5), mais toutes les méthodes de lecture fonctionnent pour les explorers et UIs de dApps.</span></p>
+              <div class="code-block" style="margin-top:14px;">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">javascript</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-key">import</span> { JsonRpcProvider } <span class="c-key">from</span> <span class="c-str">"ethers"</span>;
+
+<span class="c-key">const</span> provider = <span class="c-key">new</span> JsonRpcProvider(<span class="c-str">"https://api.curs3d.fr/eth"</span>);
+
+<span class="c-key">const</span> chainId = <span class="c-key">await</span> provider.<span class="c-fn">send</span>(<span class="c-str">"eth_chainId"</span>, []);
+<span class="c-key">const</span> head    = <span class="c-key">await</span> provider.<span class="c-fn">send</span>(<span class="c-str">"eth_blockNumber"</span>, []);
+<span class="c-key">const</span> balance = <span class="c-key">await</span> provider.<span class="c-fn">send</span>(<span class="c-str">"eth_getBalance"</span>,
+    [<span class="c-str">"0x"</span> + <span class="c-str">"00"</span>.<span class="c-fn">repeat</span>(<span class="c-num">20</span>), <span class="c-str">"latest"</span>]);
+
+console.<span class="c-fn">log</span>({ chainId, head, balance });</pre>
+              </div>
+              <p style="margin-top:14px; color:var(--fg-1); font-size:14px;"><span data-lang="en" class="lang-show">For real-time updates, open a WebSocket to <code>wss://api.curs3d.fr/ws</code> and send <code>{"jsonrpc":"2.0","method":"eth_subscribe","params":["newHeads"],"id":1}</code> — you'll get an <code>eth_subscription</code> notification on every new block.</span><span data-lang="fr">Pour le streaming, ouvrez un WebSocket vers <code>wss://api.curs3d.fr/ws</code> et envoyez <code>{"jsonrpc":"2.0","method":"eth_subscribe","params":["newHeads"],"id":1}</code> — vous recevrez une notification <code>eth_subscription</code> à chaque bloc.</span></p>
+            </div>
+          </div>
+
+          <div class="step-card reveal">
+            <div class="step-num">13</div>
+            <div class="step-body">
+              <h3><span data-lang="en" class="lang-show">Run a light client</span><span data-lang="fr">Exécuter un light client</span></h3>
+              <p><span data-lang="en" class="lang-show">A light client only fetches signed headers and verifies them locally — no full state, no full chain. The SDK ships <code>curs3d::light::LightClient</code> for that purpose.</span><span data-lang="fr">Un light client ne télécharge que les headers signés et les vérifie localement — pas d'état complet, pas de chaîne complète. Le SDK fournit <code>curs3d::light::LightClient</code> pour ça.</span></p>
+              <div class="code-block" style="margin-top:14px;">
+                <div class="code-head">
+                  <div class="code-dots"><span></span><span></span><span></span></div>
+                  <span class="code-title">terminal</span>
+                  <button class="code-copy" data-done="COPIED">COPY</button>
+                </div>
+<pre class="code-body"><span class="c-comment"># Walk through the protocol with the bundled CLI demo</span>
+<span class="c-prompt">$</span> curs3d light-sync --api https://api.curs3d.fr --limit 64
+
+<span class="c-comment"># Or hit the endpoints directly</span>
+<span class="c-prompt">$</span> curl -s https://api.curs3d.fr/api/genesis
+<span class="c-prompt">$</span> curl -s <span class="c-str">'https://api.curs3d.fr/api/headers?from=0&amp;limit=64'</span>
+<span class="c-prompt">$</span> curl -s https://api.curs3d.fr/api/finality</pre>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer style="border-top:1px solid var(--line); padding: 60px 0 40px; margin-top: 80px;">
+    <div class="wrap">
+      <div style="display:grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 32px; margin-bottom: 40px;">
+        <div>
+          <a class="logo" href="index.html" style="margin-bottom:18px;">
+            <span class="logo-mark" aria-hidden="true"></span>
+            <span>CURS3D <small>L1</small></span>
+          </a>
+          <p style="color:var(--fg-1); font-size:14px; max-width:36ch; margin-top:14px;"><span data-lang="en" class="lang-show">A post-quantum Layer 1 blockchain. Conservative cryptography, BFT proof-of-stake, WASM execution. Built in the open.</span><span data-lang="fr">Une blockchain Layer 1 post-quantique. Cryptographie conservatrice, proof-of-stake BFT, exécution WASM. Construite à découvert.</span></p>
+        </div>
+        <div>
+          <h4 style="font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.14em; text-transform:uppercase; margin-bottom:14px;">Protocol</h4>
+          <ul style="list-style:none; display:flex; flex-direction:column; gap:8px; font-size:13px;">
+            <li><a href="stack.html" style="color:var(--fg-1);">Stack</a></li>
+            <li><a href="docs.html" style="color:var(--fg-1);">Documentation</a></li>
+            <li><a href="whitepaper.html" style="color:var(--fg-1);">Whitepaper</a></li>
+            <li><a href="tokenomics.html" style="color:var(--fg-1);">Tokenomics</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 style="font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.14em; text-transform:uppercase; margin-bottom:14px;">Network</h4>
+          <ul style="list-style:none; display:flex; flex-direction:column; gap:8px; font-size:13px;">
+            <li><a href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer" style="color:var(--fg-1);">Explorer</a></li>
+            <li><a href="run-validator.html" style="color:var(--fg-1);">Run a validator</a></li>
+            <li><a href="docs.html" style="color:var(--fg-1);">API reference</a></li>
+            <li><a href="examples.html" style="color:var(--fg-1);">Examples</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 style="font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.14em; text-transform:uppercase; margin-bottom:14px;">Project</h4>
+          <ul style="list-style:none; display:flex; flex-direction:column; gap:8px; font-size:13px;">
+            <li><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener noreferrer" style="color:var(--fg-1);">GitHub</a></li>
+            <li><a href="governance.html" style="color:var(--fg-1);">Governance</a></li>
+          </ul>
+        </div>
+      </div>
+      <div style="display:flex; justify-content:space-between; padding-top:24px; border-top:1px solid var(--line); font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.08em;">
+        <span>© 2026 CURS3D PROTOCOL · APACHE-2.0</span>
+        <span>CHAIN-ID <b style="color:var(--fg)">curs3d-public-testnet</b></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="landing.js?v=5"></script>
 </body>
 </html>
