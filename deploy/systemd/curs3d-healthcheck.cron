@@ -1,0 +1,4 @@
+# Run the curs3d healthcheck every 2 minutes.
+# /usr/local/bin/curs3d-healthcheck.sh sources /etc/curs3d/alerts.env (if present)
+# for Discord/Telegram webhook URLs.
+*/2 * * * * root /usr/local/bin/curs3d-healthcheck.sh
