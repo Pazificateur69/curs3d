@@ -167,6 +167,7 @@ impl LegacyTransactionV1 {
             signature: self.signature,
             gas_limit: 0,
             data: Vec::new(),
+            evm_raw_tx: Vec::new(),
         }
     }
 }

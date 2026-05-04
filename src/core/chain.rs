@@ -638,18 +638,20 @@ impl Blockchain {
     ///
     /// Genesis (height 0) is always version 1 — the genesis block was minted
     /// before any consensus rule existed. From height 1 onward the baseline
-    /// is version 3, which adds deterministic stake-weighted slot-leader
-    /// scheduling (see `consensus::slot_leader`). Genesis configs may still
-    /// declare explicit `upgrades`; those override the baseline at their
-    /// specified heights, in declaration order, for chains that need to
-    /// model historical version transitions.
+    /// is version 4, which adds an EVM (revm) VM running alongside the
+    /// existing Wasmer VM and recognises `DeployEvmContract` /
+    /// `CallEvmContract` transactions sent through `eth_sendRawTransaction`.
+    /// Genesis configs may still declare explicit `upgrades`; those override
+    /// the baseline at their specified heights, in declaration order, for
+    /// chains that need to model historical version transitions.
     pub fn protocol_version_at_height(&self, height: u64) -> u32 {
         if self.genesis_config.upgrades.is_empty() {
-            // Default: slot-leader rules apply uniformly. We return v3 even
-            // at height 0 so the gossipsub topic name (which is derived from
-            // protocol_version) is identical across freshly-started nodes
-            // and nodes that have already synced a few blocks.
-            return 3;
+            // Default: slot-leader rules + EVM dispatch apply uniformly.
+            // We return v4 even at height 0 so the gossipsub topic name
+            // (which is derived from protocol_version) is identical across
+            // freshly-started nodes and nodes that have already synced a
+            // few blocks.
+            return 4;
         }
         let mut version = 1u32;
         for upgrade in &self.genesis_config.upgrades {
@@ -2664,6 +2666,156 @@ impl Blockchain {
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// Apply an EVM-style `DeployEvmContract` tx by building a fresh state
+    /// view from the chain accounts/contracts, running revm, then merging
+    /// the delta back. Sender balance/nonce updates from revm are applied
+    /// after the surrounding fee-handling block in `apply_user_transaction`
+    /// has already debited the sender, so we re-apply revm's nonce
+    /// faithfully (it's identical to ours except for the +1 we did).
+    fn apply_evm_deploy(
+        accounts: &mut HashMap<Vec<u8>, AccountState>,
+        contracts: &mut HashMap<Vec<u8>, ContractState>,
+        tx: &Transaction,
+        current_height: u64,
+        base_fee_per_gas: u64,
+    ) -> Result<crate::vm::evm::EvmOutcome, ChainError> {
+        let state = Self::evm_state_view(accounts, contracts);
+        let mut caller = [0u8; 20];
+        if tx.from.len() == 20 {
+            caller.copy_from_slice(&tx.from);
+        }
+        let outcome = crate::vm::evm::deploy(
+            state,
+            caller,
+            &tx.data,
+            tx.amount,
+            tx.gas_limit,
+            base_fee_per_gas.max(1),
+            current_height,
+            base_fee_per_gas,
+            DEFAULT_BLOCK_GAS_LIMIT,
+        )
+        .map_err(|e| ChainError::InvalidTransactionFormat(Self::leak_evm_err(e)))?;
+        Self::merge_evm_outcome(accounts, contracts, &outcome);
+        Ok(outcome)
+    }
+
+    fn apply_evm_call(
+        accounts: &mut HashMap<Vec<u8>, AccountState>,
+        contracts: &mut HashMap<Vec<u8>, ContractState>,
+        tx: &Transaction,
+        current_height: u64,
+        base_fee_per_gas: u64,
+    ) -> Result<crate::vm::evm::EvmOutcome, ChainError> {
+        let state = Self::evm_state_view(accounts, contracts);
+        let mut caller = [0u8; 20];
+        if tx.from.len() == 20 {
+            caller.copy_from_slice(&tx.from);
+        }
+        let mut to = [0u8; 20];
+        if tx.to.len() == 20 {
+            to.copy_from_slice(&tx.to);
+        }
+        let outcome = crate::vm::evm::call(
+            state,
+            caller,
+            to,
+            &tx.data,
+            tx.amount,
+            tx.gas_limit,
+            base_fee_per_gas.max(1),
+            current_height,
+            base_fee_per_gas,
+            DEFAULT_BLOCK_GAS_LIMIT,
+        )
+        .map_err(|e| ChainError::InvalidTransactionFormat(Self::leak_evm_err(e)))?;
+        Self::merge_evm_outcome(accounts, contracts, &outcome);
+        Ok(outcome)
+    }
+
+    fn evm_state_view(
+        accounts: &HashMap<Vec<u8>, AccountState>,
+        contracts: &HashMap<Vec<u8>, ContractState>,
+    ) -> crate::vm::evm::EvmStateView {
+        let mut view = crate::vm::evm::EvmStateView::new();
+        for (addr, account) in accounts {
+            if addr.len() != 20 {
+                continue;
+            }
+            let mut key = [0u8; 20];
+            key.copy_from_slice(addr);
+            view.insert_account(key, account.balance, account.nonce);
+        }
+        for (addr, contract) in contracts {
+            if addr.len() != 20 {
+                continue;
+            }
+            let mut key = [0u8; 20];
+            key.copy_from_slice(addr);
+            view.insert_contract(key, contract.clone());
+        }
+        view
+    }
+
+    fn merge_evm_outcome(
+        accounts: &mut HashMap<Vec<u8>, AccountState>,
+        contracts: &mut HashMap<Vec<u8>, ContractState>,
+        outcome: &crate::vm::evm::EvmOutcome,
+    ) {
+        for (addr, (balance, nonce)) in &outcome.account_updates {
+            let entry = accounts.entry(addr.to_vec()).or_default();
+            entry.balance = *balance;
+            entry.nonce = *nonce;
+        }
+        for (addr, contract) in &outcome.contracts_created {
+            // Merge: keep storage we computed below from storage_updates
+            let merged_storage = outcome
+                .storage_updates
+                .get(addr)
+                .cloned()
+                .unwrap_or_else(|| contract.storage.clone());
+            contracts.insert(
+                addr.to_vec(),
+                ContractState {
+                    code_hash: contract.code_hash.clone(),
+                    code: contract.code.clone(),
+                    storage: merged_storage,
+                    owner: contract.owner.clone(),
+                },
+            );
+        }
+        // Apply storage updates to existing contracts (call kind).
+        for (addr, slot_updates) in &outcome.storage_updates {
+            if outcome.contracts_created.contains_key(addr) {
+                continue;
+            }
+            if let Some(contract) = contracts.get_mut(&addr.to_vec()) {
+                for (slot, value) in slot_updates {
+                    contract.storage.insert(slot.clone(), value.clone());
+                }
+            }
+        }
+    }
+
+    fn leak_evm_err(err: crate::vm::evm::EvmError) -> &'static str {
+        // Convert any EVM error to a small static label for the surrounding
+        // `InvalidTransactionFormat(&'static str)`. Preserving exact reverts
+        // is the receipt's job (success=false, return_data carries the
+        // revert reason).
+        match err {
+            crate::vm::evm::EvmError::EmptyBytecode => "evm deploy: empty bytecode",
+            crate::vm::evm::EvmError::InvalidBytecode => "evm: invalid bytecode",
+            crate::vm::evm::EvmError::ContractNotFound => "evm: contract not found",
+            crate::vm::evm::EvmError::OutOfGas => "evm: out of gas",
+            crate::vm::evm::EvmError::Reverted(_) => "evm: reverted",
+            crate::vm::evm::EvmError::Halted(_) => "evm: halted",
+            crate::vm::evm::EvmError::Internal(_) => "evm: internal error",
+            crate::vm::evm::EvmError::RlpDecode(_) => "evm: rlp decode failed",
+            crate::vm::evm::EvmError::SignatureRecovery => "evm: signature recovery failed",
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn apply_user_transaction(
         accounts: &mut HashMap<Vec<u8>, AccountState>,
         contracts: &mut HashMap<Vec<u8>, ContractState>,
@@ -2683,19 +2835,26 @@ impl Blockchain {
             return Err(ChainError::InvalidSignature);
         }
 
-        let sender_address = hash::address_bytes_from_public_key(&tx.sender_public_key);
-        if tx.from != sender_address {
-            return Err(ChainError::InvalidSender);
+        // Native txs derive `from` from a Dilithium public key. EVM txs
+        // recover `from` from the secp256k1 signature inside `verify_signature`
+        // and skip this derivation (sender_public_key is empty).
+        if !tx.is_evm() {
+            let sender_address = hash::address_bytes_from_public_key(&tx.sender_public_key);
+            if tx.from != sender_address {
+                return Err(ChainError::InvalidSender);
+            }
         }
 
         {
             let sender = accounts.entry(tx.from.clone()).or_default();
-            if let Some(existing_public_key) = &sender.public_key {
-                if existing_public_key != &tx.sender_public_key {
-                    return Err(ChainError::InvalidSender);
+            if !tx.is_evm() {
+                if let Some(existing_public_key) = &sender.public_key {
+                    if existing_public_key != &tx.sender_public_key {
+                        return Err(ChainError::InvalidSender);
+                    }
+                } else {
+                    sender.public_key = Some(tx.sender_public_key.clone());
                 }
-            } else {
-                sender.public_key = Some(tx.sender_public_key.clone());
             }
 
             let needed = tx.amount.saturating_add(tx.total_fee_cap());
@@ -2809,6 +2968,40 @@ impl Blockchain {
                     current_height,
                 )?;
                 crate::vm::gas::GAS_BASE_TX
+            }
+            TransactionKind::DeployEvmContract => {
+                let outcome = Self::apply_evm_deploy(
+                    accounts,
+                    contracts,
+                    tx,
+                    current_height,
+                    base_fee_per_gas,
+                )?;
+                let evm_gas_used = outcome.gas_used.max(crate::vm::gas::GAS_BASE_TX);
+                let receipt = crate::vm::evm::receipt_from_outcome(
+                    &outcome,
+                    tx_hash.clone(),
+                    base_fee_per_gas.max(1),
+                );
+                maybe_receipt = Some(receipt);
+                evm_gas_used
+            }
+            TransactionKind::CallEvmContract => {
+                let outcome = Self::apply_evm_call(
+                    accounts,
+                    contracts,
+                    tx,
+                    current_height,
+                    base_fee_per_gas,
+                )?;
+                let evm_gas_used = outcome.gas_used.max(crate::vm::gas::GAS_BASE_TX);
+                let receipt = crate::vm::evm::receipt_from_outcome(
+                    &outcome,
+                    tx_hash.clone(),
+                    base_fee_per_gas.max(1),
+                );
+                maybe_receipt = Some(receipt);
+                evm_gas_used
             }
         };
 
@@ -3051,6 +3244,58 @@ impl Blockchain {
                 if tx.data.is_empty() {
                     return Err(ChainError::InvalidTransactionFormat(
                         "governance vote must include vote parameters in data",
+                    ));
+                }
+                Ok(())
+            }
+            TransactionKind::DeployEvmContract => {
+                if tx.chain_id.is_empty() {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "missing transaction chain id",
+                    ));
+                }
+                if tx.from.len() != hash::ADDRESS_LEN {
+                    return Err(ChainError::InvalidSender);
+                }
+                if tx.data.is_empty() {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "evm deploy must include init bytecode in data",
+                    ));
+                }
+                if tx.gas_limit == 0 {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "evm deploy must specify gas_limit",
+                    ));
+                }
+                if tx.evm_raw_tx.is_empty() {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "evm deploy missing raw tx for signature recovery",
+                    ));
+                }
+                Ok(())
+            }
+            TransactionKind::CallEvmContract => {
+                if tx.chain_id.is_empty() {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "missing transaction chain id",
+                    ));
+                }
+                if tx.from.len() != hash::ADDRESS_LEN {
+                    return Err(ChainError::InvalidSender);
+                }
+                if tx.to.len() != hash::ADDRESS_LEN {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "evm call must specify a valid contract address",
+                    ));
+                }
+                if tx.gas_limit == 0 {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "evm call must specify gas_limit",
+                    ));
+                }
+                if tx.evm_raw_tx.is_empty() {
+                    return Err(ChainError::InvalidTransactionFormat(
+                        "evm call missing raw tx for signature recovery",
                     ));
                 }
                 Ok(())

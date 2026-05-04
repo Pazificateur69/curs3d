@@ -382,6 +382,8 @@ fn tx_to_api(tx: &Transaction) -> ApiTransaction {
             TransactionKind::TokenTransferFrom => "token_transfer_from".to_string(),
             TransactionKind::SubmitProposal => "submit_proposal".to_string(),
             TransactionKind::GovernanceVote => "governance_vote".to_string(),
+            TransactionKind::DeployEvmContract => "deploy_evm_contract".to_string(),
+            TransactionKind::CallEvmContract => "call_evm_contract".to_string(),
         },
         from: hex::encode(&tx.from),
         to: hex::encode(&tx.to),

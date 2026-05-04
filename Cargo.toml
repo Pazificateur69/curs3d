@@ -41,6 +41,19 @@ tokio-tungstenite = "0.24"
 wasmer = "5"
 wasmer-types = "5"
 
+# EVM VM (revm 38 + alloy for RLP-encoded MetaMask txs)
+revm = { version = "38", default-features = false, features = [
+    "std",
+    "optional_balance_check",
+    "optional_no_base_fee",
+    "optional_block_gas_limit",
+    "optional_eip3607",
+] }
+alloy-consensus = { version = "2", default-features = false, features = ["k256"] }
+alloy-primitives = { version = "1", default-features = false, features = ["std"] }
+alloy-rlp = { version = "0.3", default-features = false }
+alloy-eips = { version = "2", default-features = false }
+
 # Misc
 hex = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
@@ -54,6 +67,9 @@ rpassword = "7"
 [dev-dependencies]
 tempfile = "3"
 criterion = { version = "0.5", features = ["html_reports"] }
+# secp256k1 signing for eth_sendRawTransaction tests
+alloy-signer = "1"
+alloy-signer-local = "1"
 
 [[bin]]
 name = "curs3d"

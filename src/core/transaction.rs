@@ -19,6 +19,11 @@ pub enum TransactionKind {
     // Governance operations
     SubmitProposal,
     GovernanceVote,
+    // EVM (revm) — Solidity / MetaMask compatibility (protocol v4+).
+    // Added at the END so bincode-encoded historical transactions stay
+    // parseable.
+    DeployEvmContract,
+    CallEvmContract,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -42,6 +47,14 @@ pub struct Transaction {
     pub gas_limit: u64,
     #[serde(default)]
     pub data: Vec<u8>,
+    /// For EVM-flavored transactions (`DeployEvmContract` / `CallEvmContract`):
+    /// the original RLP-encoded MetaMask-signed raw tx. Native txs leave this
+    /// empty. When present:
+    ///   - Dilithium signature verification is bypassed.
+    ///   - `verify_signature()` re-decodes the RLP, recovers the secp256k1
+    ///     signer, and matches against `from`.
+    #[serde(default)]
+    pub evm_raw_tx: Vec<u8>,
 }
 
 #[derive(Serialize)]
@@ -86,6 +99,8 @@ impl Transaction {
             | TransactionKind::TokenApprove
             | TransactionKind::TokenTransferFrom => self.data.len(),
             TransactionKind::SubmitProposal | TransactionKind::GovernanceVote => self.data.len(),
+            TransactionKind::DeployEvmContract => self.data.len().saturating_add(self.to.len()),
+            TransactionKind::CallEvmContract => self.data.len(),
         } as u64;
 
         let kind_gas = match self.kind {
@@ -106,6 +121,12 @@ impl Transaction {
             TransactionKind::SubmitProposal | TransactionKind::GovernanceVote => {
                 crate::vm::gas::GAS_BASE_TX
             }
+            TransactionKind::DeployEvmContract => {
+                crate::vm::gas::GAS_BASE_TX.saturating_add(crate::vm::gas::GAS_DEPLOY)
+            }
+            TransactionKind::CallEvmContract => {
+                crate::vm::gas::GAS_BASE_TX.saturating_add(crate::vm::gas::GAS_CALL)
+            }
         };
 
         kind_gas.saturating_add(payload_bytes.saturating_mul(crate::vm::gas::GAS_PER_BYTE))
@@ -113,9 +134,10 @@ impl Transaction {
 
     pub fn estimated_gas_for_admission(&self) -> u64 {
         match self.kind {
-            TransactionKind::DeployContract | TransactionKind::CallContract => {
-                self.gas_limit.max(self.intrinsic_gas())
-            }
+            TransactionKind::DeployContract
+            | TransactionKind::CallContract
+            | TransactionKind::DeployEvmContract
+            | TransactionKind::CallEvmContract => self.gas_limit.max(self.intrinsic_gas()),
             _ => self.intrinsic_gas(),
         }
     }
@@ -184,6 +206,7 @@ impl Transaction {
             signature: None,
             gas_limit: 0,
             data: Vec::new(),
+            evm_raw_tx: Vec::new(),
         }
     }
 
@@ -209,6 +232,7 @@ impl Transaction {
             signature: None,
             gas_limit: 0,
             data: Vec::new(),
+            evm_raw_tx: Vec::new(),
         }
     }
 
@@ -237,6 +261,7 @@ impl Transaction {
             signature: None,
             gas_limit: 0,
             data: Vec::new(),
+            evm_raw_tx: Vec::new(),
         }
     }
 
@@ -287,6 +312,20 @@ impl Transaction {
             return true;
         }
 
+        // EVM-flavored transactions are authenticated by re-decoding the
+        // RLP-encoded raw tx and recovering the secp256k1 signer. The
+        // sender_public_key field is empty for these — the recovered
+        // address is the source of truth.
+        if self.is_evm() {
+            if self.evm_raw_tx.is_empty() {
+                return false;
+            }
+            return match crate::vm::evm::decode_raw_eth_tx(&self.evm_raw_tx) {
+                Ok(decoded) => decoded.from.to_vec() == self.from,
+                Err(_) => false,
+            };
+        }
+
         if self.from != hash::address_bytes_from_public_key(&self.sender_public_key) {
             return false;
         }
@@ -310,6 +349,59 @@ impl Transaction {
 
     pub fn is_unstake(&self) -> bool {
         self.kind == TransactionKind::Unstake
+    }
+
+    pub fn is_evm(&self) -> bool {
+        matches!(
+            self.kind,
+            TransactionKind::DeployEvmContract | TransactionKind::CallEvmContract
+        )
+    }
+
+    /// Build a `Transaction` from an already-parsed RLP MetaMask raw tx.
+    ///
+    /// The caller is expected to have:
+    ///   1. RLP-decoded the raw tx,
+    ///   2. recovered the secp256k1 signer (`from_addr`),
+    ///   3. determined the kind based on `to == None` (deploy) vs
+    ///      `to == Some(addr)` (call).
+    ///
+    /// The returned transaction has `sender_public_key` empty; the
+    /// `evm_raw_tx` field carries the raw bytes so consensus can re-verify
+    /// the signature on demand. The resulting tx hash matches CURS3D's hash
+    /// convention; the EVM-style hash (Keccak256 of RLP) is also retained
+    /// in the API layer as the wire-level handle.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_evm_raw(
+        chain_id: &str,
+        kind: TransactionKind,
+        from_addr: Vec<u8>,
+        to_addr: Vec<u8>,
+        value: u64,
+        nonce: u64,
+        gas_limit: u64,
+        max_fee_per_gas: u64,
+        max_priority_fee_per_gas: u64,
+        data: Vec<u8>,
+        raw_tx: Vec<u8>,
+    ) -> Self {
+        Transaction {
+            chain_id: chain_id.to_string(),
+            kind,
+            from: from_addr,
+            sender_public_key: Vec::new(),
+            to: to_addr,
+            amount: value,
+            fee: max_fee_per_gas,
+            max_fee_per_gas,
+            max_priority_fee_per_gas,
+            nonce,
+            timestamp: chrono::Utc::now().timestamp(),
+            signature: None,
+            gas_limit,
+            data,
+            evm_raw_tx: raw_tx,
+        }
     }
 
     #[allow(dead_code)]
@@ -336,6 +428,7 @@ impl Transaction {
             signature: None,
             gas_limit,
             data: Vec::new(),
+            evm_raw_tx: Vec::new(),
         }
     }
 
@@ -365,6 +458,7 @@ impl Transaction {
             signature: None,
             gas_limit,
             data: input_data,
+            evm_raw_tx: Vec::new(),
         }
     }
 
@@ -401,6 +495,7 @@ impl Transaction {
             signature: None,
             gas_limit: 0,
             data: Vec::new(),
+            evm_raw_tx: Vec::new(),
         }
     }
 }

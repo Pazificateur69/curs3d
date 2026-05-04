@@ -17,7 +17,7 @@ use tokio::sync::Mutex;
 use crate::core::block::Block;
 use crate::core::chain::Blockchain;
 use crate::core::receipt::{IndexedLogEntry, IndexedReceipt, LogFilter};
-use crate::core::transaction::Transaction;
+use crate::core::transaction::{Transaction, TransactionKind};
 use crate::crypto::hash;
 
 const CLIENT_VERSION: &str = concat!("curs3d/v", env!("CARGO_PKG_VERSION"), "/rust");
@@ -516,19 +516,149 @@ async fn dispatch(chain: &Arc<Mutex<Blockchain>>, request: &Value) -> Value {
             // Without a CURS3D-shaped tx in the params, return the base tx gas as a safe lower bound.
             rpc_success(id, json!("0x5208"))
         }
-        "eth_call" => rpc_error(
+        "eth_call" => {
+            // params: [{ from, to, gas, gasPrice, value, data }, blockTag]
+            let chain = chain.lock().await;
+            match dispatch_eth_call(&chain, &params_arr) {
+                Ok(result_bytes) => rpc_success(id, json!(hex_bytes(&result_bytes))),
+                Err(msg) => rpc_error(id, -32603, &msg),
+            }
+        }
+        "eth_sendTransaction" => rpc_error(
             id,
             -32004,
-            "eth_call is not yet implemented on CURS3D — use the native /api/tx/estimate endpoint",
+            "eth_sendTransaction requires a node-side wallet — use eth_sendRawTransaction with a MetaMask-signed payload, or POST /api/tx/submit for native Dilithium-signed txs.",
         ),
-        "eth_sendTransaction" | "eth_sendRawTransaction" => rpc_error(
-            id,
-            -32004,
-            "CURS3D uses CRYSTALS-Dilithium signatures with bincode-encoded transactions; \
-             ECDSA-signed RLP transactions are not accepted. Submit native transactions via POST /api/tx/submit.",
-        ),
+        "eth_sendRawTransaction" => {
+            let Some(raw_hex) = params_arr.first().and_then(|v| v.as_str()) else {
+                return rpc_error(id, -32602, "expected hex-encoded raw tx");
+            };
+            let stripped = raw_hex.strip_prefix("0x").unwrap_or(raw_hex);
+            let raw = match hex::decode(stripped) {
+                Ok(b) => b,
+                Err(_) => return rpc_error(id, -32602, "invalid hex"),
+            };
+            let decoded = match crate::vm::evm::decode_raw_eth_tx(&raw) {
+                Ok(d) => d,
+                Err(e) => return rpc_error(id, -32602, &format!("rlp decode: {}", e)),
+            };
+            let mut chain_guard = chain.lock().await;
+            let chain_id = chain_guard.genesis_config.chain_id.clone();
+            let kind = if decoded.to.is_some() {
+                TransactionKind::CallEvmContract
+            } else {
+                TransactionKind::DeployEvmContract
+            };
+            let to_vec = decoded.to.map(|t| t.to_vec()).unwrap_or_default();
+            let tx = Transaction::from_evm_raw(
+                &chain_id,
+                kind,
+                decoded.from.to_vec(),
+                to_vec,
+                decoded.value,
+                decoded.nonce,
+                decoded.gas_limit,
+                decoded.max_fee_per_gas,
+                decoded.max_priority_fee_per_gas,
+                decoded.data.clone(),
+                raw,
+            );
+            match chain_guard.add_transaction(tx) {
+                Ok(()) => rpc_success(id, json!(format!("0x{}", hex::encode(decoded.tx_hash)))),
+                Err(e) => rpc_error(id, -32003, &format!("tx rejected: {}", e)),
+            }
+        }
         _ => rpc_error(id, -32601, &format!("method {} not supported", method)),
     }
+}
+
+/// Run an `eth_call` against revm read-only. Builds an EVM state view from
+/// the canonical chain state and invokes `vm::evm::call`. Discards any state
+/// changes — only the return data is bubbled up.
+fn dispatch_eth_call(chain: &Blockchain, params: &[Value]) -> Result<Vec<u8>, String> {
+    let call_obj = params
+        .first()
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| "missing call object".to_string())?;
+    let from = call_obj
+        .get("from")
+        .and_then(|v| v.as_str())
+        .and_then(parse_hex_address)
+        .unwrap_or_else(|| vec![0u8; 20]);
+    let to = call_obj
+        .get("to")
+        .and_then(|v| v.as_str())
+        .and_then(parse_hex_address)
+        .ok_or_else(|| "missing 'to'".to_string())?;
+    let value = call_obj
+        .get("value")
+        .and_then(|v| v.as_str())
+        .and_then(parse_hex_quantity)
+        .unwrap_or(0);
+    let gas_limit = call_obj
+        .get("gas")
+        .and_then(|v| v.as_str())
+        .and_then(parse_hex_quantity)
+        .unwrap_or(30_000_000);
+    let gas_price = call_obj
+        .get("gasPrice")
+        .and_then(|v| v.as_str())
+        .and_then(parse_hex_quantity)
+        .unwrap_or(0);
+    let data_hex = call_obj
+        .get("data")
+        .or_else(|| call_obj.get("input"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("0x");
+    let data = parse_hex_hash(data_hex).unwrap_or_default();
+
+    let mut from_arr = [0u8; 20];
+    if from.len() == 20 {
+        from_arr.copy_from_slice(&from);
+    }
+    let mut to_arr = [0u8; 20];
+    if to.len() == 20 {
+        to_arr.copy_from_slice(&to);
+    }
+
+    let mut view = crate::vm::evm::EvmStateView::new();
+    for (addr, account) in &chain.accounts {
+        if addr.len() != 20 {
+            continue;
+        }
+        let mut k = [0u8; 20];
+        k.copy_from_slice(addr);
+        view.insert_account(k, account.balance, account.nonce);
+    }
+    for (addr, contract) in &chain.contracts {
+        if addr.len() != 20 {
+            continue;
+        }
+        let mut k = [0u8; 20];
+        k.copy_from_slice(addr);
+        view.insert_contract(k, contract.clone());
+    }
+    let base_fee = chain.next_base_fee_per_gas(chain.latest_block());
+    let outcome = crate::vm::evm::call(
+        view,
+        from_arr,
+        to_arr,
+        &data,
+        value,
+        gas_limit,
+        gas_price.max(base_fee),
+        chain.height(),
+        base_fee,
+        crate::core::chain::DEFAULT_BLOCK_GAS_LIMIT,
+    )
+    .map_err(|e| format!("evm error: {}", e))?;
+    if !outcome.success {
+        return Err(format!(
+            "eth_call reverted: {}",
+            hex::encode(&outcome.return_data)
+        ));
+    }
+    Ok(outcome.return_data)
 }
 
 fn parse_eth_log_filter(chain: &Blockchain, value: &Value) -> Result<LogFilter, String> {
@@ -717,7 +847,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dispatch_eth_send_transaction_rejects_with_explanation() {
+    async fn dispatch_eth_send_raw_transaction_rejects_garbage_rlp() {
+        // After v4 hard-fork, eth_sendRawTransaction tries to RLP-decode the
+        // payload. Garbage like "0xdead" should still fail, but with an
+        // RLP-decode error rather than the legacy "use Dilithium" hint.
         let chain = std::sync::Arc::new(tokio::sync::Mutex::new(
             crate::core::chain::Blockchain::new(),
         ));
@@ -730,10 +863,84 @@ mod tests {
         let resp = dispatch(&chain, &req).await;
         let err_msg = resp["error"]["message"].as_str().unwrap();
         assert!(
-            err_msg.contains("Dilithium"),
-            "expected Dilithium hint, got: {}",
+            err_msg.to_lowercase().contains("rlp") || err_msg.to_lowercase().contains("decode"),
+            "expected an rlp/decode error, got: {}",
             err_msg
         );
+    }
+
+    #[tokio::test]
+    async fn test_eth_send_raw_transaction_admits_signed_evm_tx() {
+        // We sign a tiny EIP-1559 tx using a fresh secp256k1 key (via the
+        // alloy_signer test harness) and submit it via eth_sendRawTransaction.
+        // The tx should land in the chain's mempool and the response should
+        // be the EVM-style tx hash. Because we build the chain fresh with no
+        // accounts, the admission check needs the signer address to have
+        // balance >= total_fee_cap; we credit it first.
+        use alloy_consensus::transaction::SignerRecoverable;
+        use alloy_consensus::{SignableTransaction, TxEip1559};
+        use alloy_primitives::{Bytes, TxKind, U256, hex as alloy_hex};
+        use alloy_signer::SignerSync;
+        use alloy_signer_local::PrivateKeySigner;
+        let _ = alloy_hex::const_decode_to_array::<32>;
+
+        // Pick a deterministic key — same key every run.
+        let signer: PrivateKeySigner =
+            "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+                .parse()
+                .unwrap();
+        let from_addr = signer.address();
+
+        let mut tx = TxEip1559 {
+            chain_id: 1,
+            nonce: 0,
+            max_fee_per_gas: 100_000,
+            max_priority_fee_per_gas: 1,
+            gas_limit: 100_000,
+            to: TxKind::Call(alloy_primitives::Address::ZERO),
+            value: U256::from(1u64),
+            input: Bytes::new(),
+            access_list: Default::default(),
+        };
+        let sig_hash = tx.signature_hash();
+        let signature = signer.sign_hash_sync(&sig_hash).unwrap();
+        let signed = tx.into_signed(signature);
+        let envelope: alloy_consensus::TxEnvelope = signed.into();
+        let recovered = envelope.recover_signer().unwrap();
+        assert_eq!(recovered, from_addr);
+        let raw = alloy_eips::eip2718::Encodable2718::encoded_2718(&envelope);
+        let raw_hex = format!("0x{}", hex::encode(&raw));
+
+        let chain_mutex = std::sync::Arc::new(tokio::sync::Mutex::new(
+            crate::core::chain::Blockchain::new(),
+        ));
+        // Fund the signer's CURS3D-side account so the chain admits the tx.
+        {
+            let mut chain = chain_mutex.lock().await;
+            let mut from_bytes = [0u8; 20];
+            from_bytes.copy_from_slice(from_addr.as_slice());
+            let acct = chain.accounts.entry(from_bytes.to_vec()).or_default();
+            acct.balance = u64::MAX / 4;
+        }
+
+        let req = json!({
+            "jsonrpc": "2.0",
+            "id": 99,
+            "method": "eth_sendRawTransaction",
+            "params": [raw_hex]
+        });
+        let resp = dispatch(&chain_mutex, &req).await;
+        let result = resp
+            .get("result")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        assert!(result.is_some(), "expected success result, got: {}", resp);
+        // mempool should now contain exactly 1 tx
+        let chain = chain_mutex.lock().await;
+        assert_eq!(chain.pending_transactions.len(), 1);
+        let admitted = &chain.pending_transactions[0];
+        assert!(admitted.is_evm());
+        assert_eq!(admitted.from.len(), 20);
     }
 
     #[tokio::test]
