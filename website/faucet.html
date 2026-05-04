@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CURS3D — Testnet Faucet</title>
+  <meta name="description" content="Get free testnet CUR tokens. 100 CUR per request, 1 hour cooldown per address and IP." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="landing.css?v=5" />
+  <!-- Cloudflare Turnstile -->
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+</head>
+<body>
+  <div class="scroll-progress"></div>
+
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="logo" href="/" data-magnetic>
+        <span class="logo-mark" aria-hidden="true"></span>
+        <span>CURS3D <small>L1</small></span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a href="/docs">Docs</a>
+        <a href="/stack">Stack</a>
+        <a href="/run-validator"><span data-lang="en" class="lang-show">Run Validator</span><span data-lang="fr">Validateur</span></a>
+        <a href="/governance"><span data-lang="en" class="lang-show">Governance</span><span data-lang="fr">Gouvernance</span></a>
+        <a href="/tokenomics">Tokenomics</a>
+        <a href="/whitepaper">Whitepaper</a>
+        <a href="/examples"><span data-lang="en" class="lang-show">Examples</span><span data-lang="fr">Exemples</span></a>
+      </nav>
+      <div class="nav-actions">
+        <div class="lang-toggle" role="tablist" aria-label="Language">
+          <button data-lang-set="en" class="active" role="tab">EN</button>
+          <button data-lang-set="fr" role="tab">FR</button>
+        </div>
+        <a class="btn" href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer" data-magnetic>
+          <span data-lang="en" class="lang-show">Explorer</span>
+          <span data-lang="fr">Explorateur</span>
+          <span class="arrow">→</span>
+        </a>
+        <a class="btn btn-primary" href="/run-validator" data-magnetic>
+          <span data-lang="en" class="lang-show">Run a node</span>
+          <span data-lang="fr">Lancer un nœud</span>
+          <span class="arrow">→</span>
+        </a>
+        <button class="nav-burger" aria-label="Menu"><span></span></button>
+      </div>
+    </div>
+  </header>
+
+  <div class="statusbar">
+    <div class="wrap statusbar-inner">
+      <span class="status-item">
+        <span class="status-dot"></span>
+        <span data-lang="en" class="lang-show">TESTNET</span>
+        <span data-lang="fr">TESTNET</span>
+        <b data-live-source>SIM</b>
+      </span>
+      <span class="status-item">BLOCK <b data-stat="block">—</b></span>
+      <span class="status-item">EPOCH <b data-stat="epoch">—</b></span>
+      <span class="status-item">VALIDATORS <b data-stat="validators">—</b></span>
+      <span class="statusbar-ticker"><span class="t-dyn">FAUCET // 100 CUR PER REQUEST</span></span>
+    </div>
+  </div>
+
+  <main>
+    <section class="page-hero">
+      <div class="wrap">
+        <span class="eyebrow">Testnet Faucet</span>
+        <h1><span data-lang="en" class="lang-show">Get <em>100 CUR</em> for testing.</span><span data-lang="fr">Recevez <em>100 CUR</em> pour tester.</span></h1>
+        <p class="lede"><span data-lang="en" class="lang-show">Submit your testnet address to receive 100 CUR. One request per address and per IP every hour. Captcha required.</span><span data-lang="fr">Soumettez votre adresse testnet pour recevoir 100 CUR. Une requête par adresse et par IP toutes les heures. Captcha requis.</span></p>
+      </div>
+    </section>
+
+    <section style="padding: clamp(40px,6vh,80px) 0;">
+      <div class="wrap" style="max-width: 640px; margin: 0 auto;">
+        <form id="faucet-form" class="prose" style="display:flex; flex-direction:column; gap:18px;">
+          <label style="display:flex; flex-direction:column; gap:6px;">
+            <span style="font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.14em; text-transform:uppercase;"><span data-lang="en" class="lang-show">CURS3D Address</span><span data-lang="fr">Adresse CURS3D</span></span>
+            <input id="addr" name="addr" required spellcheck="false" autocomplete="off"
+                   placeholder="CUR…"
+                   pattern="^(CUR)?[0-9a-fA-F]{40}$"
+                   style="background:var(--bg-1); border:1px solid var(--line-2); color:var(--fg); font-family:var(--mono); font-size:14px; padding:12px 14px; border-radius:var(--r-md); width:100%;" />
+          </label>
+
+          <div id="turnstile-host" class="cf-turnstile"
+               data-sitekey="REPLACE_WITH_TURNSTILE_SITE_KEY"
+               data-theme="dark"
+               data-action="faucet"></div>
+
+          <button type="submit" class="btn btn-primary" style="align-self:flex-start;" data-magnetic>
+            <span data-lang="en" class="lang-show">Send 100 CUR</span>
+            <span data-lang="fr">Envoyer 100 CUR</span>
+            <span class="arrow">→</span>
+          </button>
+
+          <div id="result" class="callout" style="display:none;"></div>
+        </form>
+
+        <div class="prose" style="margin-top: 40px;">
+          <h3 style="font-family:var(--display); font-weight:500; font-size:18px; color:var(--fg); margin-bottom:10px;"><span data-lang="en" class="lang-show">Don't have an address yet?</span><span data-lang="fr">Pas encore d'adresse ?</span></h3>
+          <p><span data-lang="en" class="lang-show">Generate one with the CLI: </span><span data-lang="fr">Générez-en une avec le CLI : </span><code>curs3d wallet --output mywallet.json</code></p>
+          <p><span data-lang="en" class="lang-show">Or use the </span><span data-lang="fr">Ou utilisez les </span><a href="/examples"><span data-lang="en" class="lang-show">JS / Python / Rust SDKs</span><span data-lang="fr">SDKs JS / Python / Rust</span></a>.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer style="border-top:1px solid var(--line); padding: 60px 0 40px; margin-top: 80px;">
+    <div class="wrap">
+      <div style="display:grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 32px; margin-bottom: 40px;">
+        <div>
+          <a class="logo" href="/" style="margin-bottom:18px;">
+            <span class="logo-mark" aria-hidden="true"></span>
+            <span>CURS3D <small>L1</small></span>
+          </a>
+        </div>
+        <div>
+          <h4 style="font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.14em; text-transform:uppercase; margin-bottom:14px;">Protocol</h4>
+          <ul style="list-style:none; display:flex; flex-direction:column; gap:8px; font-size:13px;">
+            <li><a href="/stack" style="color:var(--fg-1);">Stack</a></li>
+            <li><a href="/docs" style="color:var(--fg-1);">Documentation</a></li>
+            <li><a href="/whitepaper" style="color:var(--fg-1);">Whitepaper</a></li>
+            <li><a href="/tokenomics" style="color:var(--fg-1);">Tokenomics</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 style="font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.14em; text-transform:uppercase; margin-bottom:14px;">Network</h4>
+          <ul style="list-style:none; display:flex; flex-direction:column; gap:8px; font-size:13px;">
+            <li><a href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer" style="color:var(--fg-1);">Explorer</a></li>
+            <li><a href="/run-validator" style="color:var(--fg-1);">Run a validator</a></li>
+            <li><a href="/faucet" style="color:var(--fg-1);">Faucet</a></li>
+            <li><a href="/examples" style="color:var(--fg-1);">Examples</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 style="font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.14em; text-transform:uppercase; margin-bottom:14px;">Project</h4>
+          <ul style="list-style:none; display:flex; flex-direction:column; gap:8px; font-size:13px;">
+            <li><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener noreferrer" style="color:var(--fg-1);">GitHub</a></li>
+            <li><a href="/governance" style="color:var(--fg-1);">Governance</a></li>
+          </ul>
+        </div>
+      </div>
+      <div style="display:flex; justify-content:space-between; padding-top:24px; border-top:1px solid var(--line); font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.08em;">
+        <span>© 2026 CURS3D PROTOCOL · APACHE-2.0</span>
+        <span>CHAIN-ID <b style="color:var(--fg)">curs3d-public-testnet</b></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="landing.js?v=5"></script>
+  <script>
+    (function () {
+      const form = document.getElementById('faucet-form');
+      const result = document.getElementById('result');
+      const addrInput = document.getElementById('addr');
+
+      function show(severity, msg) {
+        result.className = 'callout' + (severity === 'warn' ? ' warning' : severity === 'err' ? ' danger' : '');
+        result.textContent = msg;
+        result.style.display = '';
+      }
+
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        let addr = addrInput.value.trim();
+        if (addr.startsWith('CUR') || addr.startsWith('cur')) addr = addr.slice(3);
+        if (!/^[0-9a-fA-F]{40}$/.test(addr)) {
+          show('err', 'Invalid address. Expected CUR + 40 hex characters.');
+          return;
+        }
+
+        const token = (window.turnstile && window.turnstile.getResponse)
+          ? window.turnstile.getResponse()
+          : (document.querySelector('[name="cf-turnstile-response"]') || {}).value;
+
+        if (!token) {
+          show('warn', 'Please complete the captcha first.');
+          return;
+        }
+
+        show('info', 'Submitting…');
+
+        try {
+          const res = await fetch('https://api.curs3d.fr/api/faucet/request', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Captcha-Token': token,
+            },
+            body: JSON.stringify({ address: 'CUR' + addr }),
+          });
+          const body = await res.json().catch(() => ({}));
+          if (res.ok && body.ok !== false) {
+            show('info', '✓ Faucet request submitted. Tx hash: ' + (body.data && body.data.tx_hash || 'pending'));
+          } else {
+            const err = (body && body.error) || ('HTTP ' + res.status);
+            show(res.status === 429 ? 'warn' : 'err', err);
+          }
+        } catch (err) {
+          show('err', 'Network error: ' + err.message);
+        } finally {
+          if (window.turnstile && window.turnstile.reset) window.turnstile.reset();
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

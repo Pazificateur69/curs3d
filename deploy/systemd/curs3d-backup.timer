@@ -1,0 +1,13 @@
+[Unit]
+Description=CURS3D backup timer (every 6 hours)
+Requires=curs3d-backup.service
+
+[Timer]
+# First fire 10 minutes after boot, then every 6 hours.
+OnBootSec=10min
+OnUnitActiveSec=6h
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

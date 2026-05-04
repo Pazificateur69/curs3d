@@ -1,0 +1,32 @@
+[Unit]
+Description=CURS3D faucet captcha verifier (nginx auth_request backend)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=curs3d
+Group=curs3d
+EnvironmentFile=/etc/curs3d/captcha.env
+ExecStart=/usr/bin/python3 /usr/local/bin/curs3d-captcha-verify.py
+Restart=always
+RestartSec=3
+LimitNOFILE=4096
+
+# Hardening
+ProtectSystem=full
+ProtectHome=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

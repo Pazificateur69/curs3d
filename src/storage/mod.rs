@@ -274,7 +274,7 @@ impl Storage {
         let tree = self.db.open_tree(STATE_TREE)?;
         tree.clear()?;
         let mut entries: Vec<(&Vec<u8>, &AccountState)> = accounts.iter().collect();
-        entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        entries.sort_by_key(|(a, _)| *a);
         for (address, state) in entries {
             let value =
                 bincode::serialize(state).map_err(|e| StorageError::Serialize(e.to_string()))?;
@@ -394,7 +394,7 @@ impl Storage {
         let tree = self.db.open_tree(CONTRACT_TREE)?;
         tree.clear()?;
         let mut entries: Vec<(&Vec<u8>, &ContractState)> = contracts.iter().collect();
-        entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        entries.sort_by_key(|(a, _)| *a);
         for (address, contract) in entries {
             let value =
                 bincode::serialize(contract).map_err(|e| StorageError::Serialize(e.to_string()))?;
@@ -423,7 +423,7 @@ impl Storage {
         let tree = self.db.open_tree(RECEIPT_TREE)?;
         tree.clear()?;
         let mut entries: Vec<(&Vec<u8>, &Receipt)> = receipts.iter().collect();
-        entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+        entries.sort_by_key(|(a, _)| *a);
         for (tx_hash, receipt) in entries {
             let value =
                 bincode::serialize(receipt).map_err(|e| StorageError::Serialize(e.to_string()))?;

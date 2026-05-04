@@ -1,0 +1,20 @@
+[Unit]
+Description=CURS3D off-host backup (restic to Backblaze B2)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/curs3d-backup.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+# Hardening
+ProtectSystem=full
+ProtectHome=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+ReadOnlyPaths=/etc/curs3d /var/lib/curs3d /etc/systemd/system /etc/nginx
+ReadWritePaths=/var/log

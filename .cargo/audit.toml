@@ -1,0 +1,43 @@
+# cargo-audit configuration for curs3d
+# Run: cargo audit --config audit.toml
+
+[advisories]
+ignore = [
+    # ── transitive deps that are NOT actually built into our binary ──
+    # cargo tree -i confirms these resolve to "nothing to print"; they
+    # remain in Cargo.lock as build-graph artifacts of optional libp2p
+    # features we do not enable (TLS 1.2 path, alternative QUIC stack).
+    "RUSTSEC-2025-0009",  # ring 0.16.20 AES panic on overflow check
+    "RUSTSEC-2025-0010",  # ring 0.16.20 unmaintained (same crate)
+    "RUSTSEC-2026-0098",  # rustls-webpki 0.101.7 name constraints
+    "RUSTSEC-2026-0099",  # rustls-webpki 0.101.7 name constraints
+    "RUSTSEC-2026-0104",  # rustls-webpki 0.101.7 panic on CRL parsing
+
+    # ── acknowledged transitive risks pinned behind libp2p 0.54 ──
+    # hickory-proto 0.24.4 O(n²) DNS name compression. Pulled by
+    # libp2p-mdns. mDNS is a local-network discovery feature; in our
+    # public testnet the relevant traffic is gossipsub/identify, and a
+    # remote attacker cannot reach the mDNS path (multicast is LAN-only).
+    # Re-evaluate when libp2p 0.55+ is adopted.
+    "RUSTSEC-2026-0119",
+
+    # ── unmaintained crates we cannot drop without a migration ──
+    # bincode 1.x -> 2.x is a serialization-format break that would
+    # require a chain-state migration. Tracked separately.
+    "RUSTSEC-2025-0141",
+    # pqcrypto-dilithium → pqcrypto-mldsa rename is a planned migration
+    # (FIPS-204 final naming). Signature wire format unchanged.
+    "RUSTSEC-2024-0380",
+    # Transitive helpers still receive security backports via their
+    # parent crates; tracked but not actionable from our side.
+    "RUSTSEC-2024-0384",  # instant
+    "RUSTSEC-2024-0436",  # paste
+    "RUSTSEC-2025-0057",  # fxhash
+    "RUSTSEC-2026-0105",  # core2 yanked
+    # lru 0.12 IterMut Stacked Borrows soundness — Miri-only diagnostic,
+    # not exploitable at runtime; pulled transitively by libp2p-swarm.
+    "RUSTSEC-2026-0002",
+]
+
+informational_warnings = ["unmaintained", "notice", "unsound"]
+severity_threshold = "low"
