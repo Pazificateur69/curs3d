@@ -1,0 +1,823 @@
+<!doctype html>
+<!--
+  CURS3D — Browser wallet (/wallet)
+
+  ⚠ DEPLOY NOTE: this page imports a WebAssembly bundle from
+  /wallet-wasm/curs3d_wallet_wasm.js. The current site CSP must
+  allow `wasm-unsafe-eval` in `script-src` for the WASM module to
+  instantiate. Update /etc/nginx/sites-available/curs3d.conf
+  (Content-Security-Policy header → script-src) before going live.
+
+  This file deliberately stays slim. All wallet logic lives in
+  wallet.js (loaded as <script type="module">). Private keys are
+  never sent over the network — they are encrypted with Argon2id
+  + AES-GCM in localStorage and signing happens locally inside the
+  WASM module's memory. No analytics, no third-party JS at runtime
+  beyond a CDN-loaded QR code library (qrcode.js, hash-pinned).
+-->
+<html lang="en" data-current-lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CURS3D — Wallet</title>
+  <meta name="description" content="Self-custodial CURS3D wallet in the browser. Generate or import a key, see balance, send transfers, stake. The private key never leaves the device." />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="landing.css?v=5" />
+  <style>
+    /* ===== Wallet-specific styles =====
+       Kept tight on purpose — reuse landing.css tokens; only add
+       what isn't already covered there. */
+
+    .wallet-shell {
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+      padding: clamp(40px, 6vh, 64px) 0 clamp(80px, 12vh, 120px);
+    }
+
+    .wallet-banner-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* Two-card layout for create / import */
+    .wallet-locked-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 880px) { .wallet-locked-grid { grid-template-columns: 1fr; } }
+
+    .wallet-card {
+      border: 1px solid var(--line);
+      background: var(--bg-1);
+      border-radius: var(--r-md);
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .wallet-card h2 {
+      font-family: var(--display);
+      font-weight: 500;
+      font-size: 22px;
+      letter-spacing: -.01em;
+      color: var(--fg);
+    }
+    .wallet-card p { color: var(--fg-1); font-size: 14px; line-height: 1.6; }
+    .wallet-card .field {
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .wallet-card label, .field-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--mute);
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    .wallet-card input[type="password"],
+    .wallet-card input[type="text"],
+    .wallet-card input[type="number"],
+    .wallet-card textarea,
+    .wallet-card select {
+      background: var(--bg);
+      border: 1px solid var(--line-2);
+      color: var(--fg);
+      font-family: var(--mono);
+      font-size: 13px;
+      padding: 11px 13px;
+      border-radius: var(--r-sm);
+      width: 100%;
+    }
+    .wallet-card textarea { font-size: 12px; line-height: 1.5; resize: vertical; min-height: 96px; }
+    .wallet-card input:focus,
+    .wallet-card textarea:focus,
+    .wallet-card select:focus { outline: none; border-color: var(--accent); }
+    .wallet-card .err {
+      color: var(--red);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .04em;
+      min-height: 14px;
+    }
+    .wallet-card .ok {
+      color: var(--green);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .04em;
+    }
+
+    /* Unlocked layout */
+    .wallet-unlocked-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .wallet-row-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 880px) { .wallet-row-2 { grid-template-columns: 1fr; } }
+
+    .addr-display {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--accent);
+      word-break: break-all;
+      padding: 14px 16px;
+      background: var(--bg);
+      border: 1px solid var(--line-2);
+      border-radius: var(--r-sm);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: space-between;
+    }
+    .addr-display .addr-text { flex: 1 1 auto; min-width: 0; }
+    .addr-display-actions { display: flex; gap: 8px; }
+    .pill-btn {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .14em;
+      padding: 5px 10px;
+      border: 1px solid var(--line-2);
+      border-radius: var(--r-sm);
+      color: var(--mute);
+      transition: all .2s;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .pill-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .pill-btn.done { color: var(--green); border-color: var(--green); }
+    .pill-btn.danger:hover { border-color: var(--red); color: var(--red); }
+
+    /* Balance display */
+    .balance-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1px;
+      background: var(--line);
+      border: 1px solid var(--line);
+      border-radius: var(--r-sm);
+      overflow: hidden;
+    }
+    .balance-cell {
+      background: var(--bg-1);
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .balance-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--mute);
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    .balance-value {
+      font-family: var(--display);
+      font-size: 26px;
+      font-weight: 500;
+      letter-spacing: -.02em;
+      color: var(--fg);
+      font-variant-numeric: tabular-nums;
+    }
+    .balance-value.cyan { color: var(--accent); }
+    .balance-sub {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--mute);
+    }
+    .skel {
+      display: inline-block;
+      min-width: 70px;
+      height: 18px;
+      background: linear-gradient(90deg, var(--line) 0%, var(--line-2) 50%, var(--line) 100%);
+      background-size: 200% 100%;
+      animation: skel 1.4s linear infinite;
+      border-radius: 3px;
+    }
+    @keyframes skel {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* Send form */
+    .send-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 720px) { .send-grid { grid-template-columns: 1fr; } }
+    .send-summary {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--fg-1);
+      padding: 12px 14px;
+      background: var(--bg);
+      border: 1px dashed var(--line-2);
+      border-radius: var(--r-sm);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 6px 14px;
+    }
+    .send-summary span { color: var(--mute); }
+    .send-summary b { color: var(--fg); font-weight: 500; }
+
+    /* History table */
+    .history-empty {
+      padding: 32px;
+      text-align: center;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--mute);
+    }
+    .history-row .hash-link {
+      color: var(--accent);
+      font-family: var(--mono);
+      border-bottom: 1px dotted var(--accent-soft);
+    }
+    .history-row .hash-link:hover { border-bottom-color: var(--accent); }
+    .history-row .kind-pill {
+      font-family: var(--mono);
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line-2);
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .history-row .kind-pill.transfer { color: var(--accent); border-color: var(--accent-soft); }
+    .history-row .kind-pill.stake { color: var(--gold); border-color: rgba(212,175,55,.35); }
+    .history-row .kind-pill.unstake { color: var(--gold); border-color: rgba(212,175,55,.35); }
+    .history-row .kind-pill.coinbase { color: var(--green); border-color: rgba(74,222,128,.35); }
+    .history-row .status-dot-cell {
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    .history-row .status-dot-cell .d {
+      width: 7px; height: 7px; border-radius: 50%; display: inline-block;
+    }
+    .history-row .status-dot-cell .d.ok { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .history-row .status-dot-cell .d.pending { background: var(--gold); }
+    .history-row .status-dot-cell .d.fail { background: var(--red); }
+
+    .history-pager {
+      display: flex; gap: 10px; align-items: center;
+      margin-top: 14px;
+      font-family: var(--mono); font-size: 11px;
+      color: var(--mute);
+    }
+
+    /* Footer actions row in unlocked panel */
+    .wallet-actions-row {
+      display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+      padding-top: 8px;
+    }
+    .wallet-actions-row .spacer { flex: 1 1 auto; }
+
+    /* QR modal */
+    .modal-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.65);
+      backdrop-filter: blur(6px);
+      z-index: 200;
+      display: none;
+      align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: var(--bg-1);
+      border: 1px solid var(--line-2);
+      border-radius: var(--r-lg);
+      padding: 28px;
+      max-width: 360px; width: 100%;
+      display: flex; flex-direction: column; gap: 16px; align-items: center;
+      box-shadow: 0 24px 80px rgba(0,0,0,.5);
+    }
+    .modal h3 {
+      font-family: var(--display);
+      font-weight: 500;
+      font-size: 18px;
+      color: var(--fg);
+    }
+    .modal canvas, .modal img {
+      width: 240px; height: 240px;
+      background: #fff;
+      border-radius: var(--r-sm);
+    }
+    .modal .addr-text {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--fg-1);
+      word-break: break-all;
+      text-align: center;
+    }
+
+    /* Transaction-type selector */
+    .tx-type-select {
+      display: inline-flex;
+      gap: 0;
+      border: 1px solid var(--line-2);
+      border-radius: 999px;
+      padding: 2px;
+      background: rgba(255,255,255,0.02);
+    }
+    .tx-type-select button {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .08em;
+      padding: 5px 12px;
+      color: var(--mute);
+      border-radius: 999px;
+      transition: all .2s;
+      text-transform: uppercase;
+    }
+    .tx-type-select button.active {
+      background: var(--fg);
+      color: #08090b;
+    }
+
+    .input-row {
+      display: flex; gap: 8px; align-items: center;
+    }
+    .input-row input { flex: 1 1 auto; }
+
+    .panel-head-strong {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .12em;
+      color: var(--mute);
+      text-transform: uppercase;
+    }
+    .panel-body { padding: 18px; }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: var(--r-md);
+      background: var(--bg-1);
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  <div class="scroll-progress"></div>
+
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="logo" href="index.html" data-magnetic>
+        <span class="logo-mark" aria-hidden="true"></span>
+        <span>CURS3D <small>L1</small></span>
+      </a>
+      <nav class="nav-links" aria-label="primary">
+        <a href="docs.html">Docs</a>
+        <a href="stack.html">Stack</a>
+        <a href="run-validator.html"><span data-lang="en" class="lang-show">Run Validator</span><span data-lang="fr">Validateur</span></a>
+        <a href="governance.html"><span data-lang="en" class="lang-show">Governance</span><span data-lang="fr">Gouvernance</span></a>
+        <a href="tokenomics.html">Tokenomics</a>
+        <a href="whitepaper.html">Whitepaper</a>
+        <a href="examples.html"><span data-lang="en" class="lang-show">Examples</span><span data-lang="fr">Exemples</span></a>
+        <a href="wallet.html" class="active">Wallet</a>
+      </nav>
+      <div class="nav-actions">
+        <div class="lang-toggle" role="tablist" aria-label="Language">
+          <button data-lang-set="en" class="active" role="tab">EN</button>
+          <button data-lang-set="fr" role="tab">FR</button>
+        </div>
+        <a class="btn" href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer" data-magnetic>
+          <span data-lang="en" class="lang-show">Explorer</span>
+          <span data-lang="fr">Explorateur</span>
+          <span class="arrow">→</span>
+        </a>
+        <a class="btn btn-primary" href="run-validator.html" data-magnetic>
+          <span data-lang="en" class="lang-show">Run a node</span>
+          <span data-lang="fr">Lancer un nœud</span>
+          <span class="arrow">→</span>
+        </a>
+        <button class="nav-burger" aria-label="Menu"><span></span></button>
+      </div>
+    </div>
+  </header>
+
+  <div class="statusbar">
+    <div class="wrap statusbar-inner">
+      <span class="status-item">
+        <span class="status-dot"></span>
+        <span data-lang="en" class="lang-show">TESTNET</span>
+        <span data-lang="fr">TESTNET</span>
+        <b data-live-source>SIM</b>
+      </span>
+      <span class="status-item">BLOCK <b data-stat="block">—</b></span>
+      <span class="status-item">EPOCH <b data-stat="epoch">—</b></span>
+      <span class="status-item">VALIDATORS <b data-stat="validators">—</b></span>
+      <span class="statusbar-ticker"><span class="t-dyn">WALLET // KEYS NEVER LEAVE THE BROWSER</span></span>
+    </div>
+  </div>
+
+  <main>
+    <section class="page-hero">
+      <div class="wrap">
+        <span class="eyebrow">Wallet</span>
+        <h1>
+          <span data-lang="en" class="lang-show">Your CURS3D <em>wallet</em>, in your browser.</span>
+          <span data-lang="fr">Votre <em>wallet</em> CURS3D, dans votre navigateur.</span>
+        </h1>
+        <p class="lede">
+          <span data-lang="en" class="lang-show">Keys are generated locally, encrypted with your password (Argon2id + AES-256-GCM) and stored only in your browser. The private key never leaves the device. Signing happens on-device against the post-quantum Dilithium-L5 keypair.</span>
+          <span data-lang="fr">Les clés sont générées localement, chiffrées avec votre mot de passe (Argon2id + AES-256-GCM) et stockées uniquement dans le navigateur. La clé privée ne quitte jamais l'appareil. La signature s'effectue sur place avec la paire de clés post-quantique Dilithium-L5.</span>
+        </p>
+      </div>
+    </section>
+
+    <section class="section block">
+      <div class="wrap">
+        <div class="wallet-shell">
+
+          <!-- Banners (insecure connection / WASM read-only / status messages) -->
+          <div id="walletBanners" class="wallet-banner-stack"></div>
+
+          <!-- ============= LOCKED STATE ============= -->
+          <div id="lockedView" class="wallet-locked-grid" style="display:none;">
+
+            <div class="wallet-card">
+              <h2>
+                <span data-lang="en" class="lang-show">Create new wallet</span>
+                <span data-lang="fr">Créer un nouveau wallet</span>
+              </h2>
+              <p>
+                <span data-lang="en" class="lang-show">Generate a fresh Dilithium-L5 keypair locally. Choose a strong password — it encrypts your private key on this device.</span>
+                <span data-lang="fr">Générez une nouvelle paire de clés Dilithium-L5 localement. Choisissez un mot de passe robuste — il chiffre votre clé privée sur cet appareil.</span>
+              </p>
+
+              <div class="callout danger">
+                <p><strong><span data-lang="en" class="lang-show">Save the backup file.</span><span data-lang="fr">Sauvegardez le fichier de backup.</span></strong>
+                  <span data-lang="en" class="lang-show"> We cannot recover your wallet from your password alone. If you lose both, your funds are gone forever.</span>
+                  <span data-lang="fr"> Nous ne pouvons pas récupérer votre wallet à partir du mot de passe seul. Si vous perdez les deux, vos fonds sont perdus pour toujours.</span></p>
+              </div>
+
+              <form id="createForm" autocomplete="off" novalidate>
+                <div class="field">
+                  <label for="createPwd1"><span data-lang="en" class="lang-show">Password</span><span data-lang="fr">Mot de passe</span></label>
+                  <input id="createPwd1" type="password" autocomplete="new-password" minlength="8" required />
+                </div>
+                <div class="field" style="margin-top:12px;">
+                  <label for="createPwd2"><span data-lang="en" class="lang-show">Repeat password</span><span data-lang="fr">Confirmer</span></label>
+                  <input id="createPwd2" type="password" autocomplete="new-password" minlength="8" required />
+                </div>
+                <div id="createErr" class="err" style="margin-top:10px;"></div>
+                <button type="submit" id="createBtn" class="btn btn-primary" style="margin-top:14px;" data-magnetic>
+                  <span data-lang="en" class="lang-show">Generate &amp; download backup</span>
+                  <span data-lang="fr">Générer &amp; télécharger le backup</span>
+                  <span class="arrow">→</span>
+                </button>
+              </form>
+            </div>
+
+            <div class="wallet-card">
+              <h2>
+                <span data-lang="en" class="lang-show">Import existing</span>
+                <span data-lang="fr">Importer un wallet</span>
+              </h2>
+              <p>
+                <span data-lang="en" class="lang-show">Paste your encrypted wallet JSON or upload the backup file. Enter the password used to encrypt it.</span>
+                <span data-lang="fr">Collez votre JSON de wallet chiffré ou téléversez le backup. Entrez le mot de passe utilisé pour le chiffrer.</span>
+              </p>
+
+              <form id="importForm" autocomplete="off" novalidate>
+                <div class="field">
+                  <label for="importJson"><span data-lang="en" class="lang-show">Encrypted JSON</span><span data-lang="fr">JSON chiffré</span></label>
+                  <textarea id="importJson" spellcheck="false" placeholder='{"version":1,"address":"CUR…", …}'></textarea>
+                </div>
+                <div class="field" style="margin-top:10px;">
+                  <label for="importFile"><span data-lang="en" class="lang-show">…or upload file</span><span data-lang="fr">…ou choisir un fichier</span></label>
+                  <input id="importFile" type="file" accept="application/json,.json" />
+                </div>
+                <div class="field" style="margin-top:10px;">
+                  <label for="importPwd"><span data-lang="en" class="lang-show">Password</span><span data-lang="fr">Mot de passe</span></label>
+                  <input id="importPwd" type="password" autocomplete="current-password" required />
+                </div>
+                <div id="importErr" class="err" style="margin-top:10px;"></div>
+                <button type="submit" id="importBtn" class="btn" style="margin-top:14px;" data-magnetic>
+                  <span data-lang="en" class="lang-show">Unlock &amp; save</span>
+                  <span data-lang="fr">Déverrouiller &amp; sauver</span>
+                  <span class="arrow">→</span>
+                </button>
+              </form>
+            </div>
+
+            <!-- Unlock existing local wallet -->
+            <div id="unlockCard" class="wallet-card" style="grid-column: 1 / -1; display:none;">
+              <h2>
+                <span data-lang="en" class="lang-show">Unlock saved wallet</span>
+                <span data-lang="fr">Déverrouiller le wallet sauvegardé</span>
+              </h2>
+              <p>
+                <span data-lang="en" class="lang-show">A wallet is already saved in this browser for address </span>
+                <span data-lang="fr">Un wallet est déjà sauvegardé dans ce navigateur pour l'adresse </span>
+                <code id="unlockAddr"></code>.
+              </p>
+              <form id="unlockForm" autocomplete="off" novalidate>
+                <div class="field">
+                  <label for="unlockPwd"><span data-lang="en" class="lang-show">Password</span><span data-lang="fr">Mot de passe</span></label>
+                  <input id="unlockPwd" type="password" autocomplete="current-password" required />
+                </div>
+                <div id="unlockErr" class="err" style="margin-top:10px;"></div>
+                <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
+                  <button type="submit" id="unlockBtn" class="btn btn-primary" data-magnetic>
+                    <span data-lang="en" class="lang-show">Unlock</span>
+                    <span data-lang="fr">Déverrouiller</span>
+                    <span class="arrow">→</span>
+                  </button>
+                  <button type="button" id="forgetBtn" class="pill-btn danger">
+                    <span data-lang="en" class="lang-show">Delete saved wallet</span>
+                    <span data-lang="fr">Supprimer le wallet sauvegardé</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- ============= READ-ONLY (WASM unavailable) ============= -->
+          <div id="readonlyView" class="panel" style="display:none;">
+            <div class="panel-head-strong">
+              <span data-lang="en" class="lang-show">Read-only — view any address</span>
+              <span data-lang="fr">Lecture seule — consulter une adresse</span>
+            </div>
+            <div class="panel-body">
+              <p style="color:var(--fg-1); font-size:14px; margin-bottom:14px;">
+                <span data-lang="en" class="lang-show">The signing module didn't load. You can still inspect any CURS3D address — balance, nonce and history.</span>
+                <span data-lang="fr">Le module de signature n'a pas pu se charger. Vous pouvez tout de même inspecter n'importe quelle adresse CURS3D — solde, nonce et historique.</span>
+              </p>
+              <form id="readonlyForm" autocomplete="off" novalidate>
+                <div class="input-row">
+                  <input id="readonlyAddr" type="text" spellcheck="false" autocomplete="off" placeholder="CUR…" />
+                  <button type="submit" class="btn">
+                    <span data-lang="en" class="lang-show">View</span>
+                    <span data-lang="fr">Voir</span>
+                  </button>
+                </div>
+                <div id="readonlyErr" class="err" style="margin-top:8px;"></div>
+              </form>
+            </div>
+          </div>
+
+          <!-- ============= UNLOCKED STATE ============= -->
+          <div id="unlockedView" class="wallet-unlocked-stack" style="display:none;">
+
+            <!-- Address card -->
+            <div class="panel">
+              <div class="panel-head-strong">
+                <span data-lang="en" class="lang-show">Your address</span>
+                <span data-lang="fr">Votre adresse</span>
+              </div>
+              <div class="panel-body">
+                <div class="addr-display">
+                  <span class="addr-text" id="addrText">—</span>
+                  <span class="addr-display-actions">
+                    <button class="pill-btn" id="copyAddrBtn"><span data-lang="en" class="lang-show">Copy</span><span data-lang="fr">Copier</span></button>
+                    <button class="pill-btn" id="qrBtn">QR</button>
+                    <a id="explorerLink" class="pill-btn" target="_blank" rel="noopener noreferrer">
+                      <span data-lang="en" class="lang-show">Explorer</span>
+                      <span data-lang="fr">Explorer</span>
+                      ↗
+                    </a>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Balance card -->
+            <div class="panel">
+              <div class="panel-head-strong">
+                <span><span data-lang="en" class="lang-show">Balance</span><span data-lang="fr">Solde</span></span>
+                <button id="refreshBalanceBtn" class="pill-btn">
+                  <span data-lang="en" class="lang-show">Refresh</span>
+                  <span data-lang="fr">Rafraîchir</span>
+                </button>
+              </div>
+              <div class="panel-body">
+                <div class="balance-grid">
+                  <div class="balance-cell">
+                    <span class="balance-label"><span data-lang="en" class="lang-show">Liquid</span><span data-lang="fr">Liquide</span></span>
+                    <span class="balance-value cyan" id="balLiquid"><span class="skel"></span></span>
+                    <span class="balance-sub" id="balLiquidMicro">—</span>
+                  </div>
+                  <div class="balance-cell">
+                    <span class="balance-label"><span data-lang="en" class="lang-show">Staked</span><span data-lang="fr">En stake</span></span>
+                    <span class="balance-value" id="balStaked"><span class="skel"></span></span>
+                    <span class="balance-sub" id="balStakedMicro">—</span>
+                  </div>
+                  <div class="balance-cell">
+                    <span class="balance-label"><span data-lang="en" class="lang-show">Pending unstake</span><span data-lang="fr">Unstake en attente</span></span>
+                    <span class="balance-value" id="balPendingUnstake"><span class="skel"></span></span>
+                    <span class="balance-sub" id="balPendingUnstakeMicro">—</span>
+                  </div>
+                  <div class="balance-cell">
+                    <span class="balance-label">Nonce</span>
+                    <span class="balance-value" id="balNonce"><span class="skel"></span></span>
+                    <span class="balance-sub" id="balValidatorState">—</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Send tx card -->
+            <div class="panel" id="sendPanel">
+              <div class="panel-head-strong">
+                <span><span data-lang="en" class="lang-show">Send transaction</span><span data-lang="fr">Envoyer une transaction</span></span>
+                <span class="tx-type-select" role="tablist">
+                  <button type="button" data-txtype="transfer" class="active">Transfer</button>
+                  <button type="button" data-txtype="stake">Stake</button>
+                  <button type="button" data-txtype="unstake">Unstake</button>
+                </span>
+              </div>
+              <div class="panel-body">
+                <form id="sendForm" autocomplete="off" novalidate>
+                  <div class="send-grid">
+                    <div class="field" id="sendToField">
+                      <label for="sendTo"><span data-lang="en" class="lang-show">Recipient address</span><span data-lang="fr">Adresse destinataire</span></label>
+                      <input id="sendTo" type="text" spellcheck="false" autocomplete="off" placeholder="CUR…" />
+                    </div>
+                    <div class="field">
+                      <label for="sendAmount"><span data-lang="en" class="lang-show">Amount (CUR)</span><span data-lang="fr">Montant (CUR)</span></label>
+                      <input id="sendAmount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.000000" />
+                    </div>
+                    <div class="field">
+                      <label for="sendGas"><span data-lang="en" class="lang-show">Gas limit</span><span data-lang="fr">Gas limit</span></label>
+                      <input id="sendGas" type="number" min="21000" step="1" value="21000" />
+                    </div>
+                    <div class="field">
+                      <label for="sendFee"><span data-lang="en" class="lang-show">Fee (microtokens)</span><span data-lang="fr">Frais (microtokens)</span></label>
+                      <input id="sendFee" type="number" min="0" step="1" value="21000" />
+                    </div>
+                  </div>
+
+                  <div class="send-summary" style="margin-top:14px;">
+                    <span><span data-lang="en" class="lang-show">Estimated fee</span><span data-lang="fr">Frais estimés</span></span>
+                    <b id="estFee">—</b>
+                    <span><span data-lang="en" class="lang-show">Total deducted</span><span data-lang="fr">Total débité</span></span>
+                    <b id="estTotal">—</b>
+                    <span>Nonce</span>
+                    <b id="estNonce">—</b>
+                  </div>
+
+                  <div id="sendErr" class="err" style="margin-top:10px;"></div>
+                  <div id="sendOk" class="ok" style="margin-top:10px;"></div>
+
+                  <button type="submit" id="sendBtn" class="btn btn-primary" style="margin-top:14px;" data-magnetic>
+                    <span data-lang="en" class="lang-show">Sign &amp; send</span>
+                    <span data-lang="fr">Signer &amp; envoyer</span>
+                    <span class="arrow">→</span>
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            <!-- Tx history -->
+            <div class="panel">
+              <div class="panel-head-strong">
+                <span><span data-lang="en" class="lang-show">Transaction history</span><span data-lang="fr">Historique des transactions</span></span>
+                <button id="refreshHistoryBtn" class="pill-btn">
+                  <span data-lang="en" class="lang-show">Refresh</span>
+                  <span data-lang="fr">Rafraîchir</span>
+                </button>
+              </div>
+              <div class="panel-body">
+                <table class="data-table" id="historyTable">
+                  <thead>
+                    <tr>
+                      <th>Hash</th>
+                      <th><span data-lang="en" class="lang-show">Kind</span><span data-lang="fr">Type</span></th>
+                      <th><span data-lang="en" class="lang-show">Counterparty</span><span data-lang="fr">Contrepartie</span></th>
+                      <th><span data-lang="en" class="lang-show">Amount</span><span data-lang="fr">Montant</span></th>
+                      <th><span data-lang="en" class="lang-show">Status</span><span data-lang="fr">Statut</span></th>
+                      <th><span data-lang="en" class="lang-show">When</span><span data-lang="fr">Quand</span></th>
+                    </tr>
+                  </thead>
+                  <tbody id="historyBody">
+                    <tr><td colspan="6" class="history-empty"><span class="skel" style="width:120px;"></span></td></tr>
+                  </tbody>
+                </table>
+                <div class="history-pager">
+                  <button id="historyPrev" class="pill-btn">←</button>
+                  <span id="historyPageInfo">—</span>
+                  <button id="historyNext" class="pill-btn">→</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Footer actions -->
+            <div class="wallet-actions-row" id="walletActionsRow">
+              <button id="exportBtn" class="pill-btn">
+                <span data-lang="en" class="lang-show">Export wallet</span>
+                <span data-lang="fr">Exporter le wallet</span>
+              </button>
+              <button id="lockBtn" class="pill-btn">
+                <span data-lang="en" class="lang-show">Lock wallet</span>
+                <span data-lang="fr">Verrouiller</span>
+              </button>
+              <span class="spacer"></span>
+              <button id="deleteBtn" class="pill-btn danger">
+                <span data-lang="en" class="lang-show">Delete wallet (this device)</span>
+                <span data-lang="fr">Supprimer le wallet (cet appareil)</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- QR modal -->
+  <div id="qrModal" class="modal-backdrop" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h3><span data-lang="en" class="lang-show">Receive CUR</span><span data-lang="fr">Recevoir des CUR</span></h3>
+      <div id="qrCanvas"></div>
+      <div class="addr-text" id="qrAddrText">—</div>
+      <button id="qrCloseBtn" class="pill-btn">
+        <span data-lang="en" class="lang-show">Close</span>
+        <span data-lang="fr">Fermer</span>
+      </button>
+    </div>
+  </div>
+
+  <footer style="border-top:1px solid var(--line); padding: 60px 0 40px; margin-top: 80px;">
+    <div class="wrap">
+      <div style="display:grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 32px; margin-bottom: 40px;">
+        <div>
+          <a class="logo" href="index.html" style="margin-bottom:18px;">
+            <span class="logo-mark" aria-hidden="true"></span>
+            <span>CURS3D <small>L1</small></span>
+          </a>
+          <p style="color:var(--fg-1); font-size:14px; max-width:36ch; margin-top:14px;">
+            <span data-lang="en" class="lang-show">A post-quantum Layer 1 blockchain. Conservative cryptography, BFT proof-of-stake, WASM execution. Built in the open.</span>
+            <span data-lang="fr">Une blockchain Layer 1 post-quantique. Cryptographie conservatrice, proof-of-stake BFT, exécution WASM. Construite à découvert.</span>
+          </p>
+        </div>
+        <div>
+          <h4 style="font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.14em; text-transform:uppercase; margin-bottom:14px;">Protocol</h4>
+          <ul style="list-style:none; display:flex; flex-direction:column; gap:8px; font-size:13px;">
+            <li><a href="stack.html" style="color:var(--fg-1);">Stack</a></li>
+            <li><a href="docs.html" style="color:var(--fg-1);">Documentation</a></li>
+            <li><a href="whitepaper.html" style="color:var(--fg-1);">Whitepaper</a></li>
+            <li><a href="tokenomics.html" style="color:var(--fg-1);">Tokenomics</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 style="font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.14em; text-transform:uppercase; margin-bottom:14px;">Network</h4>
+          <ul style="list-style:none; display:flex; flex-direction:column; gap:8px; font-size:13px;">
+            <li><a href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer" style="color:var(--fg-1);">Explorer</a></li>
+            <li><a href="run-validator.html" style="color:var(--fg-1);">Run a validator</a></li>
+            <li><a href="faucet.html" style="color:var(--fg-1);">Faucet</a></li>
+            <li><a href="examples.html" style="color:var(--fg-1);">Examples</a></li>
+            <li><a href="wallet.html" style="color:var(--fg-1);">Wallet</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 style="font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.14em; text-transform:uppercase; margin-bottom:14px;">Project</h4>
+          <ul style="list-style:none; display:flex; flex-direction:column; gap:8px; font-size:13px;">
+            <li><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener noreferrer" style="color:var(--fg-1);">GitHub</a></li>
+            <li><a href="governance.html" style="color:var(--fg-1);">Governance</a></li>
+          </ul>
+        </div>
+      </div>
+      <div style="display:flex; justify-content:space-between; padding-top:24px; border-top:1px solid var(--line); font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.08em;">
+        <span>© 2026 CURS3D PROTOCOL · APACHE-2.0</span>
+        <span>CHAIN-ID <b style="color:var(--fg)">curs3d-public-testnet</b></span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="landing.js?v=5"></script>
+  <!-- Bridge: keep `data-current-lang` in sync with the landing.js EN/FR toggle. -->
+  <script>
+    (function () {
+      function syncLang() {
+        var lang = document.documentElement.getAttribute('lang') || 'en';
+        document.documentElement.setAttribute('data-current-lang', lang);
+      }
+      syncLang();
+      document.addEventListener('click', function (e) {
+        var t = e.target.closest && e.target.closest('[data-lang-set]');
+        if (t) setTimeout(syncLang, 0);
+      });
+    })();
+  </script>
+  <!-- QR code library (small, dependency-free, MIT). Pinned version. -->
+  <script src="https://unpkg.com/qrcode@1.5.4/build/qrcode.min.js" defer></script>
+  <!-- Wallet logic. Type=module so we can `import()` the WASM bundle. -->
+  <script type="module" src="wallet.js?v=1"></script>
+</body>
+</html>
