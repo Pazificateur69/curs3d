@@ -24,14 +24,18 @@ Derniere mise a jour: **2026-05-05 (apres-midi — hardfork v5 deploye + node3 I
        Docker stack: prometheus + grafana + uptime-kuma + node-exporter
 ```
 
-- **3 validateurs** depuis le 2026-05-05 (ajout node3 IONOS Berlin x86_64).
-  Le scheduling slot-leader deterministe (`343a7a1`) elimine les forks
-  multi-validateurs. La finalite progresse a la meme hauteur que le tip.
-  L'activation dynamique de validateur est supportee : node3 a stake post-genesis,
-  active a l'epoch suivante (cf. section "Ajout de validateur post-genesis").
+- **3 validateurs ACTIFS** depuis le 2026-05-05 (ajout node3 IONOS Berlin x86_64).
+  Chaque validateur stake 50 000 CUR (33.3% chacun). Le scheduling slot-leader
+  deterministe (`343a7a1`) elimine les forks multi-validateurs. L'activation
+  dynamique de validateur est supportee : node3 a stake post-genesis, active a
+  l'epoch suivante (cf. section "Ajout de validateur post-genesis").
+- Le testnet a ete REDEMARRE le 2026-05-05 lors du bump wasmer 5 -> 7
+  (fix __rust_probestack sur x86_64). La chain DB a ete wipee sur node1+node2
+  (les addresses validateurs restent identiques, seuls les blocs >0 ont change).
+  Genesis hash inchange : f7e9f8e6c290ce2681b66f6a8116090983e2c908629edbef2a3841c9e1e22cc6.
 - node4 : reporte (capacite ARM Oracle a re-evaluer plus tard, ou autre provider).
-- Diversification geo + provider : node1+node2 sur Oracle ARM Marseille,
-  node3 sur IONOS x86_64 Berlin. Reduit le risque de panne provider/region.
+- Diversification geo + provider + arch : node1+node2 sur Oracle ARM Marseille,
+  node3 sur IONOS x86_64 Berlin. Reduit le risque de panne provider/region/arch.
 
 ## Protocol v5 (current)
 
@@ -66,7 +70,7 @@ incompatibles entre `pqcrypto-dilithium` et `ml-dsa`).
 |------|-----|------|------------|------|-----|
 | node1 | 144.24.192.222 | Bootstrap + API + site + status | `CURA770bE29d4C0066263855Ea5ADE6387d503f1Cea` | **actif** | `ssh curs3d-node1` |
 | node2 | 84.235.238.213 | Validateur | `CURd5E78C78FF164fb4eAC641d5a2802134B8A2D836` | **actif** | `ssh curs3d-node2` |
-| node3 | 31.70.70.62 | Validateur (IONOS Berlin x86_64) | _genere lors du setup, voir section dediee_ | **synchro/activation** | `ssh curs3d-node3` |
+| node3 | 31.70.70.62 | Validateur (IONOS Berlin x86_64) | `CUR367880f848aee1Bd2D934107A2fF6743B4AaA3D7` | **actif** (50 000 CUR staked, 33.3% du total, depuis 2026-05-05) | `ssh curs3d-node3` |
 | Faucet | — | Wallet faucet | _regen v5, voir `/etc/curs3d/faucet.json` sur node1_ | — | — |
 
 Note : les addresses des validateurs ont change au hardfork v5 (les cles
@@ -149,14 +153,12 @@ Protocol version: `v5`
 > a cause des 2 GB de RAM + swap. Privilegier les builds incrementaux
 > (`cargo build --release` apres un `git pull`).
 
-> **Linker quirk node3** : nightly recent + `wasmer_vm` declenchent une erreur
-> `rust-lld: undefined symbol __rust_probestack` sur x86_64. Workaround applique
-> dans `~/.cargo/config.toml` cote ubuntu sur node3 :
-> ```toml
-> [target.x86_64-unknown-linux-gnu]
-> linker = "cc"
-> rustflags = ["-C", "link-arg=-fuse-ld=bfd"]
-> ```
+> **Linker quirk historique x86_64** (resolu le 2026-05-05) : wasmer 5.0.6 +
+> rustc recent declenchait `rust-lld: undefined symbol __rust_probestack`
+> sur x86_64. Resolu en bumpant wasmer 5 -> 7.1.0 (commit `759d600`). Migration
+> API mineure : 6 items deplaces vers `wasmer::sys::*`, et wasmparser 0.246
+> (bundled dans wasmer 7) yields `Imports<'a>` (group compact) au lieu de
+> `Import` direct. Tous les nodes (ARM + x86_64) tournent en wasmer 7.
 
 ## Ports (Oracle Security List + ufw)
 

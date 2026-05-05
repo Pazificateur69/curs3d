@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Context for CURS3D
 
-State as of: **2026-05-05** (protocol v5 + 3-validator testnet, node3 IONOS Berlin x86_64 added 2026-05-05)
+State as of: **2026-05-05** (protocol v5 + 3-validator testnet, node3 IONOS Berlin x86_64 added 2026-05-05, wasmer 5 -> 7 bump for x86_64 linker fix on the same day)
 
 ## What is this project?
 
@@ -55,7 +55,8 @@ signatures produced in the browser verify on the node byte-for-byte.
 - **Validator (node1, CUR EIP-55):** `CURA770bE29d4C0066263855Ea5ADE6387d503f1Cea`
 - **Validator (node2, raw 20B):** `d5e78c78ff164fb4eac641d5a2802134b8a2d836`
 - **Validator (node2, CUR EIP-55):** `CURd5E78C78FF164fb4eAC641d5a2802134B8A2D836`
-- **Validator (node3):** generated on the VPS — see `/etc/curs3d/validator.json` on `ssh curs3d-node3`
+- **Validator (node3, raw 20B):** `367880f848aee1bd2d934107a2ff6743b4aaa3d7`
+- **Validator (node3, CUR EIP-55):** `CUR367880f848aee1Bd2D934107A2fF6743B4AaA3D7` (50 000 CUR staked, 33.3% du total, actif depuis 2026-05-05)
 - **Faucet:** regenerated under v5 — see `/etc/curs3d/faucet.json` on `ssh curs3d-node1` (100 CUR, 1 h cooldown per address+IP, captcha-gated, 2 000 000 CUR initial alloc)
 - **Bootnode multiaddr:** `/dns4/api.curs3d.fr/tcp/4337/p2p/12D3KooWLttF4EJ1SjiLEiXvJ1yqmJawLafv47r55T5xzSt1GHn2`
 
@@ -374,6 +375,7 @@ Run a specific test: `RUSTUP_TOOLCHAIN=nightly cargo test test_name --lib`
 
 ## Recent commits (newest first)
 
+- `759d600` vm: bump wasmer 5 -> 7.1.0 (fixes __rust_probestack linker on x86_64)
 - `b9c809d` truth-pass-3 + contracts portfolio + investor branding
 - `59694cb` crypto: migrate Dilithium-L5 (round 3) → ML-DSA-87 (FIPS-204 final) — **v5 hardfork**
 - `3b47480` fix(network): resolve RequestBlocks/BlockResponse sync timeout
@@ -400,7 +402,7 @@ Run a specific test: `RUSTUP_TOOLCHAIN=nightly cargo test test_name --lib`
 - `sled` — Embedded key-value database
 - `libp2p` 0.54 — P2P networking (Gossipsub + mDNS + noise + yamux)
 - `hyper` 1.x — HTTP server
-- `wasmer` 5 + `wasmer-types` 5 — Native CURS3D WASM VM with Cranelift
+- `wasmer` 7 + `wasmer-types` 7 — Native CURS3D WASM VM with Cranelift (bumped from 5 on 2026-05-05 to fix `__rust_probestack` linker error on x86_64; ARM was unaffected)
 - `revm` 38 — Ethereum VM (Solidity / MetaMask), v4 hardfork
 - `secp256k1` + `rlp` — EVM transaction recovery and decoding
 - `aes-gcm` + `argon2` — Wallet encryption
