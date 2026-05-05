@@ -838,6 +838,12 @@ async fn handle_request(
                 .get()
                 .map(|start| start.elapsed().as_secs())
                 .unwrap_or_default();
+            let latest_ts = chain.latest_block().header.timestamp;
+            let block_age = chrono::Utc::now().timestamp().saturating_sub(latest_ts).max(0) as u64;
+            let proto_version = chain.protocol_version_at_height(chain.height());
+            let head = chain.height();
+            let final_height = chain.finalized_height();
+            let finality_lag = head.saturating_sub(final_height);
             let body = format!(
                 concat!(
                     "# TYPE curs3d_uptime_seconds counter\n",
@@ -846,6 +852,15 @@ async fn handle_request(
                     "curs3d_chain_height {}\n",
                     "# TYPE curs3d_finalized_height gauge\n",
                     "curs3d_finalized_height {}\n",
+                    "# TYPE curs3d_finality_lag gauge\n",
+                    "# Head height minus finalized height. Healthy = small (< 5 typically).\n",
+                    "curs3d_finality_lag {}\n",
+                    "# TYPE curs3d_latest_block_age_seconds gauge\n",
+                    "# Wall-clock seconds since the latest block's timestamp. Stall alerts \n",
+                    "# fire when this stays above ~30s (chain produces every 10s).\n",
+                    "curs3d_latest_block_age_seconds {}\n",
+                    "# TYPE curs3d_protocol_version gauge\n",
+                    "curs3d_protocol_version {}\n",
                     "# TYPE curs3d_pending_transactions gauge\n",
                     "curs3d_pending_transactions {}\n",
                     "# TYPE curs3d_active_validators gauge\n",
@@ -864,8 +879,11 @@ async fn handle_request(
                     "curs3d_base_fee_per_gas {}\n",
                 ),
                 uptime,
-                chain.height(),
-                chain.finalized_height(),
+                head,
+                final_height,
+                finality_lag,
+                block_age,
+                proto_version,
                 chain.pending_transactions.len(),
                 chain.active_validator_count(),
                 runtime.peer_count,
