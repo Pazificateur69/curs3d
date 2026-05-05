@@ -2,6 +2,24 @@
 
 Date: 2026-05-05
 Status: living checklist for recruiter/investor-grade readiness.
+Soak in progress: launched 2026-05-05T23:02Z, monitor PID `~/curs3d-soak/soak.pid`,
+alerts log `~/curs3d-soak/soak.alerts`. **First soak hour caught a real
+production incident — see "Active blockers" below.**
+
+## Active blockers (do not declare 10/10 until both resolved)
+
+1. **Chain-mutex deadlock under load (node1)** — every Rust worker thread
+   parks in `futex_wait` while the libp2p IO thread idles in `epoll_wait`.
+   API hangs indefinitely; systemd still reports `active`. Need a stack
+   trace (`gdb -p <pid>` or `RUST_LOG=tokio=trace`) during the hang to
+   identify the never-resolving `.await` under `chain.lock()`.
+2. **Mesh topology relies on node1 as relay** — node2 and node3 only have
+   node1 as `--bootnode`. When node1 starves, libp2p gossipsub stops
+   forwarding between node2 and node3 → BACKUP_LEADER_TIMEOUT (30s) eventually
+   elapses → competing block production → fork at h=341+ on 2026-05-05.
+   Fix: each systemd unit must list the OTHER two as bootnodes (peer IDs are
+   stable now). See `22-soak-runbook.md` "Real incident log" for the exact
+   commands.
 
 ## Priority 1 — Stability, CI, Deployment
 
@@ -9,13 +27,17 @@ Status: living checklist for recruiter/investor-grade readiness.
 
 - [x] Restart prevention: validators pause production during startup, sync, and peer-mesh settle windows.
 - [x] Boot fork prevention: block #1 is primary-leader-only at consensus validation level, so genesis timestamp `0` cannot unlock every backup.
+- [x] Backup-leader timeout: bumped 12s → 30s (3× slot duration) to swallow gossip latency on the small mesh. Without this, node2 and node3 both produced #270 at different hashes 11s apart on 2026-05-05.
+- [x] Backup-rank guard: refuse rank>0 production when peers=0 (an isolated node cannot have observed the primary, so stepping in guarantees a fork).
 - [x] Late join catch-up: `RequestBlocks` accepts stale-but-contiguous batches and cold-sync tests cover 30 and 100 blocks.
 - [x] Fork recovery without wipe: snapshots may replace divergent non-finalized suffixes.
 - [x] Finality safety: snapshots still reject divergent finalized checkpoints.
 - [x] Temporary no peers: failed gossipsub broadcasts are queued and retried.
 - [x] Same-height divergent verified peer: node pauses production and requests snapshot.
 - [x] Higher verified peer tip: node pauses production and requests blocks/snapshot before producing.
-- [ ] Live soak: 24h, then 72h, with all public validators on same height/hash/finality and no operator wipe.
+- [ ] **Mesh resilience to single-node failure** — see Active blocker #2.
+- [ ] **Chain-mutex deadlock-free under sustained load** — see Active blocker #1.
+- [ ] Live soak: 24h, then 72h, with all public validators on same height/hash/finality and no operator wipe. *Soak monitor running; current run will fail on the active blockers above. Not a soak script bug — the soak is doing its job.*
 
 ### Monitoring
 

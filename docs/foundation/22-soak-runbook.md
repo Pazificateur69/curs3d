@@ -147,3 +147,78 @@ threshold windows.
 
 For the 10/10 gate, however, the canonical 72h soak must be **without** any
 binary upgrade in the middle. Plan upgrades for between soak runs.
+
+## Real incident log — 2026-05-05
+
+The first 72h soak attempt was launched at `2026-05-05T23:02:34Z` and
+**immediately surfaced two pre-existing issues** that no static test had
+found. Logged here so the next operator does not waste hours rediscovering
+them.
+
+### Symptom 1 — `API_DROP` on node1, sustained
+```
+2026-05-05T21:02:34Z [API_DROP] curs3d-node1 /api/status unreachable
+```
+- `systemctl is-active curs3d` → `active`
+- Process at 0.0% CPU, 12s of accumulated CPU time after 1h+ of running
+- All worker threads parked in `futex_wait` (`/proc/<pid>/task/*/stack`)
+- Only the libp2p IO thread in `epoll_wait` (idle, no events)
+
+**Diagnosis**: chain-mutex deadlock. Some async path acquired
+`chain.lock().await` and is awaiting on something that will never fire
+(channel receive, condvar, or another lock). All API tasks pile up
+behind the lock, never progress, libp2p sees no new state to gossip.
+
+**Fix**: needs a stack trace from `gdb -p <pid>` or
+`RUST_LOG=debug,tokio=trace` capture during a hang. Pending.
+
+### Symptom 2 — `DIVERGENCE` between node2 and node3 at h=341+
+```
+2026-05-05T21:02:36Z [DIVERGENCE] height=351:
+  curs3d-node2=b04bdcdf95f42d41138ba53b96799fbaecb82b63c0b89acd4531bb96d52b69c8
+  VS
+  curs3d-node3=9adc68fee3cbacc4ae41c0ef56c4aa8952bae0280e1666f4a74aed71a469dc38
+```
+Last finalized block on both nodes: h=340 hash `b8db70a3...` (agreed).
+
+Per-node logs:
+- node2 produced #341 at `20:29:14Z` (9s after parent → primary).
+- node3 produced #341 at `20:30:05Z` (60s after parent → rank-2 backup).
+
+The 51-second gap between productions is the smoking gun. With
+`BACKUP_LEADER_TIMEOUT_SECS = 30s` (already bumped from 12s for this
+exact class of issue), node3 only became eligible as backup *after* 30s.
+That is correct — the bug is that node3 did not receive node2's #341
+block during those 30s. Gossip propagation between node2 and node3
+silently failed.
+
+**Diagnosis**: the 3-node mesh relies on node1 as a relay. node2 and
+node3 only configure node1 as `--bootnode`; libp2p gossipsub forwards
+between them via node1's peer connection. When node1's consensus task
+deadlocked (Symptom 1), its gossipsub task was starved of CPU and
+stopped relaying. node2 and node3 partitioned. The
+BACKUP_LEADER_TIMEOUT eventually elapsed and node3 produced a
+competing block.
+
+**Fix**: each node's systemd unit must add the *other two* as
+`--bootnode`, not just node1. The peer IDs are now stable across
+restarts (the new wipe in `full-rollout.sh` preserves
+`/var/lib/curs3d/p2p_identity*`).
+
+```
+node1 PeerId: 12D3KooWLttF4EJ1SjiLEiXvJ1yqmJawLafv47r55T5xzSt1GHn2 (144.24.192.222)
+node2 PeerId: 12D3KooWCL7dNFN2xz8yM65HDnNJUWF28K5qAd6d5ACT5ZCL1pb8 (84.235.238.213)
+node3 PeerId: 12D3KooWPxvzCmTjDK4pn4E4gPnWdoVTr1wS8z3pdo7yM1oMZrGY (31.70.70.62)
+```
+
+Each unit needs the two other-node bootnodes appended to ExecStart, then
+`systemctl daemon-reload && systemctl restart curs3d`. After the change,
+verify with `soak-status.sh`: every node's `peer_count` should reach 2
+within ~30s of all 3 starting.
+
+### Lesson
+The soak monitor doing exactly what it was built for in under 60 seconds
+of runtime is the strongest evidence that this kind of observability has
+to be the *default* during testnet operations, not an afterthought. The
+pre-soak chain looked perfectly healthy in `/api/status` snapshots; the
+problem was only visible *across* nodes and *over time*.

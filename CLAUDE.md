@@ -1,6 +1,19 @@
 # CLAUDE.md — Project Context for CURS3D
 
-State as of: **2026-05-05** (software **v0.3.5** + consensus protocol **v5** + 3-validator testnet, node3 IONOS Berlin x86_64 added 2026-05-05, wasmer 5 -> 7 bump for x86_64 linker fix on the same day, Solidity portfolio deployed at chain-id 1800329576). **`v1.0` is reserved for the official mainnet launch — do not bump the software version just because the consensus protocol bumps.**
+State as of: **2026-05-05** (software **v0.3.5** + consensus protocol **v5** + 3-validator testnet, node3 IONOS Berlin x86_64 added 2026-05-05, wasmer 5 -> 7 bump for x86_64 linker fix on the same day, Solidity portfolio deployed at chain-id 1800329576, **BACKUP_LEADER_TIMEOUT 12s → 30s fix shipped late 2026-05-05 after parallel-fork incident at h=270**, **72h soak monitor running locally** since 2026-05-05 23:02 UTC writing to `~/curs3d-soak/`). **`v1.0` is reserved for the official mainnet launch — do not bump the software version just because the consensus protocol bumps.**
+
+## Open production incident (do not silently wipe — investigate first)
+
+The fresh chain went healthy through h~250 with finalized=height (lag=0) after the BACKUP_LEADER_TIMEOUT fix, then **forked again at h=341** between node2 (hash `b04bdcdf...`) and node3 (hash `9adc68fe...`). At the same time **node1's HTTP API hung indefinitely** while its systemd service stayed `active` — `/proc/<pid>/task/*/stack` showed every worker thread parked in `futex_wait`, indicating a chain-mutex deadlock under load.
+
+Working hypothesis (still to be verified by stack trace): node1 holds `chain.lock()` inside an async path that awaits on a mpsc channel or condition that never fires, starving the gossipsub task on node1 → mesh partitions because node2 and node3 only know about each other through node1 (no direct bootnode entry) → fork.
+
+Two real fixes are pending and **need explicit user authorization** because they touch shared infra:
+
+1. **Mesh topology**: each node's systemd unit should list the OTHER two as `--bootnode` so node2↔node3 has a direct path independent of node1. Peer IDs are stable now (preserved in `/var/lib/curs3d/p2p_identity*` across restarts).
+2. **Chain-mutex deadlock**: needs a stack trace or `RUST_LOG=debug,tokio=trace` capture during a hang to identify which await never resolves under chain.lock().
+
+Do not paper over by wiping. The soak log at `~/curs3d-soak/soak.alerts` is the authoritative incident record. Resume only after both fixes land and the soak shows ✓ SOAK PASSED.
 
 ## What is this project?
 

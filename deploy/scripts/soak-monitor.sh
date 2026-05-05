@@ -105,12 +105,15 @@ fi
 : > "$ALERTS_FILE"
 
 # ─── Per-node poll ───────────────────────────────────────────────────────
+# Note the `|| true`: any non-zero exit from ssh / curl is expected during a
+# soak (api drop, timeout, network blip) and must NOT propagate up under
+# `set -e`. Empty stdout signals "could not poll"; the caller treats that as
+# an API_DROP alert rather than a script-fatal error.
 poll_node() {
     local host="$1"
-    # Use SSH + curl on the node so we hit the local API even if nginx is down.
-    # Suppress all stderr; rely on jq -r '... // "ERR"' to surface failures.
     ssh -o ConnectTimeout=5 -o BatchMode=yes "$host" \
-        "curl -sf --max-time 4 http://127.0.0.1:8080/api/status 2>/dev/null" 2>/dev/null
+        "curl -sf --max-time 4 http://127.0.0.1:8080/api/status 2>/dev/null" \
+        2>/dev/null || true
 }
 
 parse_field() {
