@@ -23,11 +23,11 @@
 > The browser wallet UI is **write-capable** since the v5 hardfork: create or import a wallet, sign and send transactions, all from the browser via the embedded WASM crypto. The private key never leaves your device.
 > External security audit is **not yet started**. Do not use CURS3D for anything you cannot afford to lose.
 
-CURS3D is a **Layer 1 blockchain written from scratch in Rust**, designed to resist quantum computing attacks. It uses **NIST FIPS-204 ML-DSA-87** (final standardised version of CRYSTALS-Dilithium-L5) for native signatures, BFT Proof of Stake consensus with explicit 2/3 finality, deterministic stake-weighted slot-leader scheduling, an EIP-1559 dynamic fee market, and a **dual-VM execution layer**: a native WASM engine (Wasmer 5) and an Ethereum-compatible VM (revm 38) sharing the same state trie. Every native component is original — no fork of Ethereum, Cosmos, or Substrate.
+CURS3D is a **Layer 1 blockchain written from scratch in Rust**, designed to resist quantum computing attacks. It uses **NIST FIPS-204 ML-DSA-87** (final standardised version of CRYSTALS-Dilithium-L5) for native signatures, BFT Proof of Stake consensus with explicit 2/3 finality, deterministic stake-weighted slot-leader scheduling, an EIP-1559 dynamic fee market, and a **dual-VM execution layer**: a native WASM engine (Wasmer 7) and an Ethereum-compatible VM (revm 38) sharing the same state trie. Every native component is original — no fork of Ethereum, Cosmos, or Substrate.
 
 > **MetaMask works.** Point your wallet at `https://api.curs3d.fr/eth`, chain ID `1800329576`, and you can deploy Solidity, send ETH-style txs, sign with ethers.js / wagmi, and use Hardhat / Foundry against the live testnet. EVM transactions are signed with secp256k1 ECDSA (standard Ethereum) and accepted by design — that's how MetaMask compat works. Native CURS3D transactions (Stake / governance / native deploy) sign with ML-DSA-87 and go through `POST /api/tx/submit`. Both families produce blocks on the same chain.
 
-> **Status (2026-05-04 — protocol v5 live):** public testnet is live at https://curs3d.fr with **2 active validators** (node1 + node2 producing and finalizing every slot via the slot-leader). 173 tests pass (`cargo test --lib`), 0 clippy warnings, 0 unallowed `cargo audit` advisories. Browser wallet UI ([curs3d.fr/wallet](https://curs3d.fr/wallet)) signs ML-DSA-87 transactions natively via the WASM bundle.
+> **Status (2026-05-05 — protocol v5 live, 3-validator testnet):** public testnet is live at https://curs3d.fr with **3 active validators** running on **two architectures and two providers** (node1 + node2 on Oracle ARM Marseille, node3 on IONOS x86_64 Berlin) — each staking 50 000 CUR (33.3% of total stake). Slot-leader scheduling is deterministic and stake-weighted. 173 tests pass (`cargo test --lib`), 0 clippy warnings, 0 unallowed `cargo audit` advisories. Browser wallet UI ([curs3d.fr/wallet](https://curs3d.fr/wallet)) signs ML-DSA-87 transactions natively via the WASM bundle.
 
 ### MetaMask / Hardhat / Foundry network config
 
@@ -51,8 +51,8 @@ CURS3D is a **Layer 1 blockchain written from scratch in Rust**, designed to res
 | **Wallet encryption** | AES-256-GCM + Argon2 KDF (m=64MiB, t=3, p=4) |
 | **Consensus** | BFT Proof of Stake, 2/3 stake-weighted finality |
 | **Slot leader** | Deterministic stake-weighted, `sha3(height \|\| prev_hash) % cumulative_stake` |
-| **Native VM** | WASM (Wasmer 5 + Cranelift), per-instruction fuel metering |
-| **EVM** | revm 38, shares the same state trie as the native VM (v4 hardfork) |
+| **Native VM** | WASM (Wasmer 7 + Cranelift), per-instruction fuel metering |
+| **EVM** | revm 38, shares the same state trie as the native VM (added in v4 hardfork, current protocol is v5) |
 | **Fee market** | EIP-1559 dynamic base fee, priority fees, gas refunds |
 | **Fork choice** | Heaviest chain by cumulative proposer stake |
 | **Slashing** | Cryptographic equivocation proof, 33% penalty, 64-block jail |
@@ -131,9 +131,9 @@ The CURS3D public testnet is running and accessible:
 | **Chain ID (string)** | `curs3d-public-testnet` |
 | **Chain ID (EVM, decimal)** | `1800329576` |
 | **Chain ID (EVM, hex)** | `0x6b4ed968` |
-| **Genesis hash (v4)** | `daeb2e6ac802c182ab737d11211339a3d8c3a8da8f2dfd56595e319dbc938b23` |
-| **Protocol version** | `v4` (EVM + slot-leader) |
-| **Active validators** | 2 (node1 + node2) |
+| **Genesis hash (v5, regen 2026-05-05)** | `81420887fb59cd7c4837b2195bedbbb78291bd835e5b72162337f10d26f315d6` |
+| **Protocol version** | `v5` (ML-DSA-87 / FIPS-204 + EVM + slot-leader) |
+| **Active validators** | 3 (node1 ARM Marseille + node2 ARM Marseille + node3 x86_64 Berlin), each 33.3% stake |
 
 ```bash
 # Request testnet tokens
@@ -172,7 +172,7 @@ Use the deployment assets in [`deploy/`](deploy/):
 CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technically substantial. Here's what exists in the codebase today, all tested:
 
 - **BFT PoS consensus** with epoch-frozen validator sets, deterministic stake-weighted slot-leader, and 2/3 finality threshold
-- **Dual VM**: native WASM (Wasmer 5 + Cranelift, 11 host functions, instruction-level fuel) **and** Ethereum (revm 38, MetaMask / Solidity / Hardhat / Foundry) sharing the same state trie
+- **Dual VM**: native WASM (Wasmer 7 + Cranelift, 11 host functions, instruction-level fuel) **and** Ethereum (revm 38, MetaMask / Solidity / Hardhat / Foundry) sharing the same state trie
 - **EIP-1559 fee market** with dynamic base fee, separate max/priority fees, gas refunds, mempool pressure management
 - **14 transaction types**: native transfers/staking, native WASM contracts, CUR-20 token ops, governance, **EVM deploy / call** (last two appended at the end of the enum to preserve bincode discriminants)
 - **CUR-20 token standard**: deploy, transfer, approve, transferFrom with native registry
@@ -214,7 +214,7 @@ CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technicall
 
 ## Known Issues
 
-These are tracked in [`CLAUDE.md`](CLAUDE.md) and reproduced here so anyone running a node, building against the API, or evaluating CURS3D sees them up front. None block the public 2-validator testnet, but they do shape what is and isn't safe to rely on today.
+These are tracked in [`CLAUDE.md`](CLAUDE.md) and reproduced here so anyone running a node, building against the API, or evaluating CURS3D sees them up front. None block the public 3-validator testnet, but they do shape what is and isn't safe to rely on today.
 
 - **External security audit not yet performed.** Internal audit cycles (3-AI council 2026-04, Codex passes 2026-05) have closed many findings, but no third-party firm has reviewed the codebase. Treat this testnet accordingly.
 - **State-root divergence at epoch boundaries — fixed in `f461aa4`.** Root cause: epoch settlement applied at block-apply time but skipped at boot replay; identical helper now runs in both paths. Regression test added (`test_restart_across_epoch_boundary`).
@@ -246,8 +246,8 @@ src/
   storage/         sled DB (10 trees, schema v4, snapshots, migration)
   token/           CUR-20 token standard: deploy, transfer, approve, transferFrom
   vm/
-    mod.rs           Wasmer 5 WASM execution, host functions, fuel middleware (native CURS3D contracts)
-    evm.rs           revm 38 (Solidity / MetaMask) — v4 hardfork
+    mod.rs           Wasmer 7 WASM execution, host functions, fuel middleware (native CURS3D contracts; bumped from 5 to 7 on 2026-05-05 to fix x86_64 linker)
+    evm.rs           revm 38 (Solidity / MetaMask) — added in v4 hardfork
     gas.rs           Gas cost schedule
     state.rs         ContractState (code, storage, owner)
   wallet/          Encrypted wallet (AES-256-GCM + Argon2)
@@ -308,7 +308,7 @@ Auth: set `CURS3D_API_TOKEN` env var to require `Authorization: Bearer <token>` 
 
 ## Smart Contracts
 
-CURS3D runs WebAssembly contracts via Wasmer 5 with Cranelift. The VM injects fuel metering per instruction — contracts with unmetered loops are rejected at deploy time.
+CURS3D runs WebAssembly contracts via Wasmer 7 with Cranelift. The VM injects fuel metering per instruction — contracts with unmetered loops are rejected at deploy time.
 
 | Operation | Gas Cost |
 |-----------|----------|

@@ -30,9 +30,12 @@ Derniere mise a jour: **2026-05-05 (apres-midi — hardfork v5 deploye + node3 I
   dynamique de validateur est supportee : node3 a stake post-genesis, active a
   l'epoch suivante (cf. section "Ajout de validateur post-genesis").
 - Le testnet a ete REDEMARRE le 2026-05-05 lors du bump wasmer 5 -> 7
-  (fix __rust_probestack sur x86_64). La chain DB a ete wipee sur node1+node2
-  (les addresses validateurs restent identiques, seuls les blocs >0 ont change).
-  Genesis hash inchange : f7e9f8e6c290ce2681b66f6a8116090983e2c908629edbef2a3841c9e1e22cc6.
+  (fix __rust_probestack sur x86_64) PUIS regenere une seconde fois apres
+  un fork resolu en incluant les 3 validateurs directement dans le genesis
+  (sidesteppe le bug RequestBlocks pendant la catch-up). Wallets validateurs
+  inchanges (les keypairs ML-DSA-87 sont preservees), seul le genesis a evolue.
+  Nouveau genesis (chain block hash) : `81420887fb59cd7c4837b2195bedbbb78291bd835e5b72162337f10d26f315d6`.
+  Genesis JSON file SHA-256 : `702be65951ec6b29efb157fe96f8aba0baf14fc24bfab3926976d2b8e25ca1c1`.
 - node4 : reporte (capacite ARM Oracle a re-evaluer plus tard, ou autre provider).
 - Diversification geo + provider + arch : node1+node2 sur Oracle ARM Marseille,
   node3 sur IONOS x86_64 Berlin. Reduit le risque de panne provider/region/arch.
@@ -51,8 +54,9 @@ Le hardfork v5 (2026-04-30) migre la signature post-quantique :
 
 Le hardfork v4 (2026-05-04, conserve dans v5) ajoute :
 
-1. **EVM dispatch** (revm 38, alongside Wasmer 5) — Solidity / MetaMask /
-   Hardhat / Foundry. Endpoint `POST https://api.curs3d.fr/eth`.
+1. **EVM dispatch** (revm 38, alongside Wasmer — Wasmer 5 a l'epoque, bumped
+   a Wasmer 7 le 2026-05-05) — Solidity / MetaMask / Hardhat / Foundry.
+   Endpoint `POST https://api.curs3d.fr/eth`.
 2. **Slot-leader stake-weighted scheduling** dans `src/consensus/mod.rs`.
 3. **Transactions EVM-flavored** : RLP, secp256k1, recovery du sender,
    nouveaux variants `TransactionKind::DeployEvmContract` /
@@ -470,7 +474,7 @@ ssh curs3d-node3 "sudo install -m 644 /tmp/genesis.json /etc/curs3d/genesis.publ
 # Verifier hash identique :
 ssh curs3d-node1 "sudo sha256sum /etc/curs3d/genesis.public-testnet.json"
 ssh curs3d-node3 "sha256sum /etc/curs3d/genesis.public-testnet.json"
-# Doit afficher 165c5f9d2a77719ecada5937753465806d83429588df06f0f25cea5c274bbf4e
+# Doit afficher 702be65951ec6b29efb157fe96f8aba0baf14fc24bfab3926976d2b8e25ca1c1
 ```
 
 #### 5. Generer le wallet validateur SUR node3
