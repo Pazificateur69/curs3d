@@ -167,16 +167,30 @@ else
     # ARBITRATOR is read by the Solidity script via vm.envOr, so export it here.
     export ARBITRATOR="${ARBITRATOR:-}"
     # forge needs --legacy on chains that don't expose EIP-1559 properly.
+    # Tolerate nonce-race failures: forge sometimes loses sync on the last
+    # transactions (chain advances faster than forge polls), but the broadcast
+    # has already gone out. We treat the run as successful as long as the
+    # deployments JSON was written; the verify step below catches anything
+    # that didn't actually land on chain (eth_getCode + Token.minters).
+    set +e
     forge script script/DeployPortfolio.s.sol:DeployPortfolio \
         --rpc-url "$RPC_URL" \
         --broadcast --slow --legacy \
         --keystore "$KEYSTORE" \
         --password "$CURS3D_KEYSTORE_PASSWORD" \
-        --sender "$SENDER" \
-        || die "forge script failed (broadcasts/run-latest.json may have details)" 3
+        --sender "$SENDER"
+    FORGE_EXIT=$?
+    set -e
 
-    [ -f "$DEPLOY_FILE" ] || die "deploy script ran but $DEPLOY_FILE was not produced" 3
-    ok "All 7 contracts deployed; addresses written to $DEPLOY_FILE"
+    if [ ! -f "$DEPLOY_FILE" ]; then
+        die "forge script failed (exit $FORGE_EXIT) and $DEPLOY_FILE was not produced — check broadcasts/run-latest.json" 3
+    fi
+
+    if [ "$FORGE_EXIT" -ne 0 ]; then
+        warn "forge exited $FORGE_EXIT but addresses were written; verifying on-chain state below..."
+    else
+        ok "Forge broadcast finished cleanly; addresses written to $DEPLOY_FILE"
+    fi
 fi
 
 # ─── 5. Verify ───────────────────────────────────────────────────────────
@@ -208,18 +222,29 @@ verify_code Attestations  "$ATTESTATIONS"
 verify_code Vault         "$VAULT"
 verify_code Escrow        "$ESCROW"
 
-verify_minter() {
+ensure_minter() {
     local label="$1" addr="$2"
     local result
     result="$(cast call "$TOKEN" "minters(address)(bool)" "$addr" --rpc-url "$RPC_URL" 2>/dev/null || echo "")"
-    if [ "$result" != "true" ]; then
-        die "Token.minters($label=$addr) → $result (expected true). setMinter wiring broken." 4
+    if [ "$result" = "true" ]; then
+        info "  Token.minters($label) = true"
+        return 0
     fi
-    info "  Token.minters($label) = true"
+    warn "Token.minters($label) is $result — sending setMinter to fix..."
+    cast send "$TOKEN" "setMinter(address,bool)" "$addr" true \
+        --keystore "$KEYSTORE" \
+        --password "$CURS3D_KEYSTORE_PASSWORD" \
+        --rpc-url "$RPC_URL" \
+        --legacy \
+        --confirmations 1 >/dev/null \
+        || die "setMinter($label=$addr) failed" 4
+    result="$(cast call "$TOKEN" "minters(address)(bool)" "$addr" --rpc-url "$RPC_URL" 2>/dev/null || echo "")"
+    [ "$result" = "true" ] || die "setMinter($label) did not stick: still $result" 4
+    info "  Token.minters($label) = true (recovered)"
 }
 
-verify_minter Faucet  "$FAUCET"
-verify_minter Staking "$STAKING"
+ensure_minter Faucet  "$FAUCET"
+ensure_minter Staking "$STAKING"
 ok "All 7 contracts have code; both minter wires set."
 
 # ─── 6. Sync dApp ────────────────────────────────────────────────────────
