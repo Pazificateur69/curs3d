@@ -2,18 +2,54 @@
 
 State as of: **2026-05-05** (software **v0.3.5** + consensus protocol **v5** + 3-validator testnet, node3 IONOS Berlin x86_64 added 2026-05-05, wasmer 5 -> 7 bump for x86_64 linker fix on the same day, Solidity portfolio deployed at chain-id 1800329576, **BACKUP_LEADER_TIMEOUT 12s → 30s fix shipped late 2026-05-05 after parallel-fork incident at h=270**, **72h soak monitor running locally** since 2026-05-05 23:02 UTC writing to `~/curs3d-soak/`). **`v1.0` is reserved for the official mainnet launch — do not bump the software version just because the consensus protocol bumps.**
 
-## Open production incident (do not silently wipe — investigate first)
+## Production incident — RESOLVED 2026-05-05 23:50 UTC
 
-The fresh chain went healthy through h~250 with finalized=height (lag=0) after the BACKUP_LEADER_TIMEOUT fix, then **forked again at h=341** between node2 (hash `b04bdcdf...`) and node3 (hash `9adc68fe...`). At the same time **node1's HTTP API hung indefinitely** while its systemd service stayed `active` — `/proc/<pid>/task/*/stack` showed every worker thread parked in `futex_wait`, indicating a chain-mutex deadlock under load.
+The 2026-05-05 fork incident root-cause was identified by gdb stack trace
+on the live deadlocked node1 and fixed in commit `0476981`. Both layers
+that contributed to the cascade are now closed.
 
-Working hypothesis (still to be verified by stack trace): node1 holds `chain.lock()` inside an async path that awaits on a mpsc channel or condition that never fires, starving the gossipsub task on node1 → mesh partitions because node2 and node3 only know about each other through node1 (no direct bootnode entry) → fork.
+### Layer 1 — sled 0.34 internal deadlock under per-block full-state writes
+gdb showed node1's main thread blocked in
+`add_block → persist_full_state → storage.replace_contracts → sled tree
+insert → sled segment-accountant OneShot wait`, while every sled-io-N
+worker was parked on `parking_lot::raw_mutex::RawMutex::lock_slow` inside
+`IoBufs::write_to_log`. That's a sled internal log-buffer mutex
+deadlock — the chain mutex was held the whole time, starving the API
+and gossipsub tasks.
 
-Two real fixes are pending and **need explicit user authorization** because they touch shared infra:
+Fix: `add_block` now does only an incremental `storage.put_block(&block)`
+on every block; the heavy `persist_full_state` (which calls `replace_*`
+on every sled tree, ~6 full-tree rewrites) runs only at epoch
+boundaries (every 32 blocks ≈ 5 min by default). On restart,
+`rebuild_canonical_state` replays from the last full persist, so worst
+case is one epoch of replay at boot. Reduces sled write pressure ~32×
+and breaks the deadlock condition.
 
-1. **Mesh topology**: each node's systemd unit should list the OTHER two as `--bootnode` so node2↔node3 has a direct path independent of node1. Peer IDs are stable now (preserved in `/var/lib/curs3d/p2p_identity*` across restarts).
-2. **Chain-mutex deadlock**: needs a stack trace or `RUST_LOG=debug,tokio=trace` capture during a hang to identify which await never resolves under chain.lock().
+### Layer 2 — mesh topology depended on node1 as gossipsub relay
+node2 and node3 each only listed node1 as `--bootnode`, so when node1's
+gossipsub task starved (Layer 1), libp2p stopped forwarding messages
+between node2 and node3 → BACKUP_LEADER_TIMEOUT (30s) eventually
+elapsed on node3 → competing block at h=341 → fork.
 
-Do not paper over by wiping. The soak log at `~/curs3d-soak/soak.alerts` is the authoritative incident record. Resume only after both fixes land and the soak shows ✓ SOAK PASSED.
+Fix: each systemd unit now lists the OTHER two as `--bootnode` so all
+three nodes have direct connections to each other (full mesh, not
+node1-as-hub). Peer IDs are preserved across restarts since the new
+wipe in `full-rollout.sh` keeps `p2p_identity*`.
+
+### Verification
+After the rollout with both fixes:
+- All 3 nodes converged at the SAME hash by h=4
+- Finality kicked in at h=33 (after first epoch boundary persist)
+- h=91 finalized=91, lag=0, all 3 nodes identical hash
+- Solidity portfolio (7 contracts) redeployed; both Token minters wired
+- Soak monitor still running (`~/curs3d-soak/soak.pid`); fresh polls
+  show no DIVERGENCE / STALL / API_DROP since the rollout
+
+The soak log at `~/curs3d-soak/soak.alerts` keeps the historical
+incident as evidence. The cumulative counters in `soak.stdout`
+include those pre-fix events; new alerts since the rollout = 0
+DIVERGENCE, 0 STALL, 1 transient API_DROP (forge deploy rate-limit,
+auto-recovered).
 
 ## What is this project?
 

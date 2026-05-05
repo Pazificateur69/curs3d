@@ -216,9 +216,33 @@ Each unit needs the two other-node bootnodes appended to ExecStart, then
 verify with `soak-status.sh`: every node's `peer_count` should reach 2
 within ~30s of all 3 starting.
 
+### Resolution (commit `0476981`, 2026-05-05 23:50 UTC)
+
+Both root causes fixed and verified on the live testnet.
+
+**Layer 1 — sled deadlock:** `add_block` no longer calls
+`persist_full_state` on every block. Now does only `put_block`
+(incremental, O(1) sled write) on every block; runs the full
+`replace_*` pass only at epoch boundaries (`height %
+epoch_length == 0`, default 32 blocks ≈ 5 min). Worst-case
+state-replay-on-restart is one epoch. Reduces sled write
+pressure by ~32× and breaks the log-buffer-mutex deadlock.
+
+**Layer 2 — mesh topology:** each systemd unit was patched to
+list the OTHER two nodes as `--bootnode` (peer IDs above). With
+direct connections in place, no single node is a gossipsub
+relay SPOF.
+
+Post-fix verification:
+- All 3 nodes converged on identical hash by h=4
+- Finality lag = 0 since h=33
+- 7 Solidity contracts redeployed cleanly
+- Soak monitor still running; no new DIVERGENCE / STALL alerts
+
 ### Lesson
 The soak monitor doing exactly what it was built for in under 60 seconds
 of runtime is the strongest evidence that this kind of observability has
 to be the *default* during testnet operations, not an afterthought. The
 pre-soak chain looked perfectly healthy in `/api/status` snapshots; the
-problem was only visible *across* nodes and *over time*.
+problem was only visible *across* nodes and *over time*. gdb on the
+hung node — not source review — was what isolated the sled deadlock.

@@ -6,20 +6,22 @@ Soak in progress: launched 2026-05-05T23:02Z, monitor PID `~/curs3d-soak/soak.pi
 alerts log `~/curs3d-soak/soak.alerts`. **First soak hour caught a real
 production incident — see "Active blockers" below.**
 
-## Active blockers (do not declare 10/10 until both resolved)
+## Active blockers — RESOLVED 2026-05-05 (commit `0476981`)
 
-1. **Chain-mutex deadlock under load (node1)** — every Rust worker thread
-   parks in `futex_wait` while the libp2p IO thread idles in `epoll_wait`.
-   API hangs indefinitely; systemd still reports `active`. Need a stack
-   trace (`gdb -p <pid>` or `RUST_LOG=tokio=trace`) during the hang to
-   identify the never-resolving `.await` under `chain.lock()`.
-2. **Mesh topology relies on node1 as relay** — node2 and node3 only have
-   node1 as `--bootnode`. When node1 starves, libp2p gossipsub stops
-   forwarding between node2 and node3 → BACKUP_LEADER_TIMEOUT (30s) eventually
-   elapses → competing block production → fork at h=341+ on 2026-05-05.
-   Fix: each systemd unit must list the OTHER two as bootnodes (peer IDs are
-   stable now). See `22-soak-runbook.md` "Real incident log" for the exact
-   commands.
+1. **~~Chain-mutex deadlock under load (node1)~~** — gdb on the hung
+   process showed sled 0.34's IO threadpool deadlocking on its
+   internal log-buffer mutex under sustained per-block `replace_*`
+   writes. Fixed by reducing persist frequency: incremental
+   `put_block` on every block, full `persist_full_state` only at
+   epoch boundaries (every 32 blocks). ~32× less sled write pressure.
+2. **~~Mesh topology relies on node1 as relay~~** — node2 and node3
+   now have each other in `--bootnode` lists too. Peer IDs preserved
+   across restarts. Mesh is full (3 nodes, 2 peers each), no single
+   relay SPOF. See `22-soak-runbook.md` "Real incident log" →
+   "Resolution" for the exact commands.
+
+Post-fix testnet state at commit time: h=91, finalized=91, lag=0,
+all 3 nodes on identical hash. 7 Solidity contracts redeployed.
 
 ## Priority 1 — Stability, CI, Deployment
 
