@@ -1,33 +1,51 @@
 # CURS3D — Runbook ops du testnet public
 
-Derniere mise a jour: **2026-05-04 (apres-midi — hardfork v4 deploye)**
+Derniere mise a jour: **2026-05-05 (apres-midi — hardfork v5 deploye + node3 IONOS Berlin)**
 
 ## Architecture (etat actuel)
 
 ```
-                       Internet
-                          |
-              curs3d.fr / api.curs3d.fr / explorer.curs3d.fr / status.curs3d.fr (DNS)
-                          |
-                  [node1 — bootstrap + API + site + status]
-                  144.24.192.222 (Oracle ARM Free Tier, eu-marseille-1)
-                  nginx + TLS Let's Encrypt
-                          |              \
-                  curs3d.service          [node2 — validateur]
-                  curs3d-captcha.service  84.235.238.213
-                  curs3d-backup.timer     curs3d.service
-                  curs3d-healthcheck.cron (slot-leader v4)
-                  Docker stack: prometheus + grafana + uptime-kuma + node-exporter
+                              Internet
+                                 |
+                     curs3d.fr / api.curs3d.fr / explorer.curs3d.fr / status.curs3d.fr
+                                 |
+                  +--------------+---------------+---------------+
+                  |                              |               |
+       [node1 — bootstrap + API]      [node2 — validateur]   [node3 — validateur]
+       144.24.192.222                  84.235.238.213          31.70.70.62
+       Oracle ARM Free Tier            Oracle ARM Free Tier    IONOS VPS x86_64
+       eu-marseille-1 (FR)             eu-marseille-1 (FR)     eu-de-berlin (DE)
+       6 GB RAM, 1 OCPU                6 GB RAM, 1 OCPU        2 GB RAM, 2 vCore
+       nginx + TLS Let's Encrypt       curs3d.service          curs3d.service
+       curs3d.service                                          (swap 6 GB)
+       curs3d-captcha.service
+       curs3d-backup.timer
+       curs3d-healthcheck.cron
+       Docker stack: prometheus + grafana + uptime-kuma + node-exporter
 ```
 
-- **2 validateurs actifs** (node1 + node2) depuis le hardfork v4. Le
-  scheduling slot-leader deterministe (`343a7a1`) elimine les forks
+- **3 validateurs** depuis le 2026-05-05 (ajout node3 IONOS Berlin x86_64).
+  Le scheduling slot-leader deterministe (`343a7a1`) elimine les forks
   multi-validateurs. La finalite progresse a la meme hauteur que le tip.
-- node3/4 : reportes (capacite ARM Oracle a re-evaluer plus tard).
+  L'activation dynamique de validateur est supportee : node3 a stake post-genesis,
+  active a l'epoch suivante (cf. section "Ajout de validateur post-genesis").
+- node4 : reporte (capacite ARM Oracle a re-evaluer plus tard, ou autre provider).
+- Diversification geo + provider : node1+node2 sur Oracle ARM Marseille,
+  node3 sur IONOS x86_64 Berlin. Reduit le risque de panne provider/region.
 
-## Protocol v4 (current)
+## Protocol v5 (current)
 
-Le hardfork v4 ajoute :
+Le hardfork v5 (2026-04-30) migre la signature post-quantique :
+
+1. **`pqcrypto-dilithium 0.5.0` (NIST round 3, C bindings) → `ml-dsa = =0.1.0-rc.9`
+   (FIPS-204 ML-DSA-87, pure Rust).** Meme crate que `sdk/wasm` → les transactions
+   signees dans le navigateur sont byte-pour-byte verifiables sur le node.
+2. **Wallet UI write-capable** depuis v5 (interop browser <-> node).
+3. **Toutes les addresses changent** (cles publiques differentes -> SHA3 different).
+4. **Tous les blocs/finality-votes pre-v5 invalides** : wipe complet de la chain DB
+   et regen wallets requis lors de la migration.
+
+Le hardfork v4 (2026-05-04, conserve dans v5) ajoute :
 
 1. **EVM dispatch** (revm 38, alongside Wasmer 5) — Solidity / MetaMask /
    Hardhat / Foundry. Endpoint `POST https://api.curs3d.fr/eth`.
@@ -37,17 +55,23 @@ Le hardfork v4 ajoute :
    `CallEvmContract` (appendus en fin d'enum, bincode-compat).
 
 Le genesis n'inclut pas d'`upgrades` explicite : tout le monde demarre
-directement en `protocol_version = 4`. Une chain DB pre-v4 est
+directement en `protocol_version = 5`. Une chain DB pre-v5 est
 **incompatible** : wipe `/var/lib/curs3d/` requis lors de la migration
-(garder `validator.json` + `validator.password` + `p2p_identity.pb`).
+(garder `p2p_identity.pb` ; les wallets v4 ne sont PAS reutilisables — keypairs
+incompatibles entre `pqcrypto-dilithium` et `ml-dsa`).
 
 ## Nodes
 
 | Node | IP | Role | Validateur | Etat | SSH |
 |------|-----|------|------------|------|-----|
-| node1 | 144.24.192.222 | Bootstrap + API + site + status | `CURe1Fa551B3f0524EfD8d0673cdBF9fD0e199458c5` | **actif** | `ssh curs3d-node1` |
-| node2 | 84.235.238.213 | Validateur | `CURdC1ecceD4f12Cb3E34BD0d43E72d6D04fC4823dd` | **actif** | `ssh curs3d-node2` |
-| Faucet | — | Wallet faucet | `CUR34cafc74B750C0e0150877e99cd27D77C6c4fC44` | — | — |
+| node1 | 144.24.192.222 | Bootstrap + API + site + status | `CURA770bE29d4C0066263855Ea5ADE6387d503f1Cea` | **actif** | `ssh curs3d-node1` |
+| node2 | 84.235.238.213 | Validateur | `CURd5E78C78FF164fb4eAC641d5a2802134B8A2D836` | **actif** | `ssh curs3d-node2` |
+| node3 | 31.70.70.62 | Validateur (IONOS Berlin x86_64) | _genere lors du setup, voir section dediee_ | **synchro/activation** | `ssh curs3d-node3` |
+| Faucet | — | Wallet faucet | _regen v5, voir `/etc/curs3d/faucet.json` sur node1_ | — | — |
+
+Note : les addresses des validateurs ont change au hardfork v5 (les cles
+ML-DSA-87 different des anciennes Dilithium round 3, donc l'address derivee
+de SHA3(pubkey)[..20] est differente).
 
 ## Endpoints publics
 
@@ -57,7 +81,7 @@ directement en `protocol_version = 4`. Une chain DB pre-v4 est
 | API | https://api.curs3d.fr/api/status |
 | **Ethereum-compatible JSON-RPC** | **https://api.curs3d.fr/eth** |
 | Explorer | https://explorer.curs3d.fr |
-| Wallet UI (read-only — voir Known issues #1) | https://curs3d.fr/wallet |
+| Wallet UI (write-capable depuis v5) | https://curs3d.fr/wallet |
 | Bundle WASM wallet | https://curs3d.fr/wallet-wasm/curs3d_wallet_wasm.js |
 | Developers hub | https://curs3d.fr/developers |
 | Security | https://curs3d.fr/security |
@@ -73,10 +97,12 @@ directement en `protocol_version = 4`. Une chain DB pre-v4 est
 
 Chain ID (string): `curs3d-public-testnet`
 Chain ID (EVM, decimal): `1800329576`  ·  hex: `0x6b4ed968`  ·  Symbol: `CUR`
-Genesis hash (v4): `daeb2e6ac802c182ab737d11211339a3d8c3a8da8f2dfd56595e319dbc938b23`
-Protocol version: `v4`
+Genesis hash (v5, chain block hash): `f7e9f8e6c290ce2681b66f6a8116090983e2c908629edbef2a3841c9e1e22cc6`
+Genesis JSON file SHA-256: `165c5f9d2a77719ecada5937753465806d83429588df06f0f25cea5c274bbf4e`
+Bootnode multiaddr: `/dns4/api.curs3d.fr/tcp/4337/p2p/12D3KooWLttF4EJ1SjiLEiXvJ1yqmJawLafv47r55T5xzSt1GHn2`
+Protocol version: `v5`
 
-## Infra (node1)
+## Infra (node1 — Oracle ARM Marseille)
 
 | Element | Valeur |
 |---------|--------|
@@ -90,6 +116,47 @@ Protocol version: `v4`
 | Pare-feu / IDS | `ufw` + `fail2ban` (jail `sshd`) |
 | SSH | port 22, `PermitRootLogin no`, `MaxAuthTries 3`, key-only |
 | DNS | Hostinger (curs3d.fr, api, explorer, status → 144.24.192.222) |
+
+## Infra (node2 — Oracle ARM Marseille)
+
+| Element | Valeur |
+|---------|--------|
+| Provider | Oracle Cloud Always Free ARM |
+| Shape | VM.Standard.A1.Flex (1 OCPU, 6 GB RAM) |
+| Region | eu-marseille-1 |
+| OS | Ubuntu 22.04 ARM64 |
+| Role | Validateur uniquement (pas d'API/site publics) |
+| Pare-feu | `ufw` + `fail2ban` |
+
+## Infra (node3 — IONOS Berlin x86_64)
+
+| Element | Valeur |
+|---------|--------|
+| Provider | IONOS Cloud VPS |
+| Shape | VPS 2-2-80 (2 vCore, 2 GB RAM, 80 GB NVMe SSD) |
+| Region | Allemagne (Berlin) — eu-de-berlin |
+| OS | Ubuntu 24.04.4 LTS x86_64 |
+| Role | Validateur uniquement (pas d'API/site publics) |
+| Swap | **6 GB obligatoire** (sinon OOM au build cargo et runtime instable) |
+| Pare-feu IONOS | TCP entrant 22/80/443/4337 (panel "My firewall policy") |
+| Pare-feu VM | `ufw` (22/80/443/4337) + `fail2ban` (jail `sshd`) |
+| SSH | port 22, `PermitRootLogin prohibit-password`, password auth desactive, key-only |
+| User systemd | `ubuntu` (sudo NOPASSWD), comme node1/node2 |
+
+> **Heads-up x86_64 vs ARM** : le binaire `curs3d` n'est PAS portable entre
+> ARM (node1/2) et x86_64 (node3). Build natif sur chaque architecture.
+> Compilation initiale sur node3 : ~15-25 min (vs 5-8 min sur Oracle ARM 6 GB)
+> a cause des 2 GB de RAM + swap. Privilegier les builds incrementaux
+> (`cargo build --release` apres un `git pull`).
+
+> **Linker quirk node3** : nightly recent + `wasmer_vm` declenchent une erreur
+> `rust-lld: undefined symbol __rust_probestack` sur x86_64. Workaround applique
+> dans `~/.cargo/config.toml` cote ubuntu sur node3 :
+> ```toml
+> [target.x86_64-unknown-linux-gnu]
+> linker = "cc"
+> rustflags = ["-C", "link-arg=-fuse-ld=bfd"]
+> ```
 
 ## Ports (Oracle Security List + ufw)
 
@@ -251,6 +318,8 @@ les deux.
 
 ```bash
 ssh curs3d-node1
+ssh curs3d-node2
+ssh curs3d-node3
 ```
 
 `~/.ssh/config` :
@@ -259,13 +328,28 @@ Host curs3d-node1
     HostName 144.24.192.222
     User ubuntu
     IdentityFile ~/.ssh/id_ed25519_server
+
+Host curs3d-node2
+    HostName 84.235.238.213
+    User ubuntu
+    IdentityFile ~/.ssh/id_ed25519_server
+
+Host curs3d-node3
+    HostName 31.70.70.62
+    User ubuntu
+    IdentityFile ~/.ssh/id_ed25519
 ```
 
-SSH du serveur durci :
-- `PermitRootLogin no`
+> **Note clefs SSH** : node1 et node2 utilisent `id_ed25519_server` (clef Oracle
+> historique). node3 utilise `id_ed25519` (clef ed25519 par defaut du Mac).
+> Les deux clefs sont sur les machines : `id_ed25519` est aussi sur node1 / node2
+> via `authorized_keys` pour faciliter les operations cross-host.
+
+SSH du serveur durci (identique sur les 3 nodes) :
+- `PermitRootLogin no` (ou `prohibit-password` sur node3, root par cle uniquement)
 - `PasswordAuthentication no`
 - `MaxAuthTries 3`
-- `AllowUsers ubuntu`
+- `AllowUsers ubuntu` (+ `root` sur node3 pour ops d'urgence)
 - fail2ban actif (`bantime` 1h, `findtime` 10min, `maxretry` 5).
 
 ## Commandes utiles
@@ -328,6 +412,194 @@ scp pkg/curs3d_wallet_wasm.js pkg/curs3d_wallet_wasm_bg.wasm \
     curs3d-node1:/tmp/wallet-wasm/
 ssh curs3d-node1 "sudo mv /tmp/wallet-wasm/* /var/www/curs3d/wallet-wasm/"
 ```
+
+## Ajout de validateur post-genesis (procedure node3, deja jouee)
+
+CURS3D supporte l'**activation dynamique de validateur** : un wallet quelconque
+qui detient au moins `DEFAULT_MIN_STAKE = 1000 CUR` (1_000_000_000 microtokens)
+et envoie une transaction `Stake` devient validateur a partir de l'epoch
+suivante (cf. `src/consensus/mod.rs::active_validators` ligne 469 et
+`src/core/chain.rs` ligne 2927). **Pas besoin de hardfork** pour ajouter un
+3eme validateur.
+
+### Procedure complete (executee le 2026-05-05 pour node3)
+
+#### 1. Provisionner le VPS IONOS
+
+VPS commande chez IONOS (compte `agencenetstrategy@gmail.com`) :
+- Shape VPS 2-2-80 (2 vCore, 2 GB RAM, 80 GB NVMe)
+- Ubuntu 24.04 x86_64
+- Centre de calcul Allemagne (Berlin)
+- Stratégie de pare-feu IONOS : autoriser TCP entrant 22, 80, 443, 4337
+
+#### 2. Bootstrap du VPS (cloud-init ou script manuel)
+
+Le bootstrap configure : hostname, timezone, user `ubuntu` sudo NOPASSWD,
+clefs SSH, swap 6 GB, ufw, fail2ban, hardening sshd, paquets de base.
+Voir le script `/tmp/curs3d-vps-bootstrap.sh` (sauvegarde sur le Mac
+operateur, a re-executer si besoin de re-provisionner).
+
+```bash
+# Apres reinstall image IONOS, login KVM en root puis :
+bash /tmp/curs3d-vps-bootstrap.sh   # ou via cloud-init "Donnees d'utilisateur"
+```
+
+#### 3. Build le binaire sur node3 (x86_64 native)
+
+```bash
+ssh curs3d-node3
+# Rsync depuis le Mac operateur :
+# rsync -az --exclude target ~/Desktop/Web3/curs3d/ curs3d-node3:/home/ubuntu/curs3d/
+
+# Sur node3 :
+. ~/.cargo/env
+RUSTUP_TOOLCHAIN=nightly cargo build --release   # ~15-25 min sur 2 GB + swap
+```
+
+#### 4. Recuperer le genesis depuis node1
+
+```bash
+# Depuis le Mac (relais) :
+ssh curs3d-node1 "sudo cat /etc/curs3d/genesis.public-testnet.json" > /tmp/genesis.json
+scp /tmp/genesis.json curs3d-node3:/tmp/
+ssh curs3d-node3 "sudo install -m 644 /tmp/genesis.json /etc/curs3d/genesis.public-testnet.json"
+
+# Verifier hash identique :
+ssh curs3d-node1 "sudo sha256sum /etc/curs3d/genesis.public-testnet.json"
+ssh curs3d-node3 "sha256sum /etc/curs3d/genesis.public-testnet.json"
+# Doit afficher 165c5f9d2a77719ecada5937753465806d83429588df06f0f25cea5c274bbf4e
+```
+
+#### 5. Generer le wallet validateur SUR node3
+
+**IMPORTANT : Argon2id m=64 MB t=3 p=4 -> generer le wallet sur la machine cible
+pour eviter les soucis de performance/memoire au demarrage. Ne JAMAIS
+cross-compiler le wallet.**
+
+```bash
+ssh curs3d-node3
+sudo install -d /etc/curs3d
+PASSWORD="$(openssl rand -base64 32)"
+echo "$PASSWORD" | sudo tee /etc/curs3d/validator.password >/dev/null
+sudo chmod 600 /etc/curs3d/validator.password
+
+cd /home/ubuntu/curs3d
+./target/release/curs3d wallet \
+  --output /tmp/validator.json \
+  --password-file /etc/curs3d/validator.password
+sudo install -m 644 /tmp/validator.json /etc/curs3d/validator.json
+rm /tmp/validator.json
+
+# Recuperer l'address pour la suite :
+./target/release/curs3d info \
+  --wallet /etc/curs3d/validator.json \
+  --password-file /etc/curs3d/validator.password \
+  --json | jq -r .address
+# Format : CUR... (40 hex avec checksum EIP-55-like)
+```
+
+#### 6. Configurer systemd + demarrer node3 en mode validateur
+
+Adapter `deploy/scripts/setup-node.sh` (qui hardcode `User=ubuntu`, OK pour
+node3) avec :
+
+```bash
+NODE_NUM=3
+PUBLIC_IP=31.70.70.62
+BOOTNODE='/dns4/api.curs3d.fr/tcp/4337/p2p/12D3KooWLttF4EJ1SjiLEiXvJ1yqmJawLafv47r55T5xzSt1GHn2'
+
+# Sur node3 :
+bash /home/ubuntu/curs3d/deploy/scripts/setup-node.sh ${NODE_NUM} ${PUBLIC_IP} ${BOOTNODE}
+sudo systemctl enable --now curs3d
+sudo journalctl -u curs3d -f
+```
+
+Le node3 va se synchroniser depuis node1 (telecharger tous les blocs +
+state). Le sync prend quelques minutes selon la taille de la chain.
+
+#### 7. Verifier la sync
+
+```bash
+ssh curs3d-node3 "curl -s http://localhost:8080/api/status | jq '.data | {height, finalized_height, active_validators}'"
+# Doit afficher la meme height que node1 / node2 (a quelques blocs pres)
+```
+
+#### 8. Funder + staker l'address de node3 (depuis le faucet ou un wallet user)
+
+Le wallet de node3 est cree avec balance = 0. Pour devenir validateur,
+il faut au minimum `DEFAULT_MIN_STAKE = 1000 CUR` + des fees + une marge
+de sec. Recommande : funder avec **2000 CUR** depuis le faucet (qui en a
+2_000_000), puis stake **1500 CUR**.
+
+Depuis le Mac operateur (qui a l'access node1) :
+
+```bash
+NODE3_ADDR="<address renvoyee a l'etape 5>"
+ssh curs3d-node1 "sudo /usr/local/bin/curs3d send \
+  --wallet /etc/curs3d/faucet.json \
+  --password-file /etc/curs3d/faucet.password \
+  --to ${NODE3_ADDR} \
+  --amount 2000000000 \
+  --rpc 127.0.0.1:9545"  # 2000 CUR en microtokens
+```
+
+Sur node3, lancer la transaction Stake (signee par le wallet validateur) :
+
+```bash
+ssh curs3d-node3 "/usr/local/bin/curs3d stake \
+  --wallet /etc/curs3d/validator.json \
+  --password-file /etc/curs3d/validator.password \
+  --amount 1500000000 \
+  --rpc 127.0.0.1:9545"  # 1500 CUR de stake
+```
+
+#### 9. Attendre l'epoch boundary
+
+`epoch_length = 32` blocs (env. 5 minutes a 10s/bloc). Le champ
+`validator_active_from_height` est positionne a la prochaine `epoch_start_height`
+quand le stake passe au-dessus du minimum. Verifier :
+
+```bash
+curl -s https://api.curs3d.fr/api/status | jq '.data | {epoch, epoch_start_height, height}'
+curl -s https://api.curs3d.fr/api/validators | jq 'length'
+# Apres l'epoch boundary, validators count passe de 2 a 3
+curl -s https://api.curs3d.fr/api/account/${NODE3_ADDR} | jq '.data | {staked_balance, validator_active_from_height}'
+```
+
+#### 10. Verifier que node3 produit des blocs
+
+Apres activation, node3 va proposer des blocs aux hauteurs ou
+`slot_leader(h, validators) == node3_address`. Verifier :
+
+```bash
+ssh curs3d-node3 "sudo journalctl -u curs3d -n 100 | grep -i 'produced\|proposed'"
+```
+
+## Hardfork v4 → v5 (procedure deja jouee 2026-04-30, pour reference)
+
+Le hardfork v5 swap `pqcrypto-dilithium 0.5.0` (round 3, C bindings) ->
+`ml-dsa = =0.1.0-rc.9` (FIPS-204 final, pure Rust). Memes addresses cle pub
+(2592 B), signing key passe de 4864 B a 32 B (seed FIPS-204).
+
+1. Coordonner l'arret simultane des nodes (`systemctl stop curs3d`).
+2. Build le binaire v5 sur chaque node : `RUSTUP_TOOLCHAIN=nightly cargo build --release`.
+3. Wipe complet de la chain DB sur chaque node :
+   `sudo rm -rf /var/lib/curs3d/blocks /var/lib/curs3d/state /var/lib/curs3d/accounts /var/lib/curs3d/*.sled`
+   (garder `p2p_identity.pb`).
+4. Regenerer wallets validateurs ET faucet sous v5 (les anciens wallets
+   v4 ont des keypairs incompatibles avec ML-DSA-87) :
+   ```bash
+   curs3d wallet --output /etc/curs3d/validator.json --password-file /etc/curs3d/validator.pass
+   curs3d wallet --output /etc/curs3d/faucet.json    --password-file /etc/curs3d/faucet.pass
+   ```
+5. Regenerer le genesis avec les nouveaux wallets (sur la machine operateur),
+   le rsync sur tous les nodes (`/etc/curs3d/genesis.public-testnet.json`).
+6. Deployer le binaire v5 et redemarrer les nodes.
+7. Verifier :
+   ```bash
+   curl -s https://api.curs3d.fr/api/status | jq '.data | {protocol_version, active_validators, height, finalized_height, genesis_hash}'
+   # protocol_version=5
+   ```
 
 ## Hardfork v3 → v4 (procedure deja jouee, pour reference)
 

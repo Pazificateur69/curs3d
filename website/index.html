@@ -334,8 +334,8 @@
               <span data-lang="fr">Vrai testnet, vrai réseau. Chiffres en direct quand l'API répond, placeholders DEMO sinon.</span>
             </h3>
             <p>
-              <span data-lang="en" class="lang-show">2 validators are producing and finalizing every slot via the deterministic stake-weighted slot-leader. The chart auto-pulls live values when the API is reachable; if it is not, the bars stay greyed out and labelled "DEMO" so you never see fake numbers.</span>
-              <span data-lang="fr">2 validateurs produisent et finalisent chaque slot via le slot-leader stake-weighted déterministe. Le graphique récupère les valeurs en direct quand l'API répond ; sinon les barres restent grisées et étiquetées « DEMO » pour ne jamais montrer de chiffres truqués.</span>
+              <span data-lang="en" class="lang-show">3 validators are producing and finalizing every slot via the deterministic stake-weighted slot-leader. Two on Oracle ARM Marseille (FR), one on IONOS x86_64 Berlin (DE) — multi-architecture, multi-provider. The chart auto-pulls live values when the API is reachable; if it is not, the bars stay greyed out and labelled "DEMO" so you never see fake numbers.</span>
+              <span data-lang="fr">3 validateurs produisent et finalisent chaque slot via le slot-leader stake-weighted déterministe. Deux sur Oracle ARM Marseille (FR), un sur IONOS x86_64 Berlin (DE) — multi-architecture, multi-provider. Le graphique récupère les valeurs en direct quand l'API répond ; sinon les barres restent grisées et étiquetées « DEMO » pour ne jamais montrer de chiffres truqués.</span>
             </p>
             <ul>
               <li><span data-lang="en" class="lang-show">Slot duration</span><span data-lang="fr">Durée du slot</span><b>10s</b></li>
@@ -430,8 +430,9 @@ console.<span class="c-fn">log</span>(tx.hash);</pre>
 {
   <span class="c-key">"chain_id"</span>: <span class="c-str">"curs3d-public-testnet"</span>,
   <span class="c-key">"block_height"</span>: <span class="c-num">184726</span>,
-  <span class="c-key">"sig_scheme"</span>: <span class="c-str">"dilithium-l5"</span>,
-  <span class="c-key">"validators_active"</span>: <span class="c-num">2</span>,
+  <span class="c-key">"sig_scheme"</span>: <span class="c-str">"ml-dsa-87"</span>,
+  <span class="c-key">"validators_active"</span>: <span class="c-num">3</span>,
+  <span class="c-key">"protocol_version"</span>: <span class="c-num">5</span>,
   <span class="c-key">"finality_ms"</span>: <span class="c-num">1180</span>
 }</pre>
               </div>
@@ -480,32 +481,27 @@ console.<span class="c-fn">log</span>(tx.hash);</pre>
         <div class="section-head reveal">
           <div class="section-tag">07 / NETWORK</div>
           <h2 class="section-title">
-            <span data-lang="en" class="lang-show">Four validators. <em>Four continents.</em> One ledger.</span>
-            <span data-lang="fr">Quatre validateurs. <em>Quatre continents.</em> Un seul registre.</span>
+            <span data-lang="en" class="lang-show">Three validators. <em>Two cities, two architectures.</em> One ledger.</span>
+            <span data-lang="fr">Trois validateurs. <em>Deux villes, deux architectures.</em> Un seul registre.</span>
           </h2>
         </div>
         <div class="reveal">
           <div class="world-map-wrap">
             <canvas id="world-map"></canvas>
-            <div class="world-pin" data-id="val-01" style="left:49.5%; top:42%;">
+            <div class="world-pin" data-id="val-01" style="left:49.5%; top:46%;">
               <div class="pin-pulse"></div><div class="pin-pulse"></div><div class="pin-pulse"></div>
               <div class="pin-dot"></div>
-              <div class="pin-label"><b>val-01</b>fr-par-1 · 99.98%</div>
+              <div class="pin-label"><b>node1</b>mrs-arm · bootstrap+API</div>
             </div>
-            <div class="world-pin" data-id="val-02" style="left:51.5%; top:43%;">
+            <div class="world-pin" data-id="val-02" style="left:50.2%; top:46.5%;">
               <div class="pin-pulse"></div><div class="pin-pulse"></div><div class="pin-pulse"></div>
               <div class="pin-dot"></div>
-              <div class="pin-label"><b>val-02</b>de-fra-1 · 99.94%</div>
+              <div class="pin-label"><b>node2</b>mrs-arm · validator</div>
             </div>
-            <div class="world-pin" data-id="val-03" style="left:26.5%; top:48%;">
+            <div class="world-pin" data-id="val-03" style="left:53.5%; top:38%;">
               <div class="pin-pulse"></div><div class="pin-pulse"></div><div class="pin-pulse"></div>
               <div class="pin-dot"></div>
-              <div class="pin-label"><b>val-03</b>us-nyc-1 · 99.97%</div>
-            </div>
-            <div class="world-pin" data-id="val-04" style="left:78%; top:58%;">
-              <div class="pin-pulse"></div><div class="pin-pulse"></div><div class="pin-pulse"></div>
-              <div class="pin-dot"></div>
-              <div class="pin-label"><b>val-04</b>sg-sin-1 · 99.91%</div>
+              <div class="pin-label"><b>node3</b>ber-x86 · validator</div>
             </div>
           </div>
         </div>
@@ -529,10 +525,9 @@ console.<span class="c-fn">log</span>(tx.hash);</pre>
                 <span><span data-lang="en" class="lang-show">ACTIVE SET</span><span data-lang="fr">SET ACTIF</span></span>
                 <span><span data-lang="en" class="lang-show">UPTIME</span><span data-lang="fr">DISPONIBILITÉ</span></span>
               </div>
-              <div class="validator"><span class="validator-dot"></span><span class="validator-id">val-01 <span>fr-par-1</span></span><span class="validator-stake">25.0%</span><span class="validator-uptime">99.98%</span></div>
-              <div class="validator"><span class="validator-dot"></span><span class="validator-id">val-02 <span>de-fra-1</span></span><span class="validator-stake">25.0%</span><span class="validator-uptime">99.94%</span></div>
-              <div class="validator"><span class="validator-dot"></span><span class="validator-id">val-03 <span>us-nyc-1</span></span><span class="validator-stake">25.0%</span><span class="validator-uptime">99.97%</span></div>
-              <div class="validator"><span class="validator-dot"></span><span class="validator-id">val-04 <span>sg-sin-1</span></span><span class="validator-stake">25.0%</span><span class="validator-uptime">99.91%</span></div>
+              <div class="validator"><span class="validator-dot"></span><span class="validator-id">node1 <span>mrs-oracle-arm</span></span><span class="validator-stake">33.3%</span><span class="validator-uptime">live</span></div>
+              <div class="validator"><span class="validator-dot"></span><span class="validator-id">node2 <span>mrs-oracle-arm</span></span><span class="validator-stake">33.3%</span><span class="validator-uptime">live</span></div>
+              <div class="validator"><span class="validator-dot"></span><span class="validator-id">node3 <span>ber-ionos-x86</span></span><span class="validator-stake">33.3%</span><span class="validator-uptime">live</span></div>
             </div>
             <div class="code-block" style="margin-top:24px;">
               <div class="code-head">

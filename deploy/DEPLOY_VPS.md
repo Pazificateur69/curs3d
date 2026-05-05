@@ -1,6 +1,12 @@
 # CURS3D Public VPS Deployment
 
-Last updated: **2026-05-04 (afternoon — protocol v4)**.
+Last updated: **2026-05-05 (protocol v5 + 3-validator testnet, node3 IONOS Berlin x86_64)**.
+
+> **Multi-architecture deployment**: the public testnet currently runs on
+> **2 architectures simultanement** : Oracle ARM (`aarch64`, node1+node2,
+> Marseille) and IONOS x86_64 (node3, Berlin). The `curs3d` binary is **not**
+> portable across architectures — build natively on each host. Wire format
+> (libp2p, gossipsub, bincode tx) is endian-stable across both.
 
 This guide is for a public bootstrap node on a VPS so external users can connect, query the API (REST + WebSocket + **`/eth` Ethereum-compatible JSON-RPC**), and use a faucet backed by a real signed transaction. From v4 onwards, the same node also serves MetaMask / Hardhat / Foundry traffic via revm 38.
 
@@ -20,11 +26,19 @@ RUSTUP_TOOLCHAIN=nightly cargo build --release
 
 CI (`.github/workflows/`) also runs on nightly.
 
-> **Build-time heads-up (v4):** revm 38 was added in commit `c34b366` and
+> **Build-time heads-up (v4+):** revm 38 was added in commit `c34b366` and
 > brings ~200 transitive crates with it. On Oracle ARM Free Tier
 > (`VM.Standard.A1.Flex`, 1 OCPU, 6 GB RAM) the **first clean release
 > build takes 5–8 minutes**. Subsequent incremental builds are ~1 minute.
 > Plan accordingly if you build directly on the VPS.
+>
+> **Low-RAM VPSes (e.g. IONOS VPS 2-2-80, 2 GB RAM)**: the build will OOM
+> without swap. Provision **at least 6 GB of swap** before building, and
+> expect 15–25 minutes for the first clean build. Subsequent incrementals
+> are still ~1 minute. See `DEPLOY_RUNBOOK.md` "Infra (node3 — IONOS Berlin)"
+> for details and a known linker quirk (`__rust_probestack` undefined with
+> `rust-lld` on x86_64 + nightly + wasmer_vm — workaround in
+> `~/.cargo/config.toml`: force `linker = "cc"` and `-fuse-ld=bfd`).
 
 ## What This Deploys
 
@@ -107,11 +121,17 @@ order for each validator):
   --faucet-balance-cur 2000000
 ```
 
-> **Note (2026-05-04, v4):** deterministic stake-weighted slot-leader
-> scheduling is now implemented in `src/consensus/mod.rs` (commit
-> `343a7a1`), so multi-validator genesis is supported in production. The
-> current public testnet runs 2 validators (node1 + node2) on this binary
-> with finalized height matching the tip.
+> **Note (2026-05-05, v5):** deterministic stake-weighted slot-leader
+> scheduling is implemented in `src/consensus/mod.rs` (commit
+> `343a7a1`). Multi-validator genesis is supported in production, AND
+> dynamic validator activation post-genesis is also supported (a wallet
+> with `staked_balance >= DEFAULT_MIN_STAKE = 1000 CUR` becomes validator
+> at the next epoch boundary — see `core/chain.rs::apply_user_transaction`
+> setting `validator_active_from_height` after a Stake tx).
+>
+> The current public testnet runs **3 validators** : node1 + node2
+> (Oracle ARM Marseille, in genesis) + node3 (IONOS x86_64 Berlin, joined
+> dynamically post-genesis on 2026-05-05 via Stake tx).
 
 Publish `deploy/genesis.public-testnet.json` somewhere public and keep the exact same file on every node.
 
@@ -229,12 +249,12 @@ sudo cp sdk/wasm/pkg/curs3d_wallet_wasm.js \
        /var/www/curs3d/wallet-wasm/
 ```
 
-> **Read-only today.** ML-DSA-87 (FIPS-204, in this bundle) is not
-> byte-compatible with `pqcrypto-dilithium 0.5.0` (NIST round 3, in the
-> node). Browser-signed txs are silently rejected by `/api/tx/submit`.
-> The wallet UI displays balance / nonce / staked / history but cannot
-> send. See `CLAUDE.md` → "Known bugs / open issues" for the migration
-> path (node side switches to `pqcrypto-mldsa` or `ml-dsa`).
+> **Write-capable since v5.** Both the node and the browser bundle pin
+> `ml-dsa = =0.1.0-rc.9` (FIPS-204 ML-DSA-87, pure Rust). Browser-signed
+> transactions verify on the node byte-for-byte. The wallet UI can:
+> read balance / nonce / staked / history AND send transfers, stakes,
+> contract calls. The previous `pqcrypto-dilithium 0.5.0` (NIST round 3,
+> C bindings) was retired in the v5 hardfork on 2026-04-30.
 
 ## 7. Firewall
 

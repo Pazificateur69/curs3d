@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Context for CURS3D
 
-State as of: **2026-04-30** (protocol v5 hardfork — ML-DSA-87 / FIPS-204 migration)
+State as of: **2026-05-05** (protocol v5 + 3-validator testnet, node3 IONOS Berlin x86_64 added 2026-05-05)
 
 ## What is this project?
 
@@ -42,15 +42,22 @@ signatures produced in the browser verify on the node byte-for-byte.
 | security.txt (RFC 9116) | https://curs3d.fr/.well-known/security.txt |
 | 404 page | https://curs3d.fr/404.html |
 | OG social card (1200×630) | https://curs3d.fr/og-image.svg |
-| P2P bootnode | 144.24.192.222:4337 |
+| P2P bootnode | `/dns4/api.curs3d.fr/tcp/4337/p2p/12D3KooWLttF4EJ1SjiLEiXvJ1yqmJawLafv47r55T5xzSt1GHn2` (node1, 144.24.192.222:4337) |
+| P2P peer (node2) | `84.235.238.213:4337` (Oracle ARM Marseille) |
+| P2P peer (node3) | `31.70.70.62:4337` (IONOS Berlin x86_64) |
 
 - **Chain ID:** `curs3d-public-testnet`
 - **Protocol version:** **v5** (ML-DSA-87 / FIPS-204 native signatures — browser wallet interop)
-- **Genesis hash (v5 redeploy):** *to be regenerated post-deploy*
-- **Active validators:** **2** (node1 + node2 — both producing and finalizing thanks to slot-leader)
-- **Validator (node1):** `CURe1Fa551B3f0524EfD8d0673cdBF9fD0e199458c5`
-- **Validator (node2):** `CURdC1ecceD4f12Cb3E34BD0d43E72d6D04fC4823dd`
-- **Faucet:** `CUR34cafc74B750C0e0150877e99cd27D77C6c4fC44` (100 CUR, 1 h cooldown per address+IP, captcha-gated)
+- **Genesis hash (chain block, v5):** `f7e9f8e6c290ce2681b66f6a8116090983e2c908629edbef2a3841c9e1e22cc6`
+- **Genesis JSON file SHA-256:** `165c5f9d2a77719ecada5937753465806d83429588df06f0f25cea5c274bbf4e`
+- **Active validators:** **3** (node1 + node2 in genesis, node3 joined dynamically 2026-05-05 via Stake tx)
+- **Validator (node1, raw 20B):** `a770be29d4c0066263855ea5ade6387d503f1cea`
+- **Validator (node1, CUR EIP-55):** `CURA770bE29d4C0066263855Ea5ADE6387d503f1Cea`
+- **Validator (node2, raw 20B):** `d5e78c78ff164fb4eac641d5a2802134b8a2d836`
+- **Validator (node2, CUR EIP-55):** `CURd5E78C78FF164fb4eAC641d5a2802134B8A2D836`
+- **Validator (node3):** generated on the VPS — see `/etc/curs3d/validator.json` on `ssh curs3d-node3`
+- **Faucet:** regenerated under v5 — see `/etc/curs3d/faucet.json` on `ssh curs3d-node1` (100 CUR, 1 h cooldown per address+IP, captcha-gated, 2 000 000 CUR initial alloc)
+- **Bootnode multiaddr:** `/dns4/api.curs3d.fr/tcp/4337/p2p/12D3KooWLttF4EJ1SjiLEiXvJ1yqmJawLafv47r55T5xzSt1GHn2`
 
 The HTTP API exposes **27 endpoints** (REST + WS + `/eth` JSON-RPC) — see
 `/api/openapi.json` for the canonical list. Stoplight Elements renders it at
@@ -92,7 +99,7 @@ Edition: 2024.
 ## Known bugs / open issues
 
 These are documented to spare the next session a re-discovery. None block
-the public 2-validator testnet, but they affect specific surfaces.
+the public 3-validator testnet, but they affect specific surfaces.
 
 1. **`wasm-opt` failed during `wasm-pack build`** on the build host (no
    recent binaryen). The deployed bundle is 236 KB instead of ~100 KB
@@ -367,6 +374,13 @@ Run a specific test: `RUSTUP_TOOLCHAIN=nightly cargo test test_name --lib`
 
 ## Recent commits (newest first)
 
+- `b9c809d` truth-pass-3 + contracts portfolio + investor branding
+- `59694cb` crypto: migrate Dilithium-L5 (round 3) → ML-DSA-87 (FIPS-204 final) — **v5 hardfork**
+- `3b47480` fix(network): resolve RequestBlocks/BlockResponse sync timeout
+- `bde05c7` truth-pass-2: address Codex 2nd-audit findings
+- `f461aa4` fix(chain): root-cause and resolve state_root_mismatch at epoch boundary
+- `7342e9a` truth-pass: align README/site/docs to actual state
+- `1ef8f1b` docs: full sync to 2026-05-04 v4 — EVM, wallet UI, slot-leader
 - `9000b1b` fix(main): set `evm_raw_tx: Vec::new()` on remaining Transaction literals
 - `a1a4a16` website: SEO + new pages (developers / security / community / 404)
 - `b896ede` sdk/wasm: browser-side crypto bundle (Dilithium / ML-DSA + AES-GCM + Argon2id)
