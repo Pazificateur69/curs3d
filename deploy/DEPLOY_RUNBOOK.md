@@ -101,9 +101,10 @@ de SHA3(pubkey)[..20] est differente).
 
 Chain ID (string): `curs3d-public-testnet`
 Chain ID (EVM, decimal): `1800329576`  ·  hex: `0x6b4ed968`  ·  Symbol: `CUR`
-Genesis hash (v5, chain block hash): `f7e9f8e6c290ce2681b66f6a8116090983e2c908629edbef2a3841c9e1e22cc6`
-Genesis JSON file SHA-256: `165c5f9d2a77719ecada5937753465806d83429588df06f0f25cea5c274bbf4e`
+Genesis hash (chain block, v5 — regen 2026-05-05 with 3 validators in genesis): `81420887fb59cd7c4837b2195bedbbb78291bd835e5b72162337f10d26f315d6`
+Genesis JSON file SHA-256: `702be65951ec6b29efb157fe96f8aba0baf14fc24bfab3926976d2b8e25ca1c1`
 Bootnode multiaddr: `/dns4/api.curs3d.fr/tcp/4337/p2p/12D3KooWLttF4EJ1SjiLEiXvJ1yqmJawLafv47r55T5xzSt1GHn2`
+  (libp2p `dns4` resolution OK on node2 ; node3 dial via `/ip4/144.24.192.222/tcp/4337/...` car certains transports libp2p ne resolvent pas dns4)
 Protocol version: `v5`
 
 ## Infra (node1 — Oracle ARM Marseille)

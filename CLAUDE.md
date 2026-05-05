@@ -48,9 +48,9 @@ signatures produced in the browser verify on the node byte-for-byte.
 
 - **Chain ID:** `curs3d-public-testnet`
 - **Protocol version:** **v5** (ML-DSA-87 / FIPS-204 native signatures — browser wallet interop)
-- **Genesis hash (chain block, v5):** `f7e9f8e6c290ce2681b66f6a8116090983e2c908629edbef2a3841c9e1e22cc6`
-- **Genesis JSON file SHA-256:** `165c5f9d2a77719ecada5937753465806d83429588df06f0f25cea5c274bbf4e`
-- **Active validators:** **3** (node1 + node2 in genesis, node3 joined dynamically 2026-05-05 via Stake tx)
+- **Genesis hash (chain block, v5 — regen 2026-05-05 with 3 validators in genesis):** `81420887fb59cd7c4837b2195bedbbb78291bd835e5b72162337f10d26f315d6`
+- **Genesis JSON file SHA-256:** `702be65951ec6b29efb157fe96f8aba0baf14fc24bfab3926976d2b8e25ca1c1`
+- **Active validators:** **3** (node1 + node2 + node3 — all in genesis since the 2026-05-05 regen, each staking 50 000 CUR = 33.3% of total stake)
 - **Validator (node1, raw 20B):** `a770be29d4c0066263855ea5ade6387d503f1cea`
 - **Validator (node1, CUR EIP-55):** `CURA770bE29d4C0066263855Ea5ADE6387d503f1Cea`
 - **Validator (node2, raw 20B):** `d5e78c78ff164fb4eac641d5a2802134b8a2d836`
