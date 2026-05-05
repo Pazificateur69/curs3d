@@ -9,10 +9,13 @@ use crate::core::receipt::{LogEntry, Receipt};
 use crate::crypto::hash;
 use state::ContractState;
 use thiserror::Error;
+use wasmer::sys::{
+    CompilerConfig, Cranelift, EngineBuilder, FunctionMiddleware, MiddlewareReaderState,
+    ModuleMiddleware,
+};
 use wasmer::{
-    CompilerConfig, Cranelift, EngineBuilder, Function, FunctionEnv, FunctionEnvMut,
-    FunctionMiddleware, Instance, Memory, MemoryAccessError, MiddlewareReaderState, Module,
-    ModuleMiddleware, RuntimeError, Store, Type, Value, imports,
+    Function, FunctionEnv, FunctionEnvMut, Instance, Memory, MemoryAccessError, Module,
+    RuntimeError, Store, Type, Value, imports,
     wasmparser::{Operator, Parser, Payload},
     wat2wasm,
 };
@@ -328,16 +331,22 @@ impl Vm {
 
         for payload in Parser::new(0).parse_all(code) {
             if let Payload::ImportSection(reader) = payload.map_err(|_| VmError::InvalidWasm)? {
-                for import in reader {
-                    let import = import.map_err(|_| VmError::InvalidWasm)?;
-                    if matches!(import.ty, wasmer::wasmparser::TypeRef::Func(_)) {
-                        if import.module == "curs3d" && import.name == "loop_tick" {
-                            return Ok(Some(function_import_index));
+                // wasmparser 0.246 (wasmer 7) yields Imports<'_> (a group), each iterable
+                // into Result<(usize, Import<'_>)> for compact-import support.
+                for imports in reader {
+                    let imports = imports.map_err(|_| VmError::InvalidWasm)?;
+                    for import_result in imports {
+                        let (_offset, import) =
+                            import_result.map_err(|_| VmError::InvalidWasm)?;
+                        if matches!(import.ty, wasmer::wasmparser::TypeRef::Func(_)) {
+                            if import.module == "curs3d" && import.name == "loop_tick" {
+                                return Ok(Some(function_import_index));
+                            }
+                            if import.module == "curs3d" && import.name == "consume_gas" {
+                                fallback = Some(function_import_index);
+                            }
+                            function_import_index = function_import_index.saturating_add(1);
                         }
-                        if import.module == "curs3d" && import.name == "consume_gas" {
-                            fallback = Some(function_import_index);
-                        }
-                        function_import_index = function_import_index.saturating_add(1);
                     }
                 }
             }

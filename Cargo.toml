@@ -42,9 +42,9 @@ http-body-util = "0.1"
 bytes = "1"
 tokio-tungstenite = "0.24"
 
-# WASM VM
-wasmer = "5"
-wasmer-types = "5"
+# WASM VM (wasmer 7 — bumped from 5 to fix __rust_probestack linker issue on x86_64)
+wasmer = "7"
+wasmer-types = "7"
 
 # EVM VM (revm 38 + alloy for RLP-encoded MetaMask txs)
 revm = { version = "38", default-features = false, features = [
