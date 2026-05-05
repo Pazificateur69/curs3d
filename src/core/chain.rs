@@ -1594,7 +1594,40 @@ impl Blockchain {
         }
         self.rebuild_receipt_indexes();
         self.remove_block_transactions_from_mempool(&block);
-        self.persist_full_state()?;
+        // Persistence policy: incremental on every block, full state only at
+        // epoch boundaries.
+        //
+        // Why: `persist_full_state` calls `replace_*` on every sled tree
+        // (blocks, accounts, contracts, receipts, epoch_snapshots, pending),
+        // each of which iterates and rewrites the whole tree. On every block,
+        // sled 0.34's IO threadpool gets flooded with ~6 full-tree rewrites
+        // — and once the chain accumulates state, the threadpool deadlocks
+        // on its internal log-buffer mutex (verified via gdb on 2026-05-05:
+        // every sled-io worker parked in `RawMutex::lock_slow` while the
+        // main thread held `chain.lock()` waiting on `OneShot::wait`). That
+        // freezes the API, starves gossipsub, and ultimately partitions the
+        // mesh into a fork.
+        //
+        // The fix is two-layered:
+        //   1. Always persist the new block (incremental, cheap).
+        //   2. Persist the full state only at epoch boundaries (every
+        //      `epoch_length` blocks, default 32 = ~5 min) instead of every
+        //      block (~every 10 s). Reduces sled write pressure by ~32× and
+        //      breaks the deadlock conditions observed in production.
+        // On restart, the chain rebuilds in-memory state by replaying blocks
+        // from the last persisted full-state checkpoint, so up to one epoch
+        // of replay is the worst case — well within boot-time budget.
+        // `put_block` writes the block under its height key AND updates
+        // HEIGHT_KEY in the meta tree, so we get the height bookkeeping for
+        // free without a second write.
+        if let Some(ref storage) = self.storage {
+            storage.put_block(&block)?;
+        }
+        let height = block.header.height;
+        let is_epoch_boundary = self.epoch_length > 0 && height % self.epoch_length == 0;
+        if is_epoch_boundary {
+            self.persist_full_state()?;
+        }
         tracing::info!(
             target: "audit",
             event = "block_added",

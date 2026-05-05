@@ -77,7 +77,11 @@ for HOST in "${NODES[@]}"; do
     PIDS+=($!)
 done
 for pid in "${PIDS[@]}"; do wait "$pid"; done
-ok "All binaries installed${WIPE:+ + chain DBs wiped}."
+if [ "$WIPE" -eq 1 ]; then
+    ok "All binaries installed + chain DBs wiped."
+else
+    ok "All binaries installed (no wipe)."
+fi
 
 # ─── 3. Coordinated start ────────────────────────────────────────────────
 step "${BOLD}Starting all nodes simultaneously${RESET}"
