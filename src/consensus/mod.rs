@@ -23,9 +23,23 @@ pub const INACTIVITY_GRACE_EPOCHS: u64 = 2;
 pub const SLOT_DURATION_SECS: u64 = 10;
 
 /// Time after the parent timestamp at which the rank-`k` backup may take
-/// over from rank-`k-1`. 1.2x the slot duration: a primary slightly behind
-/// schedule still wins, but an offline primary doesn't stall the chain.
-pub const BACKUP_LEADER_TIMEOUT_SECS: u64 = 12;
+/// over from rank-`k-1`.
+///
+/// **3x the slot duration.** The previous value (12s, "1.2x the slot") was
+/// too tight: with `block_timer` ticking every 10s on each node and gossip
+/// latency of 1–8s on a small libp2p mesh, two validators frequently met
+/// the backup threshold at the same wall-clock time before the primary's
+/// block arrived. That manifested as parallel-fork production (the
+/// 2026-05-05 incident: node2 and node3 both produced #270 at different
+/// hashes 11 seconds apart, then drifted to h=287 before either side
+/// could converge on the other).
+///
+/// 30s = `SLOT_DURATION_SECS + 2 * worst_case_gossip` gives the primary a
+/// full slot to produce, plus enough headroom that even a slow gossip
+/// path will deliver the primary's block before any backup wakes. An
+/// offline primary still recovers within 30s (one missed slot), which is
+/// well within human-operator tolerance for a testnet.
+pub const BACKUP_LEADER_TIMEOUT_SECS: u64 = 30;
 
 /// 20-byte CUR address. Aliased here so consensus signatures read as
 /// "Address" rather than the more generic `Vec<u8>`.

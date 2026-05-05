@@ -59,9 +59,13 @@ ok "All 3 services stopped."
 # ─── 2. Install + optional wipe ──────────────────────────────────────────
 if [ "$WIPE" -eq 1 ]; then
     step "${BOLD}Installing new binary + wiping chain DB${RESET}"
+    # Sled stores trees as bare directories (not just *.sled files), so the
+    # safe wipe is "remove everything except the libp2p identity". Preserve
+    # p2p_identity* so the node keeps its peer ID across restarts (node2/node3
+    # already configure node1's PeerId as bootnode — regenerating it would
+    # break that config until operators update unit files).
     SCRIPT="sudo install -m 755 $SRC_BIN $DEST_BIN \
-        && sudo rm -rf /var/lib/curs3d/blocks /var/lib/curs3d/state /var/lib/curs3d/accounts /var/lib/curs3d/*.sled /var/lib/curs3d/db \
-        && sudo find /var/lib/curs3d -mindepth 1 -maxdepth 1 -name '*.sled' -delete \
+        && sudo find /var/lib/curs3d -mindepth 1 -maxdepth 1 -not -name 'p2p_identity*' -exec rm -rf {} + \
         && sudo chown -R curs3d:curs3d /var/lib/curs3d 2>/dev/null || true"
 else
     step "${BOLD}Installing new binary (no wipe)${RESET}"

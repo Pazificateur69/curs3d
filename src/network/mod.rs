@@ -845,6 +845,25 @@ impl NetworkNode {
                             }
                         }
 
+                        // Defense-in-depth against parallel forks: refuse to
+                        // produce as a backup (rank > 0) when isolated. A node
+                        // with 0 connected peers cannot have observed the
+                        // primary's block — if we step in here we *guarantee*
+                        // the same-height divergence we just spent 30s waiting
+                        // to avoid. Primary production at rank 0 still goes
+                        // through (a single-validator dev net relies on it).
+                        if let Some(rank) = my_rank
+                            && rank > 0
+                            && connected_peers == 0
+                        {
+                            tracing::debug!(
+                                "Skipping backup-rank production at height {}: \
+                                 isolated (peers=0), cannot verify primary status",
+                                next_height,
+                            );
+                            continue;
+                        }
+
                         if my_rank.is_none() {
                             tracing::debug!(
                                 "Slot {} not ours (allowed_rank={}); waiting for elected leader",
