@@ -1912,7 +1912,7 @@ dependencies = [
 
 [[package]]
 name = "curs3d"
-version = "0.1.0"
+version = "0.3.5"
 dependencies = [
  "aes-gcm",
  "alloy-consensus 2.0.4",

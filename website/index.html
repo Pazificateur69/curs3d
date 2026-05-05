@@ -5,7 +5,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CURS3D — Quantum-resistant Layer 1</title>
-  <meta name="description" content="CURS3D is a post-quantum, BFT-PoS Layer 1 blockchain. Dilithium-L5 signatures, SHA-3 hashing, WASM VM. Testnet operational." />
+  <meta name="description" content="CURS3D is a post-quantum, BFT-PoS Layer 1 blockchain. ML-DSA-87 signatures, SHA-3 hashing, WASM VM. Testnet operational." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -74,8 +74,8 @@
     <div class="wrap" style="padding-top:18px;">
       <div role="note" style="border:1px solid var(--line); border-left:3px solid #d4af37; background:rgba(212,175,55,0.06); padding:14px 18px; font-family:var(--mono); font-size:12px; line-height:1.55; color:var(--fg-1); letter-spacing:.02em;">
         <strong style="color:#d4af37; font-family:var(--mono); letter-spacing:.12em;">STATUS // EXPERIMENTAL DEVNET.</strong>
-        <span data-lang="en" class="lang-show"> Public testnet for development and testing. <strong>Not production.</strong> Tokens have <strong>no monetary value</strong>. The chain may be reset without notice. The browser wallet is <strong>write-capable</strong> since v5: ML-DSA-87 keys generated and transactions signed in the browser via the WASM crypto bundle.</span>
-        <span data-lang="fr"> Testnet public pour développement et test. <strong>Pas de production.</strong> Les tokens n'ont <strong>aucune valeur monétaire</strong>. La chaîne peut être réinitialisée sans préavis. Le wallet navigateur signe <strong>directement</strong> depuis v5 : clés ML-DSA-87 générées et transactions signées dans le navigateur via le bundle WASM.</span>
+        <span data-lang="en" class="lang-show"> Public testnet (software <strong>v0.3.5</strong>) for development and testing. <strong>Not production.</strong> <strong>v1.0 is reserved for the official mainnet launch.</strong> Tokens have <strong>no monetary value</strong>. The chain may be reset without notice. The browser wallet is <strong>write-capable</strong>: ML-DSA-87 keys generated and transactions signed in the browser via the WASM crypto bundle.</span>
+        <span data-lang="fr"> Testnet public (logiciel <strong>v0.3.5</strong>) pour développement et test. <strong>Pas de production.</strong> <strong>v1.0 est réservée pour le lancement officiel du mainnet.</strong> Les tokens n'ont <strong>aucune valeur monétaire</strong>. La chaîne peut être réinitialisée sans préavis. Le wallet navigateur signe <strong>directement</strong> : clés ML-DSA-87 générées et transactions signées dans le navigateur via le bundle WASM.</span>
       </div>
     </div>
 
@@ -99,8 +99,8 @@
             </span>
           </h1>
           <p class="lede">
-            <span data-lang="en" class="lang-show">A Layer&nbsp;1 built from first principles for a world where Shor's algorithm is no longer hypothetical. Dilithium-L5 signatures. SHA-3 hashing. BFT proof-of-stake. WASM execution. No retrofits, no legacy curves, no theatre.</span>
-            <span data-lang="fr">Une Layer&nbsp;1 conçue depuis zéro pour un monde où l'algorithme de Shor n'est plus une hypothèse. Signatures Dilithium-L5. Hachage SHA-3. Proof-of-stake BFT. Exécution WASM. Pas de rustines, pas de courbes héritées, pas de théâtre.</span>
+            <span data-lang="en" class="lang-show">A Layer&nbsp;1 built from first principles for a world where Shor's algorithm is no longer hypothetical. ML-DSA-87 signatures. SHA-3 hashing. BFT proof-of-stake. WASM execution. No retrofits, no legacy curves, no theatre.</span>
+            <span data-lang="fr">Une Layer&nbsp;1 conçue depuis zéro pour un monde où l'algorithme de Shor n'est plus une hypothèse. Signatures ML-DSA-87. Hachage SHA-3. Proof-of-stake BFT. Exécution WASM. Pas de rustines, pas de courbes héritées, pas de théâtre.</span>
           </p>
           <div class="hero-cta">
             <a class="btn btn-primary" href="whitepaper.html" data-magnetic>
@@ -115,7 +115,8 @@
             </a>
           </div>
           <div class="hero-meta-row">
-            <span>VERSION <b data-stat="version">—</b></span>
+            <span>SOFTWARE <b data-stat="version">v0.3.5</b></span>
+            <span>CONSENSUS <b data-stat="protocol-version">v5</b></span>
             <span>CHAIN-ID <b data-stat="chainid">curs3d-public-testnet</b></span>
             <span>LICENSE <b>MIT</b></span>
           </div>
@@ -341,7 +342,7 @@
               <li><span data-lang="en" class="lang-show">Slot duration</span><span data-lang="fr">Durée du slot</span><b>10s</b></li>
               <li><span data-lang="en" class="lang-show">Active validators</span><span data-lang="fr">Validateurs actifs</span><b data-stat="validators">—</b></li>
               <li><span data-lang="en" class="lang-show">Latest height</span><span data-lang="fr">Dernier bloc</span><b data-stat="block">—</b></li>
-              <li><span data-lang="en" class="lang-show">Tests passing</span><span data-lang="fr">Tests verts</span><b>173</b></li>
+              <li><span data-lang="en" class="lang-show">Tests passing</span><span data-lang="fr">Tests verts</span><b>181</b></li>
               <li><span data-lang="en" class="lang-show">Protocol version</span><span data-lang="fr">Version protocole</span><b data-stat="version">—</b></li>
             </ul>
           </div>
@@ -362,10 +363,10 @@
         <div class="built-grid">
           <div class="reveal">
             <div class="metric-list">
-              <div class="metric"><div class="metric-num"><span data-count="164" data-suffix="">0</span><small>+</small></div><div class="metric-label"><span data-lang="en" class="lang-show">PASSING TESTS</span><span data-lang="fr">TESTS PASSÉS</span></div></div>
+              <div class="metric"><div class="metric-num"><span data-count="181" data-suffix="">0</span><small>+</small></div><div class="metric-label"><span data-lang="en" class="lang-show">PASSING TESTS</span><span data-lang="fr">TESTS PASSÉS</span></div></div>
               <div class="metric"><div class="metric-num"><span data-count="27">0</span></div><div class="metric-label">API ENDPOINTS</div></div>
               <div class="metric"><div class="metric-num"><span data-count="14">0</span></div><div class="metric-label"><span data-lang="en" class="lang-show">TX TYPES</span><span data-lang="fr">TYPES DE TX</span></div></div>
-              <div class="metric"><div class="metric-num"><span data-count="2">0</span><small>/2</small></div><div class="metric-label"><span data-lang="en" class="lang-show">VALIDATORS LIVE</span><span data-lang="fr">VALIDATEURS EN LIGNE</span></div></div>
+              <div class="metric"><div class="metric-num"><span data-count="3">0</span><small>/3</small></div><div class="metric-label"><span data-lang="en" class="lang-show">VALIDATORS LIVE</span><span data-lang="fr">VALIDATEURS EN LIGNE</span></div></div>
             </div>
             <p style="margin-top:24px; color:var(--fg-1); max-width:46ch; font-size:14px;">
               <span data-lang="en" class="lang-show">Everything you see here is shipping software. The testnet is a real multi-node network you can connect to right now, with the same binary the validators run.</span>
@@ -388,7 +389,7 @@
               <div class="code-panel active" data-tab="cli">
 <pre class="code-body"><span class="c-comment"># Connect a node to testnet-1</span>
 <span class="c-prompt">$</span> curs3d <span class="c-fn">init</span> --chain-id curs3d-testnet-1
-<span class="c-prompt">$</span> curs3d <span class="c-fn">keys add</span> validator <span class="c-comment"># Dilithium-L5 keypair</span>
+<span class="c-prompt">$</span> curs3d <span class="c-fn">keys add</span> validator <span class="c-comment"># ML-DSA-87 keypair</span>
 <span class="c-prompt">$</span> curs3d <span class="c-fn">node start</span> \
     --p2p.seeds <span class="c-str">"seed-01.curs3d.fr:26656"</span>
 
@@ -652,7 +653,7 @@ console.<span class="c-fn">log</span>(tx.hash);</pre>
         <div class="footer-col"><h4>Project</h4><ul><li><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener noreferrer">GitHub</a></li><li><a href="governance.html">Governance</a></li><li><a href="examples.html">Examples</a></li><li><a href="docs.html">Contact</a></li></ul></div>
       </div>
       <div class="footer-bottom">
-        <span>© 2026 CURS3D PROTOCOL · MIT</span>
+        <span>© 2026 CURS3D PROTOCOL · MIT · <b style="color:var(--fg)">v0.3.5</b> (testnet — v1.0 reserved for mainnet)</span>
         <span class="hash">CHAIN-ID <b style="color:var(--fg)" data-stat="chainid">curs3d-public-testnet</b></span>
       </div>
     </div>

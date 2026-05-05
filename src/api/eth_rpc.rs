@@ -1,11 +1,9 @@
 //! Ethereum-compatible JSON-RPC subset.
 //!
-//! Exposes a read-mostly subset of `eth_*` / `net_*` / `web3_*` methods so that
-//! standard EVM-tooling (Metamask, ethers.js, wagmi, hardhat) can introspect the
-//! CURS3D testnet. Write methods that need an ECDSA-signed RLP transaction return
-//! a structured error explaining that CURS3D uses CRYSTALS-Dilithium signatures
-//! and a different transaction encoding, so dApps must use the native API for
-//! sends.
+//! Exposes an Ethereum-shaped subset of `eth_*` / `net_*` / `web3_*` methods so
+//! standard EVM tooling (MetaMask, ethers.js, wagmi, hardhat, foundry) can read
+//! the CURS3D testnet and submit ECDSA-signed RLP transactions through revm.
+//! Native CURS3D transactions still use the ML-DSA path at `/api/tx/submit`.
 //!
 //! Wire format: standard JSON-RPC 2.0. Both single requests and batches accepted.
 
@@ -48,6 +46,16 @@ fn hex_bytes(bytes: &[u8]) -> String {
     } else {
         format!("0x{}", hex::encode(bytes))
     }
+}
+
+fn hex_storage_word(bytes: &[u8]) -> String {
+    let mut word = [0u8; 32];
+    if bytes.len() >= 32 {
+        word.copy_from_slice(&bytes[bytes.len() - 32..]);
+    } else {
+        word[32 - bytes.len()..].copy_from_slice(bytes);
+    }
+    format!("0x{}", hex::encode(word))
 }
 
 fn parse_hex_address(value: &str) -> Option<Vec<u8>> {
@@ -125,6 +133,37 @@ fn rpc_success(id: Value, result: Value) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "result": result })
 }
 
+/// The wire-level transaction hash exposed to Ethereum tooling.
+///
+/// EVM transactions submitted through `eth_sendRawTransaction` are referenced
+/// by clients (MetaMask, forge, ethers, viem) using `keccak256(rlp_signed)` —
+/// the hash they computed locally before broadcasting. CURS3D internally
+/// indexes by `Transaction::hash()` (a SHA3 over our `bincode` shape).
+/// Returning the internal hash to EVM clients makes `eth_getTransactionByHash`
+/// and `eth_getTransactionReceipt` answer `null` for hashes the client itself
+/// produced, which trips Foundry's broadcast finalization.
+///
+/// For native Dilithium-signed transactions, no client-side keccak hash
+/// exists, so we fall back to the internal hash.
+fn eth_wire_hash(tx: &Transaction) -> String {
+    if tx.is_evm()
+        && let Ok(decoded) = crate::vm::evm::decode_raw_eth_tx(&tx.evm_raw_tx)
+    {
+        return format!("0x{}", hex::encode(decoded.tx_hash));
+    }
+    format!("0x{}", tx.hash_hex())
+}
+
+/// Resolve an Ethereum-style hash from a client to a chain location, checking
+/// both the EVM-hash index and the internal-hash index (the same hash bytes
+/// can land in either depending on whether the tx was native or EVM).
+fn resolve_eth_tx_lookup(chain: &Blockchain, hash: &[u8]) -> Option<(u64, usize)> {
+    if let Some(loc) = chain.evm_tx_hash_index.get(hash).copied() {
+        return Some(loc);
+    }
+    chain.tx_hash_index.get(hash).copied()
+}
+
 fn block_to_eth(chain: &Blockchain, block: &Block, full_tx: bool) -> Value {
     let txs = if full_tx {
         let mut entries: Vec<Value> = Vec::with_capacity(block.transactions.len());
@@ -137,15 +176,25 @@ fn block_to_eth(chain: &Blockchain, block: &Block, full_tx: bool) -> Value {
             block
                 .transactions
                 .iter()
-                .map(|tx| Value::String(format!("0x{}", tx.hash_hex())))
+                .map(|tx| Value::String(eth_wire_hash(tx)))
                 .collect(),
         )
     };
+
+    // sha3Uncles is the empty-uncle-list keccak256 — Ethereum tooling (foundry,
+    // ethers, web3.js) requires this field even on chains without uncle blocks.
+    // Constant: keccak256(rlp([])) = 0x1dcc4de8...
+    const EMPTY_UNCLE_HASH: &str =
+        "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347";
+    // mixHash is a PoW remnant; many libraries deserialize it. Set to zero hash.
+    const ZERO_HASH: &str = "0x0000000000000000000000000000000000000000000000000000000000000000";
 
     json!({
         "number": hex_u64(block.header.height),
         "hash": hex_bytes(&block.hash),
         "parentHash": hex_bytes(&block.header.prev_hash),
+        "sha3Uncles": EMPTY_UNCLE_HASH,
+        "mixHash": ZERO_HASH,
         "timestamp": hex_u64(block.header.timestamp.max(0) as u64),
         "miner": hex_bytes(&hash::address_bytes_from_public_key(&block.header.validator_public_key)),
         "validator": hex_bytes(&block.header.validator_public_key),
@@ -166,15 +215,28 @@ fn block_to_eth(chain: &Blockchain, block: &Block, full_tx: bool) -> Value {
     })
 }
 
-fn tx_to_eth(_chain: &Blockchain, tx: &Transaction, location: Option<(u64, usize)>) -> Value {
-    let (block_number, tx_index) = match location {
-        Some((h, i)) => (Value::String(hex_u64(h)), Value::String(hex_u64(i as u64))),
-        None => (Value::Null, Value::Null),
+fn tx_to_eth(chain: &Blockchain, tx: &Transaction, location: Option<(u64, usize)>) -> Value {
+    let (block_number, block_hash, tx_index) = match location {
+        Some((h, i)) => (
+            Value::String(hex_u64(h)),
+            chain
+                .blocks
+                .get(h as usize)
+                .map(|b| Value::String(hex_bytes(&b.hash)))
+                .unwrap_or(Value::Null),
+            Value::String(hex_u64(i as u64)),
+        ),
+        None => (Value::Null, Value::Null, Value::Null),
+    };
+    let to = if tx.kind == TransactionKind::DeployEvmContract {
+        Value::Null
+    } else {
+        Value::String(hex_bytes(&tx.to))
     };
     json!({
-        "hash": format!("0x{}", tx.hash_hex()),
+        "hash": eth_wire_hash(tx),
         "from": hex_bytes(&tx.from),
-        "to": hex_bytes(&tx.to),
+        "to": to,
         "value": hex_u64(tx.amount),
         "nonce": hex_u64(tx.nonce),
         "gas": hex_u64(tx.gas_limit),
@@ -183,7 +245,7 @@ fn tx_to_eth(_chain: &Blockchain, tx: &Transaction, location: Option<(u64, usize
         "maxPriorityFeePerGas": hex_u64(tx.max_priority_fee_per_gas),
         "input": hex_bytes(&tx.data),
         "blockNumber": block_number,
-        "blockHash": Value::Null,
+        "blockHash": block_hash,
         "transactionIndex": tx_index,
         "type": "0x2",
         "chainId": hex_u64(numeric_chain_id(&tx.chain_id)),
@@ -195,7 +257,25 @@ fn receipt_to_eth(chain: &Blockchain, indexed: &IndexedReceipt) -> Value {
     let block_hash = block
         .map(|b| hex_bytes(&b.hash))
         .unwrap_or_else(|| "0x".into());
-    let tx_hash = format!("0x{}", hex::encode(&indexed.tx_hash));
+    // Return the Ethereum-shape hash if the underlying tx is EVM, so forge /
+    // ethers can match it against what they got from `eth_sendRawTransaction`.
+    let tx_hash = block
+        .and_then(|b| b.transactions.get(indexed.tx_index))
+        .map(eth_wire_hash)
+        .unwrap_or_else(|| format!("0x{}", hex::encode(&indexed.tx_hash)));
+    let tx = block.and_then(|b| b.transactions.get(indexed.tx_index));
+    let from = tx
+        .map(|tx| Value::String(hex_bytes(&tx.from)))
+        .unwrap_or(Value::Null);
+    let to = tx
+        .map(|tx| {
+            if tx.kind == TransactionKind::DeployEvmContract {
+                Value::Null
+            } else {
+                Value::String(hex_bytes(&tx.to))
+            }
+        })
+        .unwrap_or(Value::Null);
 
     let logs: Vec<Value> = indexed
         .receipt
@@ -222,8 +302,8 @@ fn receipt_to_eth(chain: &Blockchain, indexed: &IndexedReceipt) -> Value {
         "transactionIndex": hex_u64(indexed.tx_index as u64),
         "blockHash": block_hash,
         "blockNumber": hex_u64(indexed.block_height),
-        "from": Value::Null,
-        "to": Value::Null,
+        "from": from,
+        "to": to,
         "cumulativeGasUsed": hex_u64(indexed.receipt.gas_used),
         "gasUsed": hex_u64(indexed.receipt.gas_used),
         "effectiveGasPrice": hex_u64(indexed.receipt.effective_gas_price),
@@ -241,22 +321,59 @@ fn receipt_to_eth(chain: &Blockchain, indexed: &IndexedReceipt) -> Value {
 }
 
 fn log_to_eth(chain: &Blockchain, log: &IndexedLogEntry) -> Value {
-    let block_hash = chain
-        .blocks
-        .get(log.block_height as usize)
+    let block = chain.blocks.get(log.block_height as usize);
+    let block_hash = block
         .map(|b| hex_bytes(&b.hash))
         .unwrap_or_else(|| "0x".into());
+    // Map the internal tx_hash to the Ethereum wire hash when the source tx
+    // is EVM, so wallets/explorers see consistent hashes across receipt /
+    // tx / log.
+    let tx_hash = block
+        .and_then(|b| b.transactions.get(log.tx_index))
+        .map(eth_wire_hash)
+        .unwrap_or_else(|| hex_bytes(&log.tx_hash));
     json!({
         "address": hex_bytes(&log.contract),
         "topics": log.topics.iter().map(|t| hex_bytes(t)).collect::<Vec<_>>(),
         "data": hex_bytes(&log.data),
         "blockNumber": hex_u64(log.block_height),
         "blockHash": block_hash,
-        "transactionHash": hex_bytes(&log.tx_hash),
+        "transactionHash": tx_hash,
         "transactionIndex": hex_u64(log.tx_index as u64),
         "logIndex": hex_u64(log.log_index as u64),
         "removed": false,
     })
+}
+
+fn estimate_eth_gas(params: &[Value]) -> u64 {
+    let call_obj = params.first().and_then(|v| v.as_object());
+    let Some(call_obj) = call_obj else {
+        return 21_000;
+    };
+
+    let is_deploy = call_obj
+        .get("to")
+        .and_then(|v| v.as_str())
+        .and_then(parse_hex_address)
+        .is_none();
+    let data_len = call_obj
+        .get("data")
+        .or_else(|| call_obj.get("input"))
+        .and_then(|v| v.as_str())
+        .and_then(parse_hex_hash)
+        .map(|bytes| bytes.len() as u64)
+        .unwrap_or(0);
+
+    let intrinsic = 21_000u64.saturating_add(data_len.saturating_mul(16));
+    let estimated = if is_deploy {
+        intrinsic.saturating_add(5_000_000).max(8_000_000)
+    } else if data_len == 0 {
+        intrinsic
+    } else {
+        intrinsic.saturating_add(500_000).max(750_000)
+    };
+
+    estimated.min(crate::core::chain::DEFAULT_BLOCK_GAS_LIMIT)
 }
 
 /// Process a single JSON-RPC request and return the response value.
@@ -405,7 +522,7 @@ async fn dispatch(chain: &Arc<Mutex<Blockchain>>, request: &Value) -> Value {
                 .get(&addr)
                 .and_then(|c| c.storage.get(&slot).cloned())
                 .unwrap_or_default();
-            rpc_success(id, json!(hex_bytes(&value)))
+            rpc_success(id, json!(hex_storage_word(&value)))
         }
         "eth_getBlockByNumber" => {
             let Some(tag) = params_arr.first() else {
@@ -445,7 +562,9 @@ async fn dispatch(chain: &Arc<Mutex<Blockchain>>, request: &Value) -> Value {
                 return rpc_error(id, -32602, "invalid tx hash");
             };
             let chain = chain.lock().await;
-            if let Some((height, idx)) = chain.tx_hash_index.get(&target).copied()
+            // Try both indexes: native txs are keyed by Transaction::hash(),
+            // EVM txs by keccak256(rlp_signed).
+            if let Some((height, idx)) = resolve_eth_tx_lookup(&chain, &target)
                 && let Some(block) = chain.blocks.get(height as usize)
                 && let Some(tx) = block.transactions.get(idx)
             {
@@ -461,7 +580,21 @@ async fn dispatch(chain: &Arc<Mutex<Blockchain>>, request: &Value) -> Value {
                 return rpc_error(id, -32602, "invalid tx hash");
             };
             let chain = chain.lock().await;
-            match chain.get_receipt(&target) {
+            // Receipts are stored keyed by the internal tx.hash(). For an EVM
+            // tx, the client only knows the keccak256(rlp) hash, so we go via
+            // resolve_eth_tx_lookup → block lookup → real internal hash.
+            let internal_hash: Vec<u8> =
+                if let Some((height, idx)) = resolve_eth_tx_lookup(&chain, &target) {
+                    chain
+                        .blocks
+                        .get(height as usize)
+                        .and_then(|b| b.transactions.get(idx))
+                        .map(|tx| tx.hash())
+                        .unwrap_or_else(|| target.clone())
+                } else {
+                    target.clone()
+                };
+            match chain.get_receipt(&internal_hash) {
                 Some(indexed) => rpc_success(id, receipt_to_eth(&chain, &indexed)),
                 None => rpc_success(id, Value::Null),
             }
@@ -512,10 +645,7 @@ async fn dispatch(chain: &Arc<Mutex<Blockchain>>, request: &Value) -> Value {
                 .collect();
             rpc_success(id, Value::Array(logs))
         }
-        "eth_estimateGas" => {
-            // Without a CURS3D-shaped tx in the params, return the base tx gas as a safe lower bound.
-            rpc_success(id, json!("0x5208"))
-        }
+        "eth_estimateGas" => rpc_success(id, json!(hex_u64(estimate_eth_gas(&params_arr)))),
         "eth_call" => {
             // params: [{ from, to, gas, gasPrice, value, data }, blockTag]
             let chain = chain.lock().await;
@@ -757,6 +887,43 @@ pub async fn handle(chain: Arc<Mutex<Blockchain>>, body: &[u8]) -> Value {
 mod tests {
     use super::*;
 
+    fn signed_evm_transfer_raw(nonce: u64) -> (String, String, [u8; 20]) {
+        use alloy_consensus::transaction::SignerRecoverable;
+        use alloy_consensus::{SignableTransaction, TxEip1559};
+        use alloy_eips::eip2718::Encodable2718;
+        use alloy_primitives::{Address, Bytes, TxKind, U256};
+        use alloy_signer::SignerSync;
+        use alloy_signer_local::PrivateKeySigner;
+
+        let signer: PrivateKeySigner =
+            "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+                .parse()
+                .unwrap();
+        let from_addr = signer.address();
+        let tx = TxEip1559 {
+            chain_id: 1,
+            nonce,
+            max_fee_per_gas: 100_000,
+            max_priority_fee_per_gas: 1,
+            gas_limit: 100_000,
+            to: TxKind::Call(Address::ZERO),
+            value: U256::from(1u64),
+            input: Bytes::new(),
+            access_list: Default::default(),
+        };
+        let sig_hash = tx.signature_hash();
+        let signature = signer.sign_hash_sync(&sig_hash).unwrap();
+        let signed = tx.into_signed(signature);
+        let envelope: alloy_consensus::TxEnvelope = signed.into();
+        assert_eq!(envelope.recover_signer().unwrap(), from_addr);
+
+        let tx_hash = format!("0x{}", hex::encode(envelope.tx_hash()));
+        let raw = envelope.encoded_2718();
+        let mut from = [0u8; 20];
+        from.copy_from_slice(from_addr.as_slice());
+        (format!("0x{}", hex::encode(raw)), tx_hash, from)
+    }
+
     #[test]
     fn numeric_chain_id_is_stable_and_positive() {
         let id_a = numeric_chain_id("curs3d-testnet");
@@ -941,6 +1108,96 @@ mod tests {
         let admitted = &chain.pending_transactions[0];
         assert!(admitted.is_evm());
         assert_eq!(admitted.from.len(), 20);
+    }
+
+    #[tokio::test]
+    async fn evm_wire_hash_resolves_transaction_and_receipt_after_mining() {
+        let (raw_hex, eth_hash, from) = signed_evm_transfer_raw(0);
+        let chain_mutex = std::sync::Arc::new(tokio::sync::Mutex::new(
+            crate::core::chain::Blockchain::new(),
+        ));
+
+        {
+            let mut chain = chain_mutex.lock().await;
+            let acct = chain.accounts.entry(from.to_vec()).or_default();
+            acct.balance = u64::MAX / 4;
+        }
+
+        let send = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "eth_sendRawTransaction",
+            "params": [raw_hex]
+        });
+        let send_resp = dispatch(&chain_mutex, &send).await;
+        assert_eq!(send_resp["result"], eth_hash);
+
+        {
+            let validator = crate::crypto::dilithium::KeyPair::generate();
+            let mut chain = chain_mutex.lock().await;
+            let block = chain.create_block(&validator).unwrap();
+            chain.add_block(block).unwrap();
+        }
+
+        let get_tx = json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "eth_getTransactionByHash",
+            "params": [eth_hash]
+        });
+        let tx_resp = dispatch(&chain_mutex, &get_tx).await;
+        assert_eq!(tx_resp["result"]["hash"], send_resp["result"]);
+        assert_ne!(tx_resp["result"]["blockHash"], Value::Null);
+        assert_eq!(tx_resp["result"]["blockNumber"], "0x1");
+
+        let get_receipt = json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "eth_getTransactionReceipt",
+            "params": [send_resp["result"].clone()]
+        });
+        let receipt_resp = dispatch(&chain_mutex, &get_receipt).await;
+        assert_eq!(
+            receipt_resp["result"]["transactionHash"],
+            send_resp["result"]
+        );
+        assert_ne!(receipt_resp["result"]["blockHash"], Value::Null);
+        assert_eq!(receipt_resp["result"]["blockNumber"], "0x1");
+        assert_eq!(
+            receipt_resp["result"]["from"],
+            format!("0x{}", hex::encode(from))
+        );
+    }
+
+    #[tokio::test]
+    async fn eth_storage_and_estimate_gas_are_tooling_safe() {
+        let chain = std::sync::Arc::new(tokio::sync::Mutex::new(
+            crate::core::chain::Blockchain::new(),
+        ));
+        let missing_storage = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "eth_getStorageAt",
+            "params": [
+                "0x0000000000000000000000000000000000000001",
+                "0x0",
+                "latest"
+            ]
+        });
+        let storage_resp = dispatch(&chain, &missing_storage).await;
+        assert_eq!(storage_resp["result"], format!("0x{}", "00".repeat(32)));
+
+        let estimate_deploy = json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "eth_estimateGas",
+            "params": [{"data": "0x60006000"}]
+        });
+        let estimate_resp = dispatch(&chain, &estimate_deploy).await;
+        let gas = estimate_resp["result"]
+            .as_str()
+            .and_then(parse_hex_quantity);
+        assert!(gas.unwrap() > 21_000);
     }
 
     #[tokio::test]

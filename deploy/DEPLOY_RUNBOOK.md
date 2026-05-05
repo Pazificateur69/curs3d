@@ -44,7 +44,7 @@ Derniere mise a jour: **2026-05-05 (apres-midi — hardfork v5 deploye + node3 I
 
 Le hardfork v5 (2026-04-30) migre la signature post-quantique :
 
-1. **`pqcrypto-dilithium 0.5.0` (NIST round 3, C bindings) → `ml-dsa = =0.1.0-rc.9`
+1. **`pqcrypto-dilithium 0.5.0` (NIST round 3, C bindings) → `ml-dsa = 0.1.0-rc.9`
    (FIPS-204 ML-DSA-87, pure Rust).** Meme crate que `sdk/wasm` → les transactions
    signees dans le navigateur sont byte-pour-byte verifiables sur le node.
 2. **Wallet UI write-capable** depuis v5 (interop browser <-> node).
@@ -87,7 +87,8 @@ de SHA3(pubkey)[..20] est differente).
 |---------|-----|
 | Site | https://curs3d.fr |
 | API | https://api.curs3d.fr/api/status |
-| **Ethereum-compatible JSON-RPC** | **https://api.curs3d.fr/eth** |
+| **RPC public** (alias /eth + /v1/* + landing page) | **https://rpc.curs3d.fr** |
+| **Ethereum-compatible JSON-RPC** | **https://rpc.curs3d.fr/eth** OR **https://api.curs3d.fr/eth** |
 | Explorer | https://explorer.curs3d.fr |
 | Wallet UI (write-capable depuis v5) | https://curs3d.fr/wallet |
 | Bundle WASM wallet | https://curs3d.fr/wallet-wasm/curs3d_wallet_wasm.js |
@@ -585,7 +586,7 @@ ssh curs3d-node3 "sudo journalctl -u curs3d -n 100 | grep -i 'produced\|proposed
 ## Hardfork v4 → v5 (procedure deja jouee 2026-04-30, pour reference)
 
 Le hardfork v5 swap `pqcrypto-dilithium 0.5.0` (round 3, C bindings) ->
-`ml-dsa = =0.1.0-rc.9` (FIPS-204 final, pure Rust). Memes addresses cle pub
+`ml-dsa = 0.1.0-rc.9` (FIPS-204 final, pure Rust). Memes addresses cle pub
 (2592 B), signing key passe de 4864 B a 32 B (seed FIPS-204).
 
 1. Coordonner l'arret simultane des nodes (`systemctl stop curs3d`).
@@ -657,10 +658,11 @@ ssh curs3d-node1 "sudo journalctl -u curs3d --since '10 min ago' --no-pager | ta
 - Le verifier captcha n'est pas accessible : `systemctl status curs3d-captcha`
 - `CURS3D_FAUCET_CAPTCHA_SECRET` desynchronise entre nginx et node.
 
-### Sync timeout (RequestBlocks)
-Bug connu — `src/network/mod.rs` BlockResponse path. Plus declenche en
-operation normale depuis le slot-leader v4 (`343a7a1`), mais le code
-sous-jacent n'est pas corrige.
+### Sync timeout / forks au boot (`RequestBlocks`)
+Corrige dans le code courant : le node ne produit plus pendant la fenetre de
+demarrage/sync, les broadcasts echoues sont remis en file puis retentes, les
+`BlockResponse` stale mais contigus sont acceptes, et une divergence de
+checkpoint escalade vers state snapshot au lieu de rester bloquee en retry.
 
 ### MetaMask refuse la chain
 - Verifier `curl -s -X POST https://api.curs3d.fr/eth -d '{"jsonrpc":"2.0","method":"eth_chainId","id":1}'` retourne bien `0x6b4ed968`.
@@ -668,9 +670,12 @@ sous-jacent n'est pas corrige.
 - CORS : la reponse doit inclure `Access-Control-Allow-Origin` (`CURS3D_API_ALLOW_ORIGIN`).
 
 ### Wallet UI affiche "signature rejected"
-Comportement attendu aujourd'hui — la wallet UI est read-only tant que la
-migration `pqcrypto-dilithium` -> `ml-dsa` cote node n'est pas faite.
-Voir `CLAUDE.md` -> Known issues #1.
+Ce n'est plus le comportement attendu depuis le hardfork v5 : la wallet UI signe
+en ML-DSA-87 via le bundle WASM et le node verifie les memes bytes. Si ce message
+revient, verifier que le node deploye est bien en protocol v5+, que le bundle
+`/wallet-wasm/curs3d_wallet_wasm.js` est celui du build courant, puis tester une
+transaction native via `POST /api/tx/submit` avec la payload exacte envoyee par
+le navigateur.
 
 ### `wasm-opt` manquant (build du bundle wallet)
 `brew install binaryen` (macOS) / `apt install binaryen` (Debian/Ubuntu),

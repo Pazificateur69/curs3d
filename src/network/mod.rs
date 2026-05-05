@@ -31,6 +31,12 @@ const SYNC_TIMEOUT_SECS: u64 = 30;
 const MAX_SYNC_RETRIES: u32 = 3;
 const MAX_SEEN_BLOCKS: usize = 1000;
 const SYNC_BATCH_SIZE: u64 = 50;
+const STARTUP_GRACE_SECS: u64 = 20;
+const PEERLESS_PRODUCTION_AFTER_SECS: u64 = 120;
+const PEER_MESH_SETTLE_SECS: u64 = 15;
+const VERIFIED_TIP_TTL_SECS: u64 = 120;
+const REBROADCAST_INTERVAL_SECS: u64 = 5;
+const MAX_PENDING_BROADCASTS: usize = 256;
 /// Maximum size for any deserialized P2P message (16 MB) — prevents OOM from malicious payloads
 const MAX_DESERIALIZE_SIZE: u64 = 16 * 1024 * 1024;
 
@@ -456,6 +462,49 @@ impl NetworkNode {
         Ok(())
     }
 
+    fn enqueue_pending_broadcast(pending: &mut VecDeque<NetworkMessage>, message: NetworkMessage) {
+        if pending.len() >= MAX_PENDING_BROADCASTS {
+            pending.pop_front();
+        }
+        pending.push_back(message);
+    }
+
+    fn broadcast_or_queue(
+        &mut self,
+        message: &NetworkMessage,
+        pending: &mut VecDeque<NetworkMessage>,
+        context: &str,
+    ) {
+        if let Err(err) = self.broadcast(message) {
+            warn!(
+                "Failed to broadcast {}: {}. Queuing for retry.",
+                context, err
+            );
+            Self::enqueue_pending_broadcast(pending, message.clone());
+        }
+    }
+
+    fn flush_pending_broadcasts(&mut self, pending: &mut VecDeque<NetworkMessage>) {
+        if pending.is_empty() {
+            return;
+        }
+
+        let mut remaining = VecDeque::new();
+        let queued = pending.len();
+        while let Some(message) = pending.pop_front() {
+            if let Err(err) = self.broadcast(&message) {
+                tracing::debug!("Pending broadcast still not ready: {}", err);
+                remaining.push_back(message);
+            }
+        }
+
+        let sent = queued.saturating_sub(remaining.len());
+        if sent > 0 {
+            info!("Flushed {} queued network broadcasts", sent);
+        }
+        *pending = remaining;
+    }
+
     fn switch_topic(&mut self, topic_name: &str) -> Result<(), Box<dyn std::error::Error>> {
         let new_topic = gossipsub::IdentTopic::new(topic_name);
         if self.topic.hash() == new_topic.hash() {
@@ -483,6 +532,66 @@ impl NetworkNode {
         manifest.chunk_count
     }
 
+    fn should_delay_initial_production(
+        started_at: Instant,
+        connected_peers: usize,
+        _current_height: u64,
+        now: Instant,
+    ) -> bool {
+        let elapsed = now
+            .checked_duration_since(started_at)
+            .unwrap_or_else(|| Duration::from_secs(0));
+        if elapsed < Duration::from_secs(STARTUP_GRACE_SECS) {
+            return true;
+        }
+        connected_peers == 0 && elapsed < Duration::from_secs(PEERLESS_PRODUCTION_AFTER_SECS)
+    }
+
+    fn allowed_rank_for_slot(
+        next_height: u64,
+        parent_timestamp: i64,
+        _node_started_unix: i64,
+        now_unix: i64,
+        snapshot_size: usize,
+    ) -> u32 {
+        if next_height <= 1 {
+            return 0;
+        }
+        allowed_backup_rank(parent_timestamp, now_unix, snapshot_size)
+    }
+
+    fn prune_verified_peer_tips(tips: &mut HashMap<String, (u64, Vec<u8>, Instant)>, now: Instant) {
+        tips.retain(|_, (_, _, seen_at)| {
+            now.checked_duration_since(*seen_at)
+                .unwrap_or_else(|| Duration::from_secs(0))
+                < Duration::from_secs(VERIFIED_TIP_TTL_SECS)
+        });
+    }
+
+    fn sync_needed_from_verified_tips(
+        tips: &HashMap<String, (u64, Vec<u8>, Instant)>,
+        our_height: u64,
+        our_hash: &[u8],
+    ) -> Option<(u64, Vec<u8>, bool)> {
+        let mut best_higher: Option<(u64, Vec<u8>)> = None;
+        let mut same_height_divergent: Option<(u64, Vec<u8>)> = None;
+        for (height, hash, _) in tips.values() {
+            if *height > our_height {
+                if best_higher
+                    .as_ref()
+                    .is_none_or(|(best_height, _)| height > best_height)
+                {
+                    best_higher = Some((*height, hash.clone()));
+                }
+            } else if *height == our_height && hash != our_hash && same_height_divergent.is_none() {
+                same_height_divergent = Some((*height, hash.clone()));
+            }
+        }
+        best_higher
+            .map(|(height, hash)| (height, hash, false))
+            .or_else(|| same_height_divergent.map(|(height, hash)| (height, hash, true)))
+    }
+
     // ─── Main Event Loop ─────────────────────────────────────────────
 
     pub async fn run_with_chain(
@@ -508,15 +617,22 @@ impl NetworkNode {
 
         // Peer height tracking
         let mut peer_heights: HashMap<String, (u64, Vec<u8>)> = HashMap::new();
+        let mut verified_peer_tips: HashMap<String, (u64, Vec<u8>, Instant)> = HashMap::new();
         let mut pending_snapshot_manifest: Option<SnapshotManifest> = None;
         let mut pending_snapshot_chunks: HashMap<usize, StateChunk> = HashMap::new();
+        let mut pending_broadcasts: VecDeque<NetworkMessage> = VecDeque::new();
 
         // Block deduplication cache
         let mut seen_block_hashes: HashSet<Vec<u8>> = HashSet::new();
 
         // Timers
+        let node_started_at = Instant::now();
+        let node_started_unix = chrono::Utc::now().timestamp();
+        let mut last_peer_change_at = node_started_at;
         let mut block_timer = tokio::time::interval(Duration::from_secs(10));
         let mut announce_timer = tokio::time::interval(Duration::from_secs(30));
+        let mut rebroadcast_timer =
+            tokio::time::interval(Duration::from_secs(REBROADCAST_INTERVAL_SECS));
 
         loop {
             // Check sync timeout
@@ -526,11 +642,27 @@ impl NetworkNode {
                 sync_retries += 1;
                 if sync_retries >= MAX_SYNC_RETRIES {
                     info!(
-                        "Sync timed out after {} retries. Resetting.",
+                        "Sync timed out after {} retries. Escalating to snapshot sync.",
                         MAX_SYNC_RETRIES
                     );
-                    sync_requested = false;
-                    sync_deadline = None;
+                    let chain_lock = chain.lock().await;
+                    let start_chunk = pending_snapshot_manifest
+                        .as_ref()
+                        .map(|manifest| {
+                            Self::next_missing_chunk_index(manifest, &pending_snapshot_chunks)
+                        })
+                        .unwrap_or(0);
+                    let msg = NetworkMessage::RequestSnapshot {
+                        requester_peer_id: self.peer_id.to_string(),
+                        preferred_height: None,
+                        start_chunk,
+                        known_finalized_height: chain_lock.finalized_height(),
+                        known_finalized_hash: chain_lock.finality_tracker.finalized_hash.clone(),
+                    };
+                    drop(chain_lock);
+                    self.broadcast_or_queue(&msg, &mut pending_broadcasts, "snapshot sync request");
+                    sync_requested = true;
+                    sync_deadline = Some(Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS));
                     sync_retries = 0;
                 } else {
                     info!("Sync timeout, retry {}/{}", sync_retries, MAX_SYNC_RETRIES);
@@ -558,16 +690,14 @@ impl NetworkNode {
                         }
                     };
                     drop(chain_lock);
-                    let _ = self.broadcast(&msg);
+                    self.broadcast_or_queue(&msg, &mut pending_broadcasts, "sync retry");
                     sync_deadline = Some(Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS));
                 }
             }
 
             tokio::select! {
                 Some(msg) = outbound_rx.recv() => {
-                    if let Err(e) = self.broadcast(&msg) {
-                        warn!("Failed to broadcast: {}", e);
-                    }
+                    self.broadcast_or_queue(&msg, &mut pending_broadcasts, "outbound message");
                 }
 
                 // Block production
@@ -584,6 +714,11 @@ impl NetworkNode {
                     }
 
                     if let Some(ref keypair) = validator_key {
+                        if sync_requested {
+                            tracing::debug!("Block production paused while sync is in flight");
+                            continue;
+                        }
+
                         // Slot-leader gate: only the elected proposer for this
                         // height may produce. If we're not the rank-0 leader
                         // we wait. After BACKUP_LEADER_TIMEOUT_SECS without a
@@ -591,7 +726,7 @@ impl NetworkNode {
                         // step in; rank-2 after another timeout, etc.
                         let my_address =
                             crate::crypto::hash::address_bytes_from_public_key(&keypair.public_key);
-                        let (next_height, latest_hash, parent_ts, snapshot_size) = {
+                        let (next_height, latest_hash, parent_ts, snapshot_size, current_height) = {
                             let chain_lock = chain.lock().await;
                             let parent = chain_lock.latest_block();
                             (
@@ -604,11 +739,92 @@ impl NetworkNode {
                                     )
                                     .map(|s| s.validators.len())
                                     .unwrap_or(0),
+                                chain_lock.height(),
                             )
                         };
+                        let connected_peers = self.swarm.connected_peers().count();
+                        let now_instant = Instant::now();
+                        let mesh_settling = now_instant
+                            .checked_duration_since(last_peer_change_at)
+                            .unwrap_or_else(|| Duration::from_secs(0))
+                            < Duration::from_secs(PEER_MESH_SETTLE_SECS);
+                        if mesh_settling {
+                            tracing::debug!(
+                                "Block production paused while peer mesh settles (connected_peers={})",
+                                connected_peers,
+                            );
+                            continue;
+                        }
+                        if Self::should_delay_initial_production(
+                            node_started_at,
+                            connected_peers,
+                            current_height,
+                            now_instant,
+                        ) {
+                            tracing::debug!(
+                                "Initial block production delayed: height={}, connected_peers={}",
+                                current_height,
+                                connected_peers,
+                            );
+                            continue;
+                        }
+
+                        Self::prune_verified_peer_tips(&mut verified_peer_tips, now_instant);
+                        if let Some((peer_height, _peer_hash, same_height_divergent)) =
+                            Self::sync_needed_from_verified_tips(
+                                &verified_peer_tips,
+                                current_height,
+                                &latest_hash,
+                            )
+                        {
+                            let chain_lock = chain.lock().await;
+                            let msg = if same_height_divergent
+                                || peer_height.saturating_sub(current_height) > SYNC_BATCH_SIZE
+                            {
+                                NetworkMessage::RequestSnapshot {
+                                    requester_peer_id: self.peer_id.to_string(),
+                                    preferred_height: None,
+                                    start_chunk: 0,
+                                    known_finalized_height: chain_lock.finalized_height(),
+                                    known_finalized_hash: chain_lock
+                                        .finality_tracker
+                                        .finalized_hash
+                                        .clone(),
+                                }
+                            } else {
+                                NetworkMessage::RequestBlocks {
+                                    from_height: current_height + 1,
+                                    requester_peer_id: self.peer_id.to_string(),
+                                    expected_prev_hash: chain_lock.latest_hash().to_vec(),
+                                    genesis_hash: chain_lock.genesis_hash().to_vec(),
+                                }
+                            };
+                            drop(chain_lock);
+                            self.broadcast_or_queue(
+                                &msg,
+                                &mut pending_broadcasts,
+                                "pre-production sync request",
+                            );
+                            sync_requested = true;
+                            sync_deadline =
+                                Some(Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS));
+                            tracing::debug!(
+                                "Block production paused: verified peer tip requires sync (peer_height={}, our_height={}, same_height_divergent={})",
+                                peer_height,
+                                current_height,
+                                same_height_divergent,
+                            );
+                            continue;
+                        }
+
                         let now = chrono::Utc::now().timestamp();
-                        let allowed_rank =
-                            allowed_backup_rank(parent_ts, now, snapshot_size);
+                        let allowed_rank = Self::allowed_rank_for_slot(
+                            next_height,
+                            parent_ts,
+                            node_started_unix,
+                            now,
+                            snapshot_size,
+                        );
 
                         // Resolve which (if any) rank elects us. If we're not
                         // in the snapshot at all, `slot_leader_address`
@@ -698,9 +914,11 @@ impl NetworkNode {
 
                                         // Broadcast block
                                         let msg = NetworkMessage::NewBlock(serialized);
-                                        if let Err(e) = self.broadcast(&msg) {
-                                            warn!("Failed to broadcast block: {}", e);
-                                        }
+                                        self.broadcast_or_queue(
+                                            &msg,
+                                            &mut pending_broadcasts,
+                                            "new block",
+                                        );
 
                                         // Cast finality vote
                                         let vote_epoch = {
@@ -720,7 +938,11 @@ impl NetworkNode {
                                                 chain_lock.add_finality_vote(vote);
                                             }
                                             let msg = NetworkMessage::FinalityVote(vote_data);
-                                            let _ = self.broadcast(&msg);
+                                            self.broadcast_or_queue(
+                                                &msg,
+                                                &mut pending_broadcasts,
+                                                "finality vote",
+                                            );
                                         }
 
                                         seen_block_hashes.insert(block.hash);
@@ -772,7 +994,11 @@ impl NetworkNode {
                         signature,
                         protocol_version,
                     };
-                    let _ = self.broadcast(&msg);
+                    self.broadcast_or_queue(&msg, &mut pending_broadcasts, "height announce");
+                }
+
+                _ = rebroadcast_timer.tick() => {
+                    self.flush_pending_broadcasts(&mut pending_broadcasts);
                 }
 
                 // Rate limiter + peer scoring cleanup
@@ -808,6 +1034,7 @@ impl NetworkNode {
                                             &validator_key,
                                             self,
                                             &event_tx,
+                                            &mut pending_broadcasts,
                                         ).await;
                                         // Score the peer based on block validity
                                         if let Some(source) = message.source {
@@ -840,6 +1067,7 @@ impl NetworkNode {
                                             &requester_peer_id,
                                             &expected_prev_hash,
                                             &genesis_hash,
+                                            &mut pending_broadcasts,
                                         ).await;
                                     }
                                     NetworkMessage::BlockResponse {
@@ -889,6 +1117,7 @@ impl NetworkNode {
 
                                         let chain_lock = chain.lock().await;
                                         let our_height = chain_lock.height();
+                                        let our_latest_hash = chain_lock.latest_hash().to_vec();
                                         let our_genesis = chain_lock.genesis_hash().to_vec();
                                         drop(chain_lock);
 
@@ -907,6 +1136,13 @@ impl NetworkNode {
                                                 &announce_peer_id, peer_protocol_version, our_protocol_version
                                             );
                                             continue;
+                                        }
+
+                                        if verified {
+                                            verified_peer_tips.insert(
+                                                announce_peer_id.clone(),
+                                                (height, latest_hash.clone(), Instant::now()),
+                                            );
                                         }
 
                                         // Only trigger sync from verified announces
@@ -935,7 +1171,41 @@ impl NetworkNode {
                                                 drop(chain_lock);
                                                 msg
                                             };
-                                            let _ = self.broadcast(&msg);
+                                            self.broadcast_or_queue(
+                                                &msg,
+                                                &mut pending_broadcasts,
+                                                "height-announce sync request",
+                                            );
+                                            sync_requested = true;
+                                            sync_deadline = Some(
+                                                Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS),
+                                            );
+                                        } else if height == our_height
+                                            && latest_hash != our_latest_hash
+                                            && !sync_requested
+                                            && verified
+                                        {
+                                            warn!(
+                                                "Verified peer {} has divergent tip at height {}. Requesting snapshot.",
+                                                &announce_peer_id, height
+                                            );
+                                            let chain_lock = chain.lock().await;
+                                            let msg = NetworkMessage::RequestSnapshot {
+                                                requester_peer_id: self.peer_id.to_string(),
+                                                preferred_height: None,
+                                                start_chunk: 0,
+                                                known_finalized_height: chain_lock.finalized_height(),
+                                                known_finalized_hash: chain_lock
+                                                    .finality_tracker
+                                                    .finalized_hash
+                                                    .clone(),
+                                            };
+                                            drop(chain_lock);
+                                            self.broadcast_or_queue(
+                                                &msg,
+                                                &mut pending_broadcasts,
+                                                "divergent-tip snapshot request",
+                                            );
                                             sync_requested = true;
                                             sync_deadline = Some(
                                                 Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS),
@@ -1016,14 +1286,23 @@ impl NetworkNode {
                                                     target_peer_id: requester_peer_id.clone(),
                                                     data,
                                                 };
-                                                let _ = self.broadcast(&msg);
+                                                self.broadcast_or_queue(
+                                                    &msg,
+                                                    &mut pending_broadcasts,
+                                                    "snapshot manifest",
+                                                );
                                                 for chunk in chunks.into_iter().skip(start_chunk) {
                                                     if let Ok(data) = bincode::serialize(&chunk) {
-                                                        let _ = self.broadcast(&NetworkMessage::SnapshotChunk {
+                                                        let msg = NetworkMessage::SnapshotChunk {
                                                             target_peer_id: requester_peer_id.clone(),
                                                             height: snapshot_height,
                                                             data,
-                                                        });
+                                                        };
+                                                        self.broadcast_or_queue(
+                                                            &msg,
+                                                            &mut pending_broadcasts,
+                                                            "snapshot chunk",
+                                                        );
                                                     }
                                                 }
                                             }
@@ -1153,7 +1432,11 @@ impl NetworkNode {
                                                                         expected_prev_hash: chain_lock.latest_hash().to_vec(),
                                                                         genesis_hash: chain_lock.genesis_hash().to_vec(),
                                                                     };
-                                                                    let _ = self.broadcast(&request);
+                                                                    self.broadcast_or_queue(
+                                                                        &request,
+                                                                        &mut pending_broadcasts,
+                                                                        "post-snapshot block request",
+                                                                    );
                                                                     sync_requested = true;
                                                                     sync_deadline = Some(
                                                                         Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS),
@@ -1193,8 +1476,11 @@ impl NetworkNode {
                                     self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
                                 }
                             }
+                            last_peer_change_at = Instant::now();
                             let mut state = runtime_state.write().await;
                             state.set_peer_count(self.swarm.connected_peers().count());
+                            drop(state);
+                            self.flush_pending_broadcasts(&mut pending_broadcasts);
                         }
                         SwarmEvent::Behaviour(CursBehaviourEvent::Mdns(
                             mdns::Event::Expired(peers)
@@ -1202,18 +1488,25 @@ impl NetworkNode {
                             for (peer_id, _addr) in peers {
                                 info!("Peer expired: {}", peer_id);
                                 discovered_peers.remove(&peer_id);
+                                verified_peer_tips.remove(&peer_id.to_string());
                                 self.swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
                             }
+                            last_peer_change_at = Instant::now();
                             let mut state = runtime_state.write().await;
                             state.set_peer_count(self.swarm.connected_peers().count());
                         }
                         SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                             info!("Connected to peer {}", peer_id);
+                            last_peer_change_at = Instant::now();
                             let mut state = runtime_state.write().await;
                             state.set_peer_count(self.swarm.connected_peers().count());
+                            drop(state);
+                            self.flush_pending_broadcasts(&mut pending_broadcasts);
                         }
                         SwarmEvent::ConnectionClosed { peer_id, .. } => {
                             info!("Disconnected from peer {}", peer_id);
+                            last_peer_change_at = Instant::now();
+                            verified_peer_tips.remove(&peer_id.to_string());
                             let mut state = runtime_state.write().await;
                             state.set_peer_count(self.swarm.connected_peers().count());
                         }
@@ -1240,6 +1533,7 @@ impl NetworkNode {
         validator_key: &Option<KeyPair>,
         node: &mut Self,
         event_tx: &Option<tokio::sync::broadcast::Sender<String>>,
+        pending_broadcasts: &mut VecDeque<NetworkMessage>,
     ) -> bool {
         // Dedup: hash the raw data
         let data_hash = crate::crypto::hash::sha3_hash(data);
@@ -1310,7 +1604,11 @@ impl NetworkNode {
                         chain_lock.add_finality_vote(vote);
                         drop(chain_lock);
                         let msg = NetworkMessage::FinalityVote(vote_data);
-                        let _ = node.broadcast(&msg);
+                        node.broadcast_or_queue(
+                            &msg,
+                            pending_broadcasts,
+                            "finality vote for accepted block",
+                        );
                     }
                 }
                 return true;
@@ -1353,7 +1651,11 @@ impl NetworkNode {
                                 if let Ok(ev_data) = bincode::serialize(&evidence) {
                                     drop(chain_lock);
                                     let msg = NetworkMessage::SlashingEvidence(ev_data);
-                                    let _ = node.broadcast(&msg);
+                                    node.broadcast_or_queue(
+                                        &msg,
+                                        pending_broadcasts,
+                                        "slashing evidence",
+                                    );
                                     return false;
                                 }
                             }
@@ -1418,6 +1720,7 @@ impl NetworkNode {
         requester_peer_id: &str,
         expected_prev_hash: &[u8],
         request_genesis_hash: &[u8],
+        pending_broadcasts: &mut VecDeque<NetworkMessage>,
     ) {
         let chain_lock = chain.lock().await;
         let our_height = chain_lock.height();
@@ -1433,6 +1736,46 @@ impl NetworkNode {
             && let Some(prev_block) = chain_lock.blocks.get((from_height - 1) as usize)
             && prev_block.hash != expected_prev_hash
         {
+            warn!(
+                "RequestBlocks from {} has checkpoint mismatch at height {}. Offering snapshot.",
+                requester_peer_id,
+                from_height.saturating_sub(1),
+            );
+            let snapshot = chain_lock.create_snapshot().ok().and_then(|manifest| {
+                chain_lock
+                    .get_snapshot_chunks(manifest.height)
+                    .ok()
+                    .map(|chunks| (manifest, chunks))
+            });
+            drop(chain_lock);
+            if let Some((manifest, chunks)) = snapshot {
+                let snapshot_height = manifest.height;
+                if let Ok(data) = bincode::serialize(&manifest) {
+                    let msg = NetworkMessage::SnapshotManifest {
+                        target_peer_id: requester_peer_id.to_string(),
+                        data,
+                    };
+                    self.broadcast_or_queue(
+                        &msg,
+                        pending_broadcasts,
+                        "snapshot manifest for forked RequestBlocks",
+                    );
+                }
+                for chunk in chunks {
+                    if let Ok(data) = bincode::serialize(&chunk) {
+                        let msg = NetworkMessage::SnapshotChunk {
+                            target_peer_id: requester_peer_id.to_string(),
+                            height: snapshot_height,
+                            data,
+                        };
+                        self.broadcast_or_queue(
+                            &msg,
+                            pending_broadcasts,
+                            "snapshot chunk for forked RequestBlocks",
+                        );
+                    }
+                }
+            }
             return;
         }
 
@@ -1465,7 +1808,7 @@ impl NetworkNode {
                 blocks: blocks_data,
             };
             drop(chain_lock);
-            let _ = self.broadcast(&msg);
+            self.broadcast_or_queue(&msg, pending_broadcasts, "block response");
         }
     }
 
@@ -1737,6 +2080,120 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[test]
+    fn test_initial_production_gate_waits_for_peer_mesh() {
+        let started = Instant::now();
+        assert!(NetworkNode::should_delay_initial_production(
+            started,
+            0,
+            0,
+            started + Duration::from_secs(STARTUP_GRACE_SECS - 1),
+        ));
+        assert!(NetworkNode::should_delay_initial_production(
+            started,
+            0,
+            0,
+            started + Duration::from_secs(STARTUP_GRACE_SECS + 1),
+        ));
+        assert!(!NetworkNode::should_delay_initial_production(
+            started,
+            1,
+            0,
+            started + Duration::from_secs(STARTUP_GRACE_SECS + 1),
+        ));
+        assert!(!NetworkNode::should_delay_initial_production(
+            started,
+            1,
+            1,
+            started + Duration::from_secs(STARTUP_GRACE_SECS + 1),
+        ));
+        assert!(NetworkNode::should_delay_initial_production(
+            started,
+            0,
+            1,
+            started + Duration::from_secs(STARTUP_GRACE_SECS + 1),
+        ));
+        assert!(!NetworkNode::should_delay_initial_production(
+            started,
+            0,
+            1,
+            started + Duration::from_secs(PEERLESS_PRODUCTION_AFTER_SECS + 1),
+        ));
+    }
+
+    #[test]
+    fn test_genesis_backup_rank_uses_node_start_anchor() {
+        let node_started_unix = 1_000;
+        let parent_timestamp = 0;
+        let now_unix = node_started_unix + 100 * BACKUP_LEADER_TIMEOUT_SECS as i64;
+
+        assert_eq!(
+            NetworkNode::allowed_rank_for_slot(1, parent_timestamp, node_started_unix, now_unix, 3,),
+            0,
+            "height-1 production must remain primary-only even when genesis timestamp is 0"
+        );
+
+        assert!(
+            NetworkNode::allowed_rank_for_slot(2, parent_timestamp, node_started_unix, now_unix, 3)
+                > 0,
+            "non-genesis heights still use the parent timestamp timeout"
+        );
+    }
+
+    #[test]
+    fn test_pending_broadcast_queue_is_bounded() {
+        let mut pending = VecDeque::new();
+        for i in 0..(MAX_PENDING_BROADCASTS + 10) {
+            NetworkNode::enqueue_pending_broadcast(
+                &mut pending,
+                NetworkMessage::HeightAnnounce {
+                    height: i as u64,
+                    latest_hash: vec![i as u8],
+                    genesis_hash: vec![0],
+                    peer_id: format!("peer-{i}"),
+                    public_key: None,
+                    signature: None,
+                    protocol_version: 5,
+                },
+            );
+        }
+        assert_eq!(pending.len(), MAX_PENDING_BROADCASTS);
+        match pending.front().expect("queued message") {
+            NetworkMessage::HeightAnnounce { height, .. } => {
+                assert_eq!(*height, 10);
+            }
+            _ => panic!("unexpected queued message"),
+        }
+    }
+
+    #[test]
+    fn test_verified_peer_tips_detect_higher_and_divergent_tips() {
+        let mut tips = HashMap::new();
+        tips.insert(
+            "peer-a".to_string(),
+            (
+                9,
+                vec![9],
+                Instant::now() - Duration::from_secs(VERIFIED_TIP_TTL_SECS + 1),
+            ),
+        );
+        tips.insert("peer-b".to_string(), (11, vec![11], Instant::now()));
+        NetworkNode::prune_verified_peer_tips(&mut tips, Instant::now());
+        assert!(!tips.contains_key("peer-a"));
+
+        let needed = NetworkNode::sync_needed_from_verified_tips(&tips, 10, &[10])
+            .expect("higher peer tip must trigger sync");
+        assert_eq!(needed.0, 11);
+        assert!(!needed.2);
+
+        tips.clear();
+        tips.insert("peer-c".to_string(), (10, vec![99], Instant::now()));
+        let needed = NetworkNode::sync_needed_from_verified_tips(&tips, 10, &[10])
+            .expect("same-height divergent peer tip must trigger snapshot sync");
+        assert_eq!(needed.0, 10);
+        assert!(needed.2);
+    }
+
     // ─── Two-node cold-sync regression test ────────────────────────────
     //
     // Builds two real `NetworkNode`s on loopback, has node A mine N blocks,
@@ -1918,6 +2375,7 @@ mod tests {
                                 &requester_peer_id,
                                 &expected_prev_hash,
                                 &genesis_hash,
+                                &mut VecDeque::new(),
                             )
                             .await;
                     }

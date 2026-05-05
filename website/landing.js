@@ -123,7 +123,10 @@
     tps: null,
     finality: null,
     chainId: 'curs3d-public-testnet',
-    version: PLACEHOLDER,
+    // Software version (Cargo.toml). v1.0 is reserved for the official mainnet
+    // launch — do not bump this just because the consensus protocol bumps.
+    version: 'v0.3.5',
+    protocolVersion: 'v5',
   };
   let mode = 'init'; // 'init' | 'live' | 'demo'
 
@@ -172,6 +175,7 @@
     setStat('txtotal', fmt(stats.txTotal));
     setStat('chainid', stats.chainId);
     setStat('version', stats.version);
+    setStat('protocol-version', stats.protocolVersion);
   }
   // Initial paint = all dashes, mode = init.
   paintStats();
@@ -193,7 +197,12 @@
         else if (Array.isArray(j.validators)) stats.validators = j.validators.length;
         if (typeof j.validators_total === 'number') stats.validatorsTotal = j.validators_total;
         if (typeof j.tps === 'number') stats.tps = j.tps;
-        if (typeof j.protocol_version !== 'undefined') stats.version = 'v' + j.protocol_version;
+        // Software version is the project's semver (Cargo.toml). Protocol version
+        // is the consensus/wire protocol — internal, not what users should see in
+        // the UI as "vX". Show software version everywhere; expose the protocol
+        // version as a separate field for the rare surfaces that need it.
+        stats.version = 'v0.3.5';
+        if (typeof j.protocol_version !== 'undefined') stats.protocolVersion = 'v' + j.protocol_version;
         if (typeof j.chain_id === 'string') stats.chainId = j.chain_id;
         mode = 'live';
         paintStats();
@@ -211,7 +220,8 @@
     stats.txTotal = 2_184_902;
     stats.tps = 18.4;
     stats.finality = 1.2;
-    stats.version = 'v4 (DEMO)';
+    stats.version = 'v0.3.5 (DEMO)';
+    stats.protocolVersion = 'v5';
     paintStats();
     applyModeClass();
     setInterval(() => {

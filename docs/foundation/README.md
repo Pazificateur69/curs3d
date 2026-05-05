@@ -31,6 +31,7 @@ Contenu:
 - [`18-press-kit.md`](./18-press-kit.md): structure de press kit et boilerplates
 - [`19-data-room-checklist.md`](./19-data-room-checklist.md): checklist de data room
 - [`20-document-governance.md`](./20-document-governance.md): règles pour garder une documentation cohérente
+- [`21-10-out-of-10-execution-checklist.md`](./21-10-out-of-10-execution-checklist.md): checklist opérationnelle 10/10 avec preuves, tests, monitoring, CI et demo publique
 
 Important:
 - ces documents rendent `CURS3D` plus structuré et plus crédible

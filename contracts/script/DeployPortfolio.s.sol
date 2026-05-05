@@ -15,6 +15,7 @@ interface ScriptVm {
     function envOr(string calldata key, address defaultValue) external returns (address);
     function envOr(string calldata key, bool defaultValue) external returns (bool);
     function addr(uint256 privateKey) external returns (address);
+    function startBroadcast() external;
     function startBroadcast(uint256 privateKey) external;
     function stopBroadcast() external;
     function serializeAddress(string calldata objectKey, string calldata valueKey, address value)
@@ -35,8 +36,11 @@ interface ScriptVm {
 
 /// @title DeployPortfolio
 /// @notice One-shot deploy script for the full CURS3D Solidity portfolio.
-/// @dev Reads:
-///        - PRIVATE_KEY               — deployer key
+/// @dev Authentication options (any one of):
+///        1. `--private-key 0x...` flag on the forge command
+///        2. `--keystore <file> --password <pw>` flag pair
+///        3. `PRIVATE_KEY` env variable (legacy path)
+///      Reads:
 ///        - ARBITRATOR (optional)     — DigitalEscrow arbitrator (defaults to deployer)
 ///        - FORCE (optional)          — set true to overwrite an existing deployments file
 ///      Writes:
@@ -56,9 +60,6 @@ contract DeployPortfolio {
     }
 
     function run() external returns (Deployment memory deployed) {
-        uint256 deployerKey = vm.envUint("PRIVATE_KEY");
-        address deployer = vm.addr(deployerKey);
-        address arbitrator = vm.envOr("ARBITRATOR", deployer);
         bool force = vm.envOr("FORCE", false);
 
         string memory deploymentPath =
@@ -76,7 +77,11 @@ contract DeployPortfolio {
         // ╔══════════════════════════════════════════════════════════════════╗
         // ║  CURS3D PORTFOLIO — deploying 7 contracts                        ║
         // ╚══════════════════════════════════════════════════════════════════╝
-        vm.startBroadcast(deployerKey);
+        // Use the broadcast configuration (--keystore / --private-key /
+        // --account) provided to forge instead of pinning to PRIVATE_KEY env.
+        vm.startBroadcast();
+        address deployer = msg.sender;
+        address arbitrator = vm.envOr("ARBITRATOR", deployer);
 
         deployed.token = new Curs3dToken(1_000_000 ether, 100_000_000 ether, deployer);
         deployed.faucet = new Curs3dFaucet(deployed.token, 100 ether, 1 hours, deployer);

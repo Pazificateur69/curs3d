@@ -1,8 +1,8 @@
 [package]
 name = "curs3d"
-version = "0.1.0"
+version = "0.3.5"
 edition = "2024"
-description = "CURS3D — Quantum-Resistant Blockchain"
+description = "CURS3D — Quantum-Resistant Blockchain (pre-mainnet testnet, software v0.3.5, consensus protocol v5)"
 license = "MIT"
 repository = "https://github.com/Pazificateur69/curs3d"
 

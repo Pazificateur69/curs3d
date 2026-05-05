@@ -9,7 +9,7 @@
 #
 # What it does on failure:
 #   - Logs to /var/log/curs3d-healthcheck.log
-#   - Restarts curs3d.service
+#   - Restarts curs3d.service only for process/API failures by default
 #   - Posts an alert to a Discord and/or Telegram webhook (if configured)
 #   - Tracks restart counter to detect loops; alerts STUCK_LOOP if > 3 restarts in 10 min
 #
@@ -18,6 +18,7 @@
 #   TELEGRAM_BOT_TOKEN=123456:ABC...
 #   TELEGRAM_CHAT_ID=-1001234567890
 #   ALERT_HOSTNAME=curs3d-node1            # override $(hostname -s) in messages
+#   CURS3D_HEALTHCHECK_RESTART_ON_STUCK=0 # default: alert-only for consensus stalls
 #
 # Schedule (cron entry in /etc/cron.d/curs3d-healthcheck):
 #   */2 * * * * root /usr/local/bin/curs3d-healthcheck.sh
@@ -29,8 +30,11 @@ LOG="/var/log/curs3d-healthcheck.log"
 STATE="/var/lib/curs3d/healthcheck.state"
 ENV_FILE="/etc/curs3d/alerts.env"
 RESTART_WINDOW_FILE="/var/lib/curs3d/healthcheck.restart_window"
+STUCK_ALERT_FILE="/var/lib/curs3d/healthcheck.stuck_alert"
 RESTART_LIMIT=3
 RESTART_WINDOW_SECS=600
+RESTART_ON_STUCK="${CURS3D_HEALTHCHECK_RESTART_ON_STUCK:-0}"
+STUCK_ALERT_INTERVAL_SECS="${CURS3D_HEALTHCHECK_STUCK_ALERT_INTERVAL_SECS:-1800}"
 HOSTNAME_DEFAULT="$(hostname -s)"
 
 mkdir -p "$(dirname "$LOG")" "$(dirname "$STATE")"
@@ -95,6 +99,20 @@ restart_curs3d() {
     fi
 }
 
+notify_stuck_once() {
+    local message="$1"
+    local now
+    now="$(date +%s)"
+    local last=0
+    if [ -f "$STUCK_ALERT_FILE" ]; then
+        last="$(cat "$STUCK_ALERT_FILE" 2>/dev/null || echo 0)"
+    fi
+    if [ $((now - last)) -ge "$STUCK_ALERT_INTERVAL_SECS" ]; then
+        echo "$now" > "$STUCK_ALERT_FILE"
+        notify WARN "$message"
+    fi
+}
+
 # 1. systemd active check
 if ! systemctl is-active --quiet curs3d; then
     restart_curs3d "service inactive"
@@ -128,7 +146,7 @@ else
     PREV_TS=$NOW
 fi
 
-STUCK_THRESHOLD=120
+STUCK_THRESHOLD="${CURS3D_HEALTHCHECK_STUCK_THRESHOLD_SECS:-600}"
 ELAPSED=$((NOW - PREV_TS))
 
 if [ "$HEIGHT" -gt "$PREV_HEIGHT" ]; then
@@ -136,8 +154,12 @@ if [ "$HEIGHT" -gt "$PREV_HEIGHT" ]; then
     log "OK height=$HEIGHT finalized=${FINALIZED:-?}"
 else
     if [ "$ELAPSED" -ge "$STUCK_THRESHOLD" ]; then
-        restart_curs3d "chain stuck at height=$HEIGHT for ${ELAPSED}s"
-        exit 1
+        log "WARN chain stagnant at height=$HEIGHT for ${ELAPSED}s (restart_on_stuck=$RESTART_ON_STUCK)"
+        notify_stuck_once "chain stagnant at height=$HEIGHT for ${ELAPSED}s; not restarting automatically"
+        if [ "$RESTART_ON_STUCK" = "1" ]; then
+            restart_curs3d "chain stuck at height=$HEIGHT for ${ELAPSED}s"
+            exit 1
+        fi
     else
         log "stagnant height=$HEIGHT (${ELAPSED}s, threshold ${STUCK_THRESHOLD}s)"
     fi

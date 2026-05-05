@@ -245,9 +245,9 @@
                     <span data-lang="fr">Cause racine : le settlement d'époque s'appliquait à l'ajout de bloc mais pas au replay de démarrage ; un helper identique s'exécute désormais des deux côtés. Test de régression ajouté (<code>test_restart_across_epoch_boundary</code>).</span>
                   </li>
                   <li>
-                    <strong><span data-lang="en" class="lang-show"><code>RequestBlocks</code> sync timeout.</span><span data-lang="fr">Timeout sync <code>RequestBlocks</code>.</span></strong>
-                    <span data-lang="en" class="lang-show">A latent bug in the network-module receive loop times out before block batches arrive. Deterministic stake-weighted slot-leader scheduling (commit <code>343a7a1</code>) means this no longer triggers in normal operation, but a node joining mid-chain can fail to catch up cleanly. Workaround: bootstrap from a recent snapshot.</span>
-                    <span data-lang="fr">Un bug latent dans la boucle de réception du module réseau expire avant l'arrivée des lots de blocs. Le slot-leader déterministe pondéré par stake (commit <code>343a7a1</code>) fait que cela ne se déclenche plus en fonctionnement normal, mais un nœud qui rejoint la chaîne en cours peut ne pas rattraper proprement. Contournement : bootstrap depuis un snapshot récent.</span>
+                    <strong><span data-lang="en" class="lang-show"><code>RequestBlocks</code> sync timeout / boot forks — fixed.</span><span data-lang="fr">Timeout sync <code>RequestBlocks</code> / forks au boot — corrigé.</span></strong>
+                    <span data-lang="en" class="lang-show">BlockResponse now tolerates stale contiguous batches, sync escalates to snapshots after retries, forked checkpoints receive a snapshot offer, failed broadcasts are retried, and validators pause block production during startup/sync.</span>
+                    <span data-lang="fr">BlockResponse tolère maintenant les lots contigus arrivés en retard, la sync escalade vers snapshot après retries, les checkpoints divergents reçoivent une offre snapshot, les broadcasts échoués sont retentés, et les validateurs suspendent la production pendant le démarrage/la sync.</span>
                   </li>
                   <li>
                     <strong><span data-lang="en" class="lang-show">No PGP key for security disclosures yet.</span><span data-lang="fr">Pas encore de clé PGP pour les divulgations sécurité.</span></strong>
@@ -286,7 +286,7 @@
         <div class="footer-col"><h4>Project</h4><ul><li><a href="https://github.com/Pazificateur69/curs3d" target="_blank" rel="noopener noreferrer">GitHub</a></li><li><a href="/governance">Governance</a></li><li><a href="/security">Security</a></li><li><a href="/community">Community</a></li></ul></div>
       </div>
       <div class="footer-bottom">
-        <span>&copy; 2026 CURS3D PROTOCOL · MIT</span>
+        <span>&copy; 2026 CURS3D PROTOCOL · MIT · <b style="color:var(--fg)">v0.3.5</b></span>
         <span class="hash">CHAIN-ID <b style="color:var(--fg)" data-stat="chainid">curs3d-public-testnet</b></span>
       </div>
     </div>

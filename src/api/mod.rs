@@ -36,6 +36,12 @@ const MAX_API_BODY_BYTES: usize = 1024 * 1024;
 const MAX_HTTP_CONNECTIONS: usize = 128;
 const RATE_LIMIT_GET: usize = 60;
 const RATE_LIMIT_POST: usize = 10;
+/// Higher cap for the Ethereum-compatible JSON-RPC endpoint (`/eth`). MetaMask,
+/// ethers.js, viem, hardhat, foundry — they all poll dozens of methods per
+/// block (eth_blockNumber, eth_getBlockByNumber, eth_getTransactionCount,
+/// eth_estimateGas, etc.). 60/min strangles real EVM tooling. 600/min = 10/sec
+/// per-IP is comfortable for a single dApp user and still bounds abuse.
+const RATE_LIMIT_ETH: usize = 600;
 const RATE_LIMIT_WINDOW_SECS: u64 = 60;
 const RATE_LIMIT_CLEANUP_SECS: u64 = 120;
 const RATE_LIMIT_CLEANUP_INTERVAL: u64 = 100;
@@ -209,8 +215,10 @@ struct ApiStatus {
     finalized_height: u64,
     latest_hash: String,
     genesis_hash: String,
+    latest_block_age_secs: i64,
     pending_transactions: usize,
     active_validators: usize,
+    peer_count: usize,
     protocol_version: u32,
 }
 
@@ -661,12 +669,14 @@ async fn check_rate_limit(
     request_counter: &AtomicU64,
 ) -> Option<Response<Full<Bytes>>> {
     let now = Instant::now();
-    // /eth is a JSON-RPC endpoint dominated by read methods. Treating it as a
-    // POST under the strict 10/min cap breaks Metamask (which polls
-    // eth_blockNumber every block) and explorer/dApp traffic. Bucket it with
-    // the GET budget instead.
+    // /eth is a JSON-RPC endpoint dominated by read methods. MetaMask polls
+    // eth_blockNumber every block; foundry/forge issue dozens of calls per
+    // contract deploy. The previous 60/min cap throttled real EVM tooling.
+    // Use a dedicated higher bucket (600/min = 10/sec) for /eth.
     let is_eth_rpc = path == "/eth" || path == "/rpc/eth";
-    let max_requests = if *method == Method::POST && !is_eth_rpc {
+    let max_requests = if is_eth_rpc {
+        RATE_LIMIT_ETH
+    } else if *method == Method::POST {
         RATE_LIMIT_POST
     } else {
         RATE_LIMIT_GET
@@ -823,6 +833,7 @@ async fn handle_request(
         // GET /api/metrics
         (Method::GET, ["api", "metrics"]) => {
             let chain = chain.lock().await;
+            let runtime = runtime_state.read().await.snapshot();
             let uptime = API_START_TIME
                 .get()
                 .map(|start| start.elapsed().as_secs())
@@ -839,6 +850,8 @@ async fn handle_request(
                     "curs3d_pending_transactions {}\n",
                     "# TYPE curs3d_active_validators gauge\n",
                     "curs3d_active_validators {}\n",
+                    "# TYPE curs3d_peer_count gauge\n",
+                    "curs3d_peer_count {}\n",
                     "# TYPE curs3d_accounts_total gauge\n",
                     "curs3d_accounts_total {}\n",
                     "# TYPE curs3d_contracts_total gauge\n",
@@ -855,6 +868,7 @@ async fn handle_request(
                 chain.finalized_height(),
                 chain.pending_transactions.len(),
                 chain.active_validator_count(),
+                runtime.peer_count,
                 chain.accounts.len(),
                 chain.contracts.len(),
                 chain.receipts.len(),
@@ -871,6 +885,9 @@ async fn handle_request(
         // GET /api/status
         (Method::GET, ["api", "status"]) => {
             let chain = chain.lock().await;
+            let latest_ts = chain.latest_block().header.timestamp;
+            let age = chrono::Utc::now().timestamp().saturating_sub(latest_ts);
+            let runtime = runtime_state.read().await.snapshot();
             Ok(json_ok(ApiStatus {
                 chain_id: chain.chain_id().to_string(),
                 chain_name: chain.genesis_config.chain_name.clone(),
@@ -880,8 +897,10 @@ async fn handle_request(
                 finalized_height: chain.finalized_height(),
                 latest_hash: hex::encode(chain.latest_hash()),
                 genesis_hash: hex::encode(chain.genesis_hash()),
+                latest_block_age_secs: age,
                 pending_transactions: chain.pending_transactions.len(),
                 active_validators: chain.active_validator_count(),
+                peer_count: runtime.peer_count,
                 protocol_version: chain.protocol_version_at_height(chain.height()),
             }))
         }
@@ -1719,12 +1738,13 @@ async fn handle_request(
         // GET /eth — friendly hint for browsers hitting the RPC URL
         (Method::GET, ["eth"]) => {
             let body = "CURS3D Ethereum-compatible JSON-RPC endpoint. POST a JSON-RPC 2.0 request here.\n\
-                 Supported methods (read-only subset): eth_chainId, eth_blockNumber, eth_gasPrice,\n\
+                 Supported methods: eth_chainId, eth_blockNumber, eth_gasPrice,\n\
                  eth_getBalance, eth_getTransactionCount, eth_getCode, eth_getStorageAt,\n\
                  eth_getBlockByNumber, eth_getBlockByHash, eth_getTransactionByHash,\n\
                  eth_getTransactionReceipt, eth_getLogs, eth_feeHistory, eth_estimateGas,\n\
-                 net_version, web3_clientVersion, web3_sha3.\n\
-                 Send transactions via POST /api/tx/submit (CURS3D uses Dilithium signatures).\n";
+                 eth_call, eth_sendRawTransaction, net_version, web3_clientVersion, web3_sha3.\n\
+                 EVM transactions use standard secp256k1-signed RLP via eth_sendRawTransaction;\n\
+                 native CURS3D ML-DSA transactions use POST /api/tx/submit.\n";
             let mut builder = Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "text/plain; charset=utf-8");

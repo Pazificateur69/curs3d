@@ -368,7 +368,7 @@ tokens = client.<span class="c-fn">get_tokens</span>()
                 </div>
 <pre class="code-body"><span class="c-key">import</span> { JsonRpcProvider } <span class="c-key">from</span> <span class="c-str">"ethers"</span>;
 
-<span class="c-key">const</span> provider = <span class="c-key">new</span> JsonRpcProvider(<span class="c-str">"https://api.curs3d.fr/eth"</span>);
+<span class="c-key">const</span> provider = <span class="c-key">new</span> JsonRpcProvider(<span class="c-str">"https://rpc.curs3d.fr/eth"</span>);
 
 <span class="c-key">const</span> chainId = <span class="c-key">await</span> provider.<span class="c-fn">send</span>(<span class="c-str">"eth_chainId"</span>, []);
 <span class="c-key">const</span> head    = <span class="c-key">await</span> provider.<span class="c-fn">send</span>(<span class="c-str">"eth_blockNumber"</span>, []);
@@ -446,7 +446,7 @@ console.<span class="c-fn">log</span>({ chainId, head, balance });</pre>
         </div>
       </div>
       <div style="display:flex; justify-content:space-between; padding-top:24px; border-top:1px solid var(--line); font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.08em;">
-        <span>© 2026 CURS3D PROTOCOL · MIT</span>
+        <span>© 2026 CURS3D PROTOCOL · MIT · <b style="color:var(--fg)">v0.3.5</b></span>
         <span>CHAIN-ID <b style="color:var(--fg)">curs3d-public-testnet</b></span>
       </div>
     </div>

@@ -287,6 +287,13 @@ pub struct Blockchain {
     /// In-memory index from tx hash to (block_height, tx_index). Speeds up
     /// `tx/:hash`, `eth_getTransactionByHash` and any historical lookup.
     pub tx_hash_index: HashMap<Vec<u8>, (u64, usize)>,
+    /// Auxiliary index for Ethereum-style EVM tx hashes — different from the
+    /// CURS3D-internal `tx.hash()` used by `tx_hash_index` because the former
+    /// is computed by `keccak256(rlp_signed_payload)` (what MetaMask/forge
+    /// see) while the latter hashes our `bincode(Transaction)` shape. Lets
+    /// `eth_getTransactionByHash` / `eth_getTransactionReceipt` answer the
+    /// hashes EVM tooling actually has.
+    pub evm_tx_hash_index: HashMap<Vec<u8>, (u64, usize)>,
     storage: Option<Storage>,
 }
 
@@ -352,6 +359,7 @@ impl Blockchain {
             validator_missed_epochs: HashMap::new(),
             block_hash_to_height: HashMap::new(),
             tx_hash_index: HashMap::new(),
+            evm_tx_hash_index: HashMap::new(),
             storage: None,
         })
     }
@@ -471,6 +479,7 @@ impl Blockchain {
                 validator_missed_epochs: HashMap::new(),
                 block_hash_to_height: HashMap::new(),
                 tx_hash_index: HashMap::new(),
+                evm_tx_hash_index: HashMap::new(),
                 storage: Some(storage),
             };
 
@@ -661,6 +670,24 @@ impl Blockchain {
             }
         }
         version
+    }
+
+    fn allowed_backup_rank_for_height(
+        block_height: u64,
+        parent_timestamp: i64,
+        block_timestamp: i64,
+        snapshot_size: usize,
+    ) -> u32 {
+        // Genesis often has a timestamp of 0 in dev/testnet configs. If we fed
+        // that into the normal timeout calculation, every backup rank would be
+        // admissible for block #1 and freshly started validators could all
+        // create incompatible first blocks. Make the first post-genesis block
+        // primary-only; backup view-change starts from block #2 onward, once
+        // there is a real parent timestamp shared by the network.
+        if block_height <= 1 {
+            return 0;
+        }
+        allowed_backup_rank(parent_timestamp, block_timestamp, snapshot_size)
     }
 
     /// Create a state sync snapshot from the current chain state.
@@ -878,8 +905,14 @@ impl Blockchain {
                 "snapshot finalized hash conflicts with local finalized checkpoint".to_string(),
             ));
         }
+        let protected_height = self
+            .finality_tracker
+            .finalized_height
+            .min(manifest.finalized_height);
+
         if let Some(local_block) = self.blocks.get(manifest.height as usize)
             && local_block.hash != manifest.latest_hash
+            && manifest.height <= protected_height
         {
             return Err(ChainError::SnapshotError(
                 "snapshot latest hash conflicts with local canonical block".to_string(),
@@ -896,9 +929,11 @@ impl Blockchain {
             let h = snapshot_block.header.height as usize;
             if let Some(local_block) = self.blocks.get(h)
                 && local_block.hash != snapshot_block.hash
+                && (snapshot_block.header.height == 0
+                    || snapshot_block.header.height <= protected_height)
             {
                 return Err(ChainError::SnapshotError(format!(
-                    "snapshot block at height {} disagrees with local canonical block",
+                    "snapshot block at protected height {} disagrees with local canonical block",
                     snapshot_block.header.height
                 )));
             }
@@ -1395,7 +1430,12 @@ impl Blockchain {
             .snapshot_for_height(&self.accounts, &self.epoch_snapshots, height)
             .map(|s| s.validators.len())
             .unwrap_or(0);
-        let allowed_rank = allowed_backup_rank(prev_block.header.timestamp, now, snapshot_size);
+        let allowed_rank = Self::allowed_backup_rank_for_height(
+            height,
+            prev_block.header.timestamp,
+            now,
+            snapshot_size,
+        );
         self.ensure_validator_is_authorized_for_accounts_at_rank(
             &self.accounts,
             &self.epoch_snapshots,
@@ -1542,6 +1582,15 @@ impl Blockchain {
         for (tx_index, tx) in block.transactions.iter().enumerate() {
             self.tx_hash_index
                 .insert(tx.hash(), (block.header.height, tx_index));
+            // Also index EVM txs under their Ethereum-shape hash so MetaMask /
+            // forge / ethers.js can look them up using the hash they computed
+            // client-side (keccak256 over the RLP-signed payload).
+            if tx.is_evm()
+                && let Ok(decoded) = crate::vm::evm::decode_raw_eth_tx(&tx.evm_raw_tx)
+            {
+                self.evm_tx_hash_index
+                    .insert(decoded.tx_hash.to_vec(), (block.header.height, tx_index));
+            }
         }
         self.rebuild_receipt_indexes();
         self.remove_block_transactions_from_mempool(&block);
@@ -2306,7 +2355,8 @@ impl Blockchain {
             .snapshot_for_height(parent_accounts, &self.epoch_snapshots, block.header.height)
             .map(|s| s.validators.len())
             .unwrap_or(0);
-        let allowed_rank = allowed_backup_rank(
+        let allowed_rank = Self::allowed_backup_rank_for_height(
+            block.header.height,
             parent.header.timestamp,
             block.header.timestamp,
             snapshot_size,
@@ -2723,10 +2773,23 @@ impl Blockchain {
         current_height: u64,
         base_fee_per_gas: u64,
     ) -> Result<crate::vm::evm::EvmOutcome, ChainError> {
-        let state = Self::evm_state_view(accounts, contracts);
+        // `apply_user_transaction` already incremented sender.nonce above (line
+        // 2921). For CREATE, revm computes the contract address from the
+        // sender's nonce in the state view (= keccak(rlp([sender, nonce]))[12:]),
+        // and that nonce is the *pre-tx* one (the one in the tx itself).
+        // Without this fix, the state view we hand to revm has nonce = tx.nonce
+        // + 1, so revm derives a contract address one nonce ahead of standard
+        // Ethereum (Token at nonce 0 ends up where Faucet at nonce 1 should be).
+        // Compensate by handing revm a state view where the caller's nonce is
+        // tx.nonce (pre-increment).
+        let mut state = Self::evm_state_view(accounts, contracts);
         let mut caller = [0u8; 20];
         if tx.from.len() == 20 {
             caller.copy_from_slice(&tx.from);
+        }
+        if let Some((bal, _post_nonce)) = state.accounts.get(&caller) {
+            let pre_nonce = tx.nonce;
+            state.accounts.insert(caller, (*bal, pre_nonce));
         }
         let outcome = crate::vm::evm::deploy(
             state,
@@ -3554,12 +3617,19 @@ impl Blockchain {
         // an O(n) scan on every lookup.
         self.block_hash_to_height.clear();
         self.tx_hash_index.clear();
+        self.evm_tx_hash_index.clear();
         for block in &blocks {
             self.block_hash_to_height
                 .insert(block.hash.clone(), block.header.height);
             for (tx_index, tx) in block.transactions.iter().enumerate() {
                 self.tx_hash_index
                     .insert(tx.hash(), (block.header.height, tx_index));
+                if tx.is_evm()
+                    && let Ok(decoded) = crate::vm::evm::decode_raw_eth_tx(&tx.evm_raw_tx)
+                {
+                    self.evm_tx_hash_index
+                        .insert(decoded.tx_hash.to_vec(), (block.header.height, tx_index));
+                }
             }
         }
 
@@ -4869,16 +4939,12 @@ mod tests {
         assert!(matches!(err, ChainError::SnapshotError(_)));
     }
 
-    /// Regression test for #5: a peer that ships a snapshot whose blocks
-    /// disagree with our locally stored canonical chain at any height must
-    /// be rejected, not silently overwrite our history.
-    ///
-    /// The test deliberately puts the local node at a SHORTER height than
-    /// the snapshot tip so that the existing `manifest.height` check
-    /// (which only looks at the tip) cannot fire — only the new per-height
-    /// loop should reject the snapshot.
+    /// Regression: divergent non-finalized local forks are recoverable by
+    /// snapshot sync. This is how a restarted/late node escapes a local fork
+    /// without an operator wipe, while finalized checkpoints remain protected
+    /// by the next test.
     #[test]
-    fn test_snapshot_rejects_divergent_block_hash_at_any_height() {
+    fn test_snapshot_replaces_divergent_non_finalized_suffix() {
         let dir_a = tempfile::tempdir().unwrap();
         let dir_b = tempfile::tempdir().unwrap();
         let validator = KeyPair::generate();
@@ -4924,9 +4990,56 @@ mod tests {
 
         let manifest_b = chain_b.create_snapshot().unwrap();
         let chunks_b = chain_b.get_snapshot_chunks(manifest_b.height).unwrap();
+        chain_a.apply_snapshot(&manifest_b, &chunks_b).unwrap();
+        assert_eq!(chain_a.height(), chain_b.height());
+        assert_ne!(chain_a.blocks[1].hash, local_block_1_hash);
+        assert_eq!(chain_a.blocks[1].hash, chain_b.blocks[1].hash);
+    }
+
+    #[test]
+    fn test_snapshot_rejects_divergent_finalized_checkpoint() {
+        let dir_a = tempfile::tempdir().unwrap();
+        let dir_b = tempfile::tempdir().unwrap();
+        let validator = KeyPair::generate();
+        let genesis = GenesisConfig {
+            chain_id: "curs3d-snapshot-divergent-finalized".to_string(),
+            chain_name: "curs3d-snapshot-divergent-finalized".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            unstake_delay_blocks: DEFAULT_UNSTAKE_DELAY_BLOCKS,
+            epoch_length: DEFAULT_EPOCH_LENGTH,
+            jail_duration_blocks: DEFAULT_JAIL_DURATION_BLOCKS,
+            allocations: vec![GenesisAllocation {
+                public_key: hex::encode(&validator.public_key),
+                balance: 1_000_000_000,
+                staked_balance: 5_000,
+            }],
+            ..Default::default()
+        };
+
+        let mut chain_a =
+            Blockchain::with_storage(dir_a.path().to_str().unwrap(), Some(&genesis)).unwrap();
+        let block = chain_a.create_block(&validator).unwrap();
+        chain_a.add_block(block).unwrap();
+        let local_block_1_hash = chain_a.blocks[1].hash.clone();
+        chain_a
+            .block_tree
+            .set_finalized(local_block_1_hash.clone(), 1);
+        chain_a.finality_tracker = FinalityTracker::with_finalized(1, local_block_1_hash.clone());
+
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        let mut chain_b =
+            Blockchain::with_storage(dir_b.path().to_str().unwrap(), Some(&genesis)).unwrap();
+        for _ in 0..5 {
+            let block = chain_b.create_block(&validator).unwrap();
+            chain_b.add_block(block).unwrap();
+        }
+        assert_ne!(chain_b.blocks[1].hash, local_block_1_hash);
+
+        let manifest_b = chain_b.create_snapshot().unwrap();
+        let chunks_b = chain_b.get_snapshot_chunks(manifest_b.height).unwrap();
         let err = chain_a.apply_snapshot(&manifest_b, &chunks_b).unwrap_err();
         assert!(matches!(err, ChainError::SnapshotError(_)));
-        // Local chain must be untouched.
         assert_eq!(chain_a.blocks[1].hash, local_block_1_hash);
     }
 
@@ -5278,6 +5391,44 @@ mod tests {
             "expected WrongProposer at height 2, got {:?}",
             err
         );
+    }
+
+    #[test]
+    fn test_height_one_is_primary_only_even_if_genesis_timestamp_is_old() {
+        let kp_a = KeyPair::generate();
+        let kp_b = KeyPair::generate();
+        let addr_a = hash::address_bytes_from_public_key(&kp_a.public_key);
+        let genesis = GenesisConfig {
+            chain_id: "curs3d-height-one-primary-only".to_string(),
+            chain_name: "curs3d-height-one-primary-only".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            unstake_delay_blocks: DEFAULT_UNSTAKE_DELAY_BLOCKS,
+            epoch_length: DEFAULT_EPOCH_LENGTH,
+            jail_duration_blocks: DEFAULT_JAIL_DURATION_BLOCKS,
+            allocations: vec![
+                GenesisAllocation {
+                    public_key: hex::encode(&kp_a.public_key),
+                    balance: 1_000_000_000,
+                    staked_balance: 5_000,
+                },
+                GenesisAllocation {
+                    public_key: hex::encode(&kp_b.public_key),
+                    balance: 1_000_000_000,
+                    staked_balance: 5_000,
+                },
+            ],
+            ..Default::default()
+        };
+        let chain = Blockchain::from_genesis(genesis).unwrap();
+        let leader_h1 = chain
+            .slot_leader_address(1, chain.latest_hash(), 0)
+            .expect("height-1 leader");
+        let backup_kp = if leader_h1 == addr_a { &kp_b } else { &kp_a };
+        let err = chain
+            .create_block(backup_kp)
+            .expect_err("height-1 backup must not be authorized");
+        assert!(matches!(err, ChainError::WrongProposer { height: 1, .. }));
     }
 
     #[test]

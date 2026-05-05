@@ -11,30 +11,153 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/landing.css?v=5" />
   <style>
-    /* Override Stoplight Elements colors to match the dark theme */
+    /* ─── Stoplight Elements dark-theme override ─────────────────────────
+       Stoplight uses Tailwind under the hood; many surfaces are bound to
+       hard-coded utility classes (`.sl-bg-canvas-*`, `.sl-text-*`) rather
+       than CSS custom properties. We force-cover both the prop API (for the
+       elements-api host) and the utility classes that Tailwind compiled
+       against the light palette. */
     body { background: var(--bg); color: var(--fg); }
-    elements-api {
-      --color-canvas: var(--bg-1);
-      --color-canvas-100: var(--bg-2);
+
+    elements-api,
+    .sl-elements,
+    .sl-elements-api {
+      --color-canvas: var(--bg);
+      --color-canvas-50: var(--bg-1);
+      --color-canvas-100: var(--bg-1);
       --color-canvas-200: var(--bg-2);
       --color-canvas-300: var(--line);
       --color-canvas-400: var(--line-2);
+      --color-canvas-500: var(--mute-2);
       --color-canvas-pure: var(--bg);
+      --color-canvas-dialog: var(--bg-1);
       --color-text: var(--fg);
       --color-text-muted: var(--fg-1);
       --color-text-light: var(--mute);
+      --color-text-paragraph: var(--fg);
+      --color-text-heading: var(--fg);
+      --color-on-primary: #001014;
       --color-primary: var(--accent);
+      --color-primary-dark: var(--accent);
+      --color-primary-tint: var(--accent-soft);
       --color-success: var(--green);
       --color-warning: var(--gold);
       --color-danger: var(--red);
+      --color-link: var(--accent);
+      --color-link-dark: var(--accent);
       --font-prose: var(--body);
       --font-ui: var(--body);
       --font-code: var(--mono);
+    }
+
+    elements-api {
       display: block;
       min-height: calc(100vh - 130px);
+      background: var(--bg);
+      color: var(--fg);
     }
-    .api-shell { padding: 0; }
+
+    .api-shell { padding: 0; background: var(--bg); }
+
+    /* Force-cover Stoplight's hard-coded light surfaces (schema rows,
+       try-it inputs, code-tab strips, mosaic frames). */
+    .sl-bg-canvas,
+    .sl-bg-canvas-pure,
+    .sl-bg-canvas-50,
+    .sl-bg-canvas-100,
+    .sl-bg-canvas-200,
+    .sl-bg-canvas-tint { background-color: var(--bg-1) !important; }
+    .sl-bg-canvas-dialog { background-color: var(--bg-2) !important; }
+
+    .sl-text-paragraph,
+    .sl-text-body,
+    .sl-text-heading,
+    .sl-text { color: var(--fg) !important; }
+    .sl-text-muted,
+    .sl-text-light { color: var(--mute) !important; }
+
+    .sl-border,
+    .sl-border-light,
+    .sl-border-input { border-color: var(--line) !important; }
+
+    .sl-input,
+    .sl-select,
+    .sl-textarea,
+    input.sl-form-input,
+    textarea.sl-form-input,
+    select.sl-form-input {
+      background-color: var(--bg) !important;
+      color: var(--fg) !important;
+      border: 1px solid var(--line-2) !important;
+    }
+
+    /* Code panels (response bodies, examples). Stoplight ships Prism's light
+       theme; replace its background and remap the token palette. */
+    .sl-code-viewer,
+    .sl-code-viewer pre,
+    .sl-prose pre,
+    pre[class*="language-"] {
+      background-color: var(--bg) !important;
+      color: var(--fg-1) !important;
+      border: 1px solid var(--line) !important;
+    }
+    .token.comment { color: var(--mute) !important; }
+    .token.string { color: var(--green) !important; }
+    .token.number,
+    .token.boolean { color: var(--gold) !important; }
+    .token.property,
+    .token.tag,
+    .token.keyword,
+    .token.atrule { color: var(--accent) !important; }
+    .token.punctuation,
+    .token.operator { color: var(--fg-1) !important; }
+
+    .sl-button-primary {
+      background-color: var(--accent) !important;
+      color: #001014 !important;
+      border-color: var(--accent) !important;
+    }
+    .sl-button-default {
+      background-color: var(--bg-2) !important;
+      color: var(--fg) !important;
+      border: 1px solid var(--line-2) !important;
+    }
+    .sl-button:hover { filter: brightness(1.1); }
+
+    /* Sidebar (left navigation tree) */
+    nav[aria-label="API Navigation"],
+    .ElementsTableOfContentsItem {
+      background-color: var(--bg-1) !important;
+      color: var(--fg-1) !important;
+    }
+    .ElementsTableOfContentsItem:hover { color: var(--fg) !important; }
+
+    /* Tabs strip */
+    .sl-tabs-list { border-bottom: 1px solid var(--line) !important; }
+    .sl-tab-active {
+      color: var(--accent) !important;
+      border-bottom-color: var(--accent) !important;
+    }
+
+    /* Schema tables — Stoplight zebra-stripes them with white backgrounds */
+    .sl-table th,
+    .sl-table td {
+      background-color: var(--bg) !important;
+      border-color: var(--line) !important;
+      color: var(--fg) !important;
+    }
+    .sl-table tr:nth-child(even) td { background-color: var(--bg-1) !important; }
+
+    /* Links inside the rendered prose */
+    .sl-elements a,
+    .sl-prose a { color: var(--accent) !important; }
+    .sl-elements a:hover { filter: brightness(1.2); }
   </style>
+  <script>
+    // Hint Stoplight's internal theme switcher to load dark-mode styles.
+    document.documentElement.setAttribute('data-theme', 'dark');
+    document.documentElement.classList.add('sl-theme-dark');
+  </script>
 </head>
 <body>
   <div class="scroll-progress"></div>
@@ -93,7 +216,7 @@
   <main>
     <section class="page-hero" style="padding-bottom: 40px;">
       <div class="wrap">
-        <span class="eyebrow">API Reference</span>
+        <span class="eyebrow">API Reference · Software v0.3.5 · Consensus protocol v5</span>
         <h1 style="margin-bottom:14px;">Interactive <em>OpenAPI 3.1</em> reference.</h1>
         <p class="lede">Every endpoint, request shape, response schema, status code. Click any operation to see live examples and copyable curl. The raw spec is at <a href="/api/openapi.json" style="color:var(--accent);">/api/openapi.json</a>.</p>
       </div>
@@ -114,7 +237,7 @@
   <footer style="border-top:1px solid var(--line); padding: 60px 0 40px; margin-top: 0;">
     <div class="wrap">
       <div style="display:flex; justify-content:space-between; padding-top:24px; font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.08em;">
-        <span>© 2026 CURS3D PROTOCOL · MIT</span>
+        <span>© 2026 CURS3D PROTOCOL · MIT · <b style="color:var(--fg)">v0.3.5</b></span>
         <span>SPEC <b style="color:var(--fg)">openapi 3.1.0</b> · CHAIN-ID <b style="color:var(--fg)">curs3d-public-testnet</b></span>
       </div>
     </div>

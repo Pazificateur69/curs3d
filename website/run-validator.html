@@ -345,7 +345,7 @@ EOF
           <h2><span data-lang="en" class="lang-show">Operational checklist</span><span data-lang="fr">Checklist opérationnelle</span></h2>
           <div class="prose">
             <ul>
-              <li><span data-lang="en" class="lang-show">Set up a healthcheck cron (every 2 min) that pings <code>/api/healthz</code> and restarts the service if it fails.</span><span data-lang="fr">Mettre en place un healthcheck cron (toutes les 2 min) qui ping <code>/api/healthz</code> et redémarre le service en cas d'échec.</span></li>
+              <li><span data-lang="en" class="lang-show">Set up a healthcheck cron (every 2 min) that restarts only on process/API failure and alerts on consensus stalls by default.</span><span data-lang="fr">Mettre en place un healthcheck cron (toutes les 2 min) qui redémarre seulement sur panne process/API et alerte par défaut sur les stalls consensus.</span></li>
               <li><span data-lang="en" class="lang-show">Back up <code>/etc/curs3d/validator.json</code> AND <code>/etc/curs3d/validator.password</code> together — without both, your stake is lost.</span><span data-lang="fr">Sauvegarder <code>/etc/curs3d/validator.json</code> ET <code>/etc/curs3d/validator.password</code> ensemble — sans les deux, le stake est perdu.</span></li>
               <li><span data-lang="en" class="lang-show">Monitor with Prometheus: <code>/api/metrics</code> exposes block height, peer count, finalized height.</span><span data-lang="fr">Monitorer avec Prometheus : <code>/api/metrics</code> expose la hauteur, le nombre de peers, la hauteur finalisée.</span></li>
               <li><span data-lang="en" class="lang-show">Use TLS for the public API (nginx + certbot). See <code>deploy/nginx/curs3d.conf</code> in the repo.</span><span data-lang="fr">Utiliser TLS pour l'API publique (nginx + certbot). Voir <code>deploy/nginx/curs3d.conf</code> dans le repo.</span></li>
@@ -416,7 +416,7 @@ EOF
         </div>
       </div>
       <div style="display:flex; justify-content:space-between; padding-top:24px; border-top:1px solid var(--line); font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.08em;">
-        <span>© 2026 CURS3D PROTOCOL · MIT</span>
+        <span>© 2026 CURS3D PROTOCOL · MIT · <b style="color:var(--fg)">v0.3.5</b></span>
         <span>CHAIN-ID <b style="color:var(--fg)">curs3d-public-testnet</b></span>
       </div>
     </div>

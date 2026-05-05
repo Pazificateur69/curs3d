@@ -2,7 +2,7 @@
 // CURS3D — Browser wallet logic.
 //
 // Loaded as <script type="module">. Talks to:
-//   - /wallet-wasm/curs3d_wallet_wasm.js   (Dilithium-L5 + Argon2id + AES-GCM)
+//   - /wallet-wasm/curs3d_wallet_wasm.js   (ML-DSA-87 + Argon2id + AES-GCM)
 //   - https://api.curs3d.fr/api/...        (read balances, post signed txs)
 //
 // Security posture:

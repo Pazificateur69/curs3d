@@ -12,6 +12,15 @@
  */
 
 const NETWORKS = {
+  curs3d: {
+    chainIdNum: 1800329576,
+    chainId: "0x6b4ed968",
+    chainName: "CURS3D Public Testnet",
+    explorer: "https://explorer.curs3d.fr/tx/",
+    nativeCurrency: {name: "CURS3D", symbol: "CUR", decimals: 18},
+    rpcUrls: ["https://rpc.curs3d.fr/eth"],
+    blockExplorerUrls: ["https://explorer.curs3d.fr"]
+  },
   sepolia: {
     chainIdNum: 11155111,
     chainId: "0xaa36a7",
@@ -74,8 +83,8 @@ const STORAGE_KEYS = {
 let provider;
 let signer;
 let account;
-let currentNetworkKey = "sepolia";
-let currentExplorer = NETWORKS.sepolia.explorer;
+let currentNetworkKey = "curs3d";
+let currentExplorer = NETWORKS.curs3d.explorer;
 
 const $ = (id) => document.getElementById(id);
 
@@ -147,6 +156,29 @@ function loadAddresses() {
   $("escrowAddress").value = addresses.escrow || "";
 }
 
+/**
+ * Auto-load addresses from /dapp/deployments.json (written by contracts/deploy.sh).
+ * Runs at boot — local saves still win when present and non-empty so a user can
+ * pin to specific addresses by hitting "Save". Silent on missing file (typical
+ * when the dApp is opened before any deploy has happened yet).
+ */
+async function autoLoadDeploymentsFile() {
+  try {
+    const res = await fetch("./deployments.json", {cache: "no-store"});
+    if (!res.ok) return;
+    const data = await res.json();
+    const filled = (id) => $(id) && $(id).value.trim().length > 0;
+    if (!filled("tokenAddress")) $("tokenAddress").value = data.token || "";
+    if (!filled("faucetAddress")) $("faucetAddress").value = data.faucet || "";
+    if (!filled("attestationsAddress")) $("attestationsAddress").value = data.attestations || "";
+    if (!filled("stakingAddress")) $("stakingAddress").value = data.staking || "";
+    if (!filled("governanceAddress")) $("governanceAddress").value = data.governance || "";
+    if (!filled("escrowAddress")) $("escrowAddress").value = data.escrow || "";
+  } catch {
+    /* deployments.json not served — fall back to manual entry */
+  }
+}
+
 function loadDeploymentJson() {
   const raw = $("deploymentJsonInput").value.trim();
   if (!raw) throw new Error("Deployment JSON is empty");
@@ -210,7 +242,11 @@ async function refreshNetwork() {
   if (!provider) return;
   const network = await provider.getNetwork();
   const chainId = Number(network.chainId);
-  if (chainId === NETWORKS.sepolia.chainIdNum) {
+  if (chainId === NETWORKS.curs3d.chainIdNum) {
+    currentNetworkKey = "curs3d";
+    currentExplorer = NETWORKS.curs3d.explorer;
+    setText("networkStatus", "CURS3D Testnet", "ok");
+  } else if (chainId === NETWORKS.sepolia.chainIdNum) {
     currentNetworkKey = "sepolia";
     currentExplorer = NETWORKS.sepolia.explorer;
     setText("networkStatus", "Sepolia", "ok");
@@ -512,9 +548,16 @@ async function buyEscrowItem() {
 // ─── Wire up ────────────────────────────────────────────────────────────────
 
 loadAddresses();
+autoLoadDeploymentsFile();
 tryReconnect();
 
 $("connectBtn").addEventListener("click", (e) => runAction(connect, e.currentTarget, "Connecting"));
+const curs3dBtn = $("curs3dBtn");
+if (curs3dBtn) {
+  curs3dBtn.addEventListener("click", (e) =>
+    runAction(() => switchNetwork("curs3d"), e.currentTarget, "Switching")
+  );
+}
 $("sepoliaBtn").addEventListener("click", (e) =>
   runAction(() => switchNetwork("sepolia"), e.currentTarget, "Switching")
 );

@@ -443,7 +443,7 @@ fn create_wallet(path: &str, password_file: Option<&str>) {
             println!("Saved to: {} (AES-256-GCM encrypted)", path);
             println!();
             println!("IMPORTANT: Remember your password. There is no recovery.");
-            println!("Keys: CRYSTALS-Dilithium Level 5");
+            println!("Keys: ML-DSA-87 (FIPS-204, Dilithium Level 5 security)");
         }
         Err(e) => eprintln!("Failed to save wallet: {}", e),
     }
@@ -462,7 +462,7 @@ fn show_wallet_info(path: &str, password_file: Option<&str>, json: bool) {
                 let payload = serde_json::json!({
                     "address": w.address,
                     "public_key": w.keypair.public_key_hex(),
-                    "algorithm": "CRYSTALS-Dilithium (Level 5)",
+                    "algorithm": "ML-DSA-87 (FIPS-204)",
                     "encryption": "AES-256-GCM + Argon2"
                 });
                 println!(
@@ -474,7 +474,7 @@ fn show_wallet_info(path: &str, password_file: Option<&str>, json: bool) {
                 println!("=== CURS3D Wallet ===");
                 println!("Address:    {}", w.address);
                 println!("Public Key: {}", w.keypair.public_key_hex());
-                println!("Algorithm:  CRYSTALS-Dilithium (Level 5)");
+                println!("Algorithm:  ML-DSA-87 (FIPS-204)");
                 println!("Encryption: AES-256-GCM + Argon2");
             }
         }
@@ -878,7 +878,7 @@ async fn show_status(data_dir: &str, rpc_addr: Option<&str>) {
         chain.minimum_stake / 1_000_000
     );
     println!("Consensus:         Proof of Stake");
-    println!("Crypto:            CRYSTALS-Dilithium + SHA3-256");
+    println!("Crypto:            ML-DSA-87 + SHA3-256");
     println!("Storage:           sled");
     println!("Data Dir:          {}", data_dir);
     println!("Active Validators: {}", chain.active_validator_count());

@@ -1,5 +1,5 @@
 .PHONY: help install fmt fmt-check build test coverage snapshot lint clean dry-run \
-        deploy-sepolia deploy-base-sepolia serve-dapp gas-report
+        deploy deploy-curs3d deploy-sepolia deploy-base-sepolia serve-dapp gas-report
 
 ifneq (,$(wildcard .env))
 include .env
@@ -44,6 +44,14 @@ clean:  ## Remove all build artefacts.
 dry-run:  ## Run the deploy script against the in-process EVM (no broadcast).
 	PRIVATE_KEY=0x59c6995e998f97a5a004497e5da0f7d9b3b6fbf5e5c6e3d1f1f1c7e6f1111111 \
 		forge script script/DeployPortfolio.s.sol:DeployPortfolio
+
+deploy:  ## One-shot deploy to CURS3D testnet (preflight + funding check + broadcast + verify + dApp sync).
+	./deploy.sh $(ARGS)
+
+deploy-curs3d:  ## Lower-level: pure forge invocation. Set CURS3D_FORGE_AUTH='--keystore ... --password ... --sender ...'.
+	forge script script/DeployPortfolio.s.sol:DeployPortfolio \
+		--rpc-url "$${CURS3D_RPC_URL:-https://rpc.curs3d.fr/eth}" \
+		--broadcast --slow --legacy $${CURS3D_FORGE_AUTH}
 
 deploy-sepolia:  ## Broadcast deploy to Ethereum Sepolia.
 	forge script script/DeployPortfolio.s.sol:DeployPortfolio \

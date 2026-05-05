@@ -336,8 +336,7 @@ impl Vm {
                 for imports in reader {
                     let imports = imports.map_err(|_| VmError::InvalidWasm)?;
                     for import_result in imports {
-                        let (_offset, import) =
-                            import_result.map_err(|_| VmError::InvalidWasm)?;
+                        let (_offset, import) = import_result.map_err(|_| VmError::InvalidWasm)?;
                         if matches!(import.ty, wasmer::wasmparser::TypeRef::Func(_)) {
                             if import.module == "curs3d" && import.name == "loop_tick" {
                                 return Ok(Some(function_import_index));

@@ -17,9 +17,11 @@ This folder turns `CURS3D` into a Solidity-focused portfolio project. It is sepa
 
 - Solidity `0.8.26`
 - Foundry `forge`
+- OpenZeppelin Contracts (ERC20, ERC20Permit, Ownable, Pausable, ReentrancyGuard, SafeERC20)
 - Vanilla HTML/CSS/JavaScript dApp
 - Browser wallet via `window.ethereum`
-- Sepolia or Base Sepolia deployment target
+- **Primary deploy target: CURS3D's own EVM** (the L1's `revm 38` integration, RPC at https://rpc.curs3d.fr/eth, chain ID `1800329576`)
+- Also deployable to Sepolia / Base Sepolia for portability demos
 
 ## Why This Matters For A Solidity Role
 
@@ -76,6 +78,36 @@ make test
 make dry-run
 make serve-dapp
 ```
+
+## Deploy To CURS3D Testnet (primary target)
+
+CURS3D's L1 ships a revm 38 EVM accessible at `https://rpc.curs3d.fr/eth` (chain ID `1800329576` / `0x6b4ed968`). The deploy script is chain-agnostic — it writes `deployments/<chainId>.json` automatically.
+
+```bash
+# 1. Generate a fresh EVM key (or reuse an existing testnet keystore).
+cast wallet new-mnemonic
+cast wallet import curs3d-deployer --interactive
+
+# 2. Fund the deployer address with native CUR. Easiest is to top up from the
+#    native faucet wallet on node1 (operator action, see deploy/DEPLOY_RUNBOOK.md
+#    section "Send CUR to an address"). 10 000 CUR is plenty for the 7-contract
+#    deploy + a few hundred test transactions.
+
+# 3. Deploy.
+FORCE=true forge script script/DeployPortfolio.s.sol:DeployPortfolio \
+  --rpc-url "${CURS3D_RPC_URL:-https://rpc.curs3d.fr/eth}" \
+  --keystore keystores/<keystore-file> \
+  --password <keystore-password> \
+  --sender <deployer-address> \
+  --broadcast \
+  --slow \
+  --legacy
+# FORCE=true overwrites deployments/1800329576.json on intentional redeploys.
+# --slow makes Foundry wait tx-by-tx, which is friendlier to a small testnet.
+# --legacy avoids extra fee-history negotiation during portfolio demos.
+```
+
+Output: `deployments/1800329576.json` with all 7 contract addresses.
 
 ## Deploy To Sepolia
 
@@ -138,8 +170,8 @@ http://127.0.0.1:8088
 ## Known Risks And Limitations
 
 - These contracts are portfolio/demo contracts, not production contracts.
-- The token is ERC20-style but intentionally avoids importing OpenZeppelin to keep the code self-contained.
-- Governance uses current token balances, not historical snapshots.
+- The token uses OpenZeppelin's `ERC20`/`ERC20Permit`/`Ownable`/`Pausable` directly (audited libraries), with custom mint/burn/cap logic on top.
+- Governance uses current token balances clamped by a lazy per-voter snapshot at first vote — not chain-wide historical snapshots. Defends against "transfer to friend, vote again" but not multi-address whales.
 - Staking reward logic is intentionally simple and does not model a production emissions schedule.
 - The vault is a simplified ERC4626-style example, not a full ERC4626 implementation.
 - The escrow forwards ETH directly to the seller and is suitable as a small demo, not a marketplace backend.

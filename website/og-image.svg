@@ -65,14 +65,14 @@
 
   <!-- Tagline -->
   <text x="80" y="500" font-family="IBM Plex Sans, system-ui, sans-serif" font-size="22" fill="#b8b5ad" letter-spacing="0.5">
-    Quantum-resistant Layer 1 · Dilithium-L5 · BFT-PoS · WASM
+    Quantum-resistant Layer 1 · ML-DSA-87 · BFT-PoS · WASM
   </text>
 
   <!-- Bottom row: stats -->
   <line x1="80" y1="540" x2="1120" y2="540" stroke="#1c1f25" stroke-width="1"/>
   <g font-family="ui-monospace, JetBrains Mono, monospace" font-size="13" letter-spacing="2" fill="#7a7d85">
     <text x="80" y="572">SIG SCHEME</text>
-    <text x="80" y="596" font-size="20" fill="#e8e4d8">Dilithium-L5</text>
+    <text x="80" y="596" font-size="20" fill="#e8e4d8">ML-DSA-87</text>
 
     <text x="320" y="572">FINALITY</text>
     <text x="320" y="596" font-size="20" fill="#e8e4d8">~1.2s</text>

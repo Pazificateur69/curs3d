@@ -10,30 +10,32 @@
   <img src="https://img.shields.io/badge/clippy-0%20warnings-brightgreen.svg" alt="0 clippy warnings">
   <img src="https://img.shields.io/badge/quantum-resistant-blueviolet.svg" alt="Quantum Resistant">
   <a href="https://api.curs3d.fr/api/status"><img src="https://img.shields.io/badge/testnet-LIVE-brightgreen.svg" alt="Testnet Live"></a>
+  <img src="https://img.shields.io/badge/version-v0.3.5-informational.svg" alt="Software v0.3.5">
   <br>
-  <a href="https://explorer.curs3d.fr">Website</a> · <a href="https://explorer.curs3d.fr/docs.html">Docs</a> · <a href="https://explorer.curs3d.fr/whitepaper.html">Whitepaper</a> · <a href="https://explorer.curs3d.fr/explorer.html">Explorer</a> · <a href="https://explorer.curs3d.fr/examples.html">Tutorials</a> · <a href="https://api.curs3d.fr/api/status">Live API</a>
+  <a href="https://curs3d.fr">Website</a> · <a href="https://curs3d.fr/docs">Docs</a> · <a href="https://curs3d.fr/whitepaper">Whitepaper</a> · <a href="https://explorer.curs3d.fr">Explorer</a> · <a href="https://curs3d.fr/examples">Tutorials</a> · <a href="https://api.curs3d.fr/api/status">Live API</a>
 </p>
 
 ---
 
-> ## :warning: Status: experimental devnet
+> ## :warning: Status: experimental devnet — v0.3.5 (pre-mainnet)
 >
-> This is an **experimental developer testnet** for development and testing. **It is not production.**
-> Funds on this chain have **no monetary value**. The chain may be reset without notice.
-> The browser wallet UI is **write-capable** since the v5 hardfork: create or import a wallet, sign and send transactions, all from the browser via the embedded WASM crypto. The private key never leaves your device.
-> External security audit is **not yet started**. Do not use CURS3D for anything you cannot afford to lose.
+> **Software version `v0.3.5`** — early-stage testnet. **`v1.0` is reserved for the official mainnet launch** when external audit, governance bootstrap, and feature-completeness are done. The number you see prefixed with `v0.` is intentional: this is a working developer testnet, not a finished product.
+>
+> Separately, the **consensus protocol version is `v5`** — that is an internal compatibility marker between nodes, not a marketing version of the project itself. Do not confuse the two: software `v0.3.5` runs consensus protocol `v5`.
+>
+> This is an **experimental developer testnet** for development and testing. **It is not production.** Funds on this chain have **no monetary value**. The chain may be reset without notice. The browser wallet UI is write-capable: create or import a wallet, sign and send transactions, all from the browser via the embedded WASM crypto. The private key never leaves your device. External security audit is **not yet started**. Do not use CURS3D for anything you cannot afford to lose.
 
 CURS3D is a **Layer 1 blockchain written from scratch in Rust**, designed to resist quantum computing attacks. It uses **NIST FIPS-204 ML-DSA-87** (final standardised version of CRYSTALS-Dilithium-L5) for native signatures, BFT Proof of Stake consensus with explicit 2/3 finality, deterministic stake-weighted slot-leader scheduling, an EIP-1559 dynamic fee market, and a **dual-VM execution layer**: a native WASM engine (Wasmer 7) and an Ethereum-compatible VM (revm 38) sharing the same state trie. Every native component is original — no fork of Ethereum, Cosmos, or Substrate.
 
-> **MetaMask works.** Point your wallet at `https://api.curs3d.fr/eth`, chain ID `1800329576`, and you can deploy Solidity, send ETH-style txs, sign with ethers.js / wagmi, and use Hardhat / Foundry against the live testnet. EVM transactions are signed with secp256k1 ECDSA (standard Ethereum) and accepted by design — that's how MetaMask compat works. Native CURS3D transactions (Stake / governance / native deploy) sign with ML-DSA-87 and go through `POST /api/tx/submit`. Both families produce blocks on the same chain.
+> **MetaMask works.** Point your wallet at `https://rpc.curs3d.fr/eth` (or `https://api.curs3d.fr/eth`), chain ID `1800329576`, and you can deploy Solidity, send ETH-style txs, sign with ethers.js / wagmi, and use Hardhat / Foundry against the live testnet. EVM transactions are signed with secp256k1 ECDSA (standard Ethereum) and accepted by design — that's how MetaMask compat works. Native CURS3D transactions (Stake / governance / native deploy) sign with ML-DSA-87 and go through `POST /api/tx/submit`. Both families produce blocks on the same chain.
 
-> **Status (2026-05-05 — protocol v5 live, 3-validator testnet):** public testnet is live at https://curs3d.fr with **3 active validators** running on **two architectures and two providers** (node1 + node2 on Oracle ARM Marseille, node3 on IONOS x86_64 Berlin) — each staking 50 000 CUR (33.3% of total stake). Slot-leader scheduling is deterministic and stake-weighted. 173 tests pass (`cargo test --lib`), 0 clippy warnings, 0 unallowed `cargo audit` advisories. Browser wallet UI ([curs3d.fr/wallet](https://curs3d.fr/wallet)) signs ML-DSA-87 transactions natively via the WASM bundle.
+> **Status (2026-05-05 — software v0.3.5, consensus protocol v5, 3-validator testnet):** public testnet is live at https://curs3d.fr with **3 active validators** running on **two architectures and two providers** (node1 + node2 on Oracle ARM Marseille, node3 on IONOS x86_64 Berlin) — each staking 50 000 CUR (33.3% of total stake). Slot-leader scheduling is deterministic and stake-weighted. 181 tests pass (`cargo test --lib`), 0 clippy warnings, 0 unallowed `cargo audit` advisories. Browser wallet UI ([curs3d.fr/wallet](https://curs3d.fr/wallet)) signs ML-DSA-87 transactions natively via the WASM bundle. The Solidity portfolio (Token / Faucet / Staking / Governance / Attestations / Vault / Escrow) is deployed on the EVM at chain-id `1800329576` — see `contracts/deployments/1800329576.json`.
 
 ### MetaMask / Hardhat / Foundry network config
 
 | Field | Value |
 |-------|-------|
-| RPC URL | `https://api.curs3d.fr/eth` |
+| RPC URL | `https://rpc.curs3d.fr/eth` (`https://api.curs3d.fr/eth` also works) |
 | Chain ID (decimal) | `1800329576` |
 | Chain ID (hex) | `0x6b4ed968` |
 | Symbol | `CUR` |
@@ -45,7 +47,7 @@ CURS3D is a **Layer 1 blockchain written from scratch in Rust**, designed to res
 
 | What | How |
 |------|-----|
-| **Native signatures** | CRYSTALS-Dilithium Level 5 (NIST round 3, `pqcrypto-dilithium`) |
+| **Native signatures** | ML-DSA-87 (FIPS-204 final standard, Dilithium Level 5 security) |
 | **EVM signatures** | secp256k1 ECDSA (RLP, MetaMask, Hardhat, Foundry) — non-quantum-resistant by design, gated to the EVM surface |
 | **Hashing** | SHA-3 Keccak-256, double-hash blocks, Merkle trees |
 | **Wallet encryption** | AES-256-GCM + Argon2 KDF (m=64MiB, t=3, p=4) |
@@ -116,7 +118,7 @@ The CURS3D public testnet is running and accessible:
 |---------|-----|
 | **Site** | https://curs3d.fr |
 | **API** | https://api.curs3d.fr/api/status |
-| **Ethereum-compatible JSON-RPC** | `https://api.curs3d.fr/eth` |
+| **Ethereum-compatible JSON-RPC** | `https://rpc.curs3d.fr/eth` (`https://api.curs3d.fr/eth` also works) |
 | **Explorer** | https://explorer.curs3d.fr |
 | **Browser Wallet UI** (write-capable since v5: ML-DSA-87 in-browser signing) | https://curs3d.fr/wallet |
 | **Developers hub** | https://curs3d.fr/developers |
@@ -194,7 +196,7 @@ CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technicall
 - **Checksummed addresses** (EIP-55 style, detects typos)
 - **Rate-limit headers** (X-RateLimit-Limit/Remaining/Window) on all API responses
 - **Persistent storage** (sled, 10 trees, schema v4 with auto-migration)
-- **REST API** (27 endpoints, OpenAPI 3.1 at https://curs3d.fr/api) + WebSocket + **Ethereum-compatible JSON-RPC** (`POST https://api.curs3d.fr/eth`, full `eth_sendRawTransaction` + log/receipt/block reads) + TCP RPC + CLI
+- **REST API** (27 endpoints, OpenAPI 3.1 at https://curs3d.fr/api) + WebSocket + **Ethereum-compatible JSON-RPC** (`POST https://rpc.curs3d.fr/eth`, full `eth_sendRawTransaction` + log/receipt/block reads) + TCP RPC + CLI
 - **SDKs**: JavaScript/TypeScript (@curs3d/sdk), Python (curs3d), Rust contract SDK with 5 examples, **`sdk/wasm` browser-side crypto bundle** (24 KB JS + 236 KB WASM, ML-DSA-87 + Argon2id + AES-GCM)
 - **Browser Wallet UI** at [curs3d.fr/wallet](https://curs3d.fr/wallet) — keypair gen, encrypted local storage (Argon2id+AES-GCM), balance / nonce / staked / tx history, **and full signing** (ML-DSA-87 in-browser via the WASM crypto bundle, byte-compatible with the node since v5)
 - **Block explorer** web UI with live dashboard
@@ -202,7 +204,7 @@ CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technicall
 - **Benchmarks** (criterion) and **fuzzing** targets (cargo-fuzz)
 - **Docker** multi-stage build + docker-compose + nginx TLS + systemd
 - **CI/CD** pipeline on Rust nightly (check, test, clippy 0 warnings, fmt, cargo audit)
-- **173 tests** passing on `cargo test --lib`
+- **181 tests** passing on `cargo test --lib`
 
 ### What Remains for Mainnet
 
@@ -219,9 +221,8 @@ These are tracked in [`CLAUDE.md`](CLAUDE.md) and reproduced here so anyone runn
 - **External security audit not yet performed.** Internal audit cycles (3-AI council 2026-04, Codex passes 2026-05) have closed many findings, but no third-party firm has reviewed the codebase. Treat this testnet accordingly.
 - **State-root divergence at epoch boundaries — fixed in `f461aa4`.** Root cause: epoch settlement applied at block-apply time but skipped at boot replay; identical helper now runs in both paths. Regression test added (`test_restart_across_epoch_boundary`).
 - **Wallet read-only — fixed in `59694cb` (v5 hardfork).** Node migrated from `pqcrypto-dilithium 0.5` (NIST round 3) to `ml-dsa = 0.1.0-rc.9` (FIPS-204), the same crate the browser wallet uses. Signatures are byte-compatible across both sides; the wallet UI signs and sends transactions natively.
-- **`RequestBlocks` sync timeout.** A latent bug in the network-module receive loop times out before block batches arrive. Deterministic stake-weighted slot-leader scheduling (commit `343a7a1`) means this no longer triggers in normal operation, but a node joining mid-chain can fail to catch up cleanly. Workaround: bootstrap from a recent snapshot.
+- **`RequestBlocks` sync timeout / boot forks — fixed in current tree.** Block responses now tolerate stale batches, sync escalates to snapshot instead of silently giving up, forked `RequestBlocks` callers receive a snapshot offer, and validators pause production during startup/sync so they do not create isolated first blocks before the peer mesh forms. Regression coverage: `test_two_node_cold_sync_via_request_blocks`, `test_two_node_cold_sync_100_blocks_multi_batch`, `test_initial_production_gate_waits_for_peer_mesh`, `test_genesis_backup_rank_uses_node_start_anchor`.
 - **No PGP key for security disclosures yet.** A signed contact channel is a TODO. Until then, please report security issues privately via GitHub security advisories on `Pazificateur69/curs3d`.
-- **No external audit.** All cryptography, consensus, and VM code is implemented in-house and reviewed only internally. Please treat this accordingly.
 
 ## Architecture
 
@@ -264,7 +265,7 @@ The full machine-readable contract is the OpenAPI 3.1 spec at
 https://curs3d.fr/api/openapi.json). It currently documents **27 endpoints**.
 
 The Ethereum-compatible JSON-RPC is exposed at `POST /eth` (live at
-`https://api.curs3d.fr/eth`) and supports MetaMask, ethers.js, wagmi, viem,
+`https://rpc.curs3d.fr/eth` and `https://api.curs3d.fr/eth`) and supports MetaMask, ethers.js, wagmi, viem,
 Hardhat, and Foundry. Read methods cover `eth_chainId`, `eth_blockNumber`,
 `eth_gasPrice`, `eth_getBalance`, `eth_getTransactionCount`, `eth_getCode`,
 `eth_getStorageAt`, `eth_getBlockByNumber`/`Hash`, `eth_getTransactionByHash`,
@@ -336,7 +337,7 @@ CURS3D runs WebAssembly contracts via Wasmer 7 with Cranelift. The VM injects fu
 ## Testing
 
 ```bash
-RUSTUP_TOOLCHAIN=nightly cargo test --lib                    # 164 tests, all green
+RUSTUP_TOOLCHAIN=nightly cargo test --lib                    # 181 tests, all green
 RUSTUP_TOOLCHAIN=nightly cargo clippy --lib -- -D warnings   # 0 warnings (CI enforces)
 RUSTUP_TOOLCHAIN=nightly cargo fmt --check                   # Enforced formatting
 ```

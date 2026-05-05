@@ -29,16 +29,16 @@ make test
 Resultat attendu:
 
 ```text
-16 tests passed, 0 failed
+56 tests passed, 0 failed
 ```
 
 ## Ce qu'il te faut pour que la dApp fonctionne vraiment
 
 Il faut:
 - un wallet navigateur, par exemple MetaMask ou Rabby
-- un peu d'ETH testnet sur Base Sepolia ou Sepolia
-- une cle privee testnet uniquement
-- un RPC Base Sepolia ou Sepolia
+- un peu de CUR natif sur CURS3D testnet, ou de l'ETH testnet si tu deploies aussi sur Base Sepolia / Sepolia
+- une cle testnet uniquement
+- le RPC CURS3D `https://rpc.curs3d.fr/eth` (ou un RPC Base Sepolia / Sepolia pour les demos portables)
 
 Important:
 - ne mets jamais une cle mainnet ici
@@ -56,9 +56,12 @@ cp .env.example .env
 Remplis au minimum:
 
 ```text
-PRIVATE_KEY=0xTA_CLE_TESTNET
+CURS3D_RPC_URL=https://rpc.curs3d.fr/eth
 BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
 ```
+
+Pour CURS3D, utilise de preference un keystore Foundry avec `--keystore`,
+`--password` et `--sender` plutot qu'une cle privee en clair.
 
 ## Deployer sur Base Sepolia
 

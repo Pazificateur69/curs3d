@@ -14,13 +14,14 @@ WORKDIR /usr/src/curs3d
 
 # Copy manifests for dependency caching
 COPY Cargo.toml Cargo.lock ./
+COPY benches ./benches
 
 # Create dummy src to build dependencies first
 RUN mkdir src && \
     echo "fn main() { println!(\"dummy\"); }" > src/main.rs
 
 # Build only dependencies (cached layer)
-RUN cargo build --release && \
+RUN cargo build --release --bin curs3d && \
     rm -rf src
 
 # Copy real source code
@@ -30,7 +31,7 @@ COPY src ./src
 RUN touch src/main.rs
 
 # Build the actual binary
-RUN cargo build --release
+RUN cargo build --release --bin curs3d
 
 # --- Runtime Stage ---
 FROM debian:bookworm-slim

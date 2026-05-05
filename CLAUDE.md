@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Context for CURS3D
 
-State as of: **2026-05-05** (protocol v5 + 3-validator testnet, node3 IONOS Berlin x86_64 added 2026-05-05, wasmer 5 -> 7 bump for x86_64 linker fix on the same day)
+State as of: **2026-05-05** (software **v0.3.5** + consensus protocol **v5** + 3-validator testnet, node3 IONOS Berlin x86_64 added 2026-05-05, wasmer 5 -> 7 bump for x86_64 linker fix on the same day, Solidity portfolio deployed at chain-id 1800329576). **`v1.0` is reserved for the official mainnet launch — do not bump the software version just because the consensus protocol bumps.**
 
 ## What is this project?
 
@@ -25,7 +25,8 @@ signatures produced in the browser verify on the node byte-for-byte.
 |---------|-----|
 | Site | https://curs3d.fr |
 | API | https://api.curs3d.fr/api/status |
-| **Ethereum-compatible JSON-RPC (MetaMask, ethers.js, Hardhat, Foundry)** | **https://api.curs3d.fr/eth** |
+| **Ethereum-compatible JSON-RPC (MetaMask, ethers.js, Hardhat, Foundry)** | **https://api.curs3d.fr/eth** OR **https://rpc.curs3d.fr/eth** |
+| **RPC public endpoint** (alias for api/eth + /v1/* legacy + landing page) | **https://rpc.curs3d.fr** |
 | Explorer | https://explorer.curs3d.fr |
 | Browser Wallet UI (write-capable since v5) | https://curs3d.fr/wallet |
 | Wallet WASM bundle (24 KB JS shim + 236 KB WASM) | https://curs3d.fr/wallet-wasm/curs3d_wallet_wasm.js |
@@ -68,7 +69,7 @@ https://curs3d.fr/api.
 
 | Field | Value |
 |-------|-------|
-| RPC URL | `https://api.curs3d.fr/eth` |
+| RPC URL | `https://rpc.curs3d.fr/eth` (or `https://api.curs3d.fr/eth`) |
 | Chain ID (decimal) | `1800329576` |
 | Chain ID (hex) | `0x6b4ed968` |
 | Symbol | `CUR` |
@@ -83,7 +84,7 @@ rustup install nightly --profile minimal
 RUSTUP_TOOLCHAIN=nightly cargo build --release
 
 # Tests, lint, format
-RUSTUP_TOOLCHAIN=nightly cargo test --lib       # 168 tests, all green
+RUSTUP_TOOLCHAIN=nightly cargo test --lib       # 181 tests, all green
 RUSTUP_TOOLCHAIN=nightly cargo clippy --lib -- -D warnings
 RUSTUP_TOOLCHAIN=nightly cargo fmt --check
 ```
@@ -111,12 +112,13 @@ the public 3-validator testnet, but they affect specific surfaces.
 2. **HTML/CSS/JS a11y + SEO polish on existing pages** was prototyped in a
    worktree but not merged due to conflicts with the wallet-nav additions.
    Will be reapplied in a follow-up pass.
-3. **RequestBlocks sync timeout** — `src/network/mod.rs` BlockResponse path.
-   The bug is still in the code but no longer triggers in normal operation
-   thanks to deterministic slot-leader scheduling (commit `343a7a1`).
-4. **Persisted state-root divergence after some restarts** — diagnostic
-   logging now dumps each account leaf when a divergence is detected.
-   Root cause not yet identified. Rare in practice.
+3. **RequestBlocks sync timeout / boot forks — fixed in current tree.**
+   BlockResponse accepts stale-but-contiguous batches, sync escalates to
+   snapshots after retries, forked RequestBlocks callers receive a snapshot
+   offer, and validators pause block production during startup/sync.
+4. **Persisted state-root divergence at epoch boundaries — fixed in `f461aa4`.**
+   Epoch settlement now runs through the same helper during block apply and
+   boot replay. Covered by `test_restart_across_epoch_boundary`.
 5. **Cross-compile from Mac** — `cross` is installed but needs Docker
    Desktop / OrbStack running. Today, builds happen on the ARM VPSes.
 6. **No PGP key for security disclosures yet.** A signed contact channel
@@ -313,7 +315,7 @@ deploy/
 ### api/mod.rs
 - HTTP server on port 8080
 - All responses: `{"ok": true, "data": {...}}` or `{"ok": false, "error": "..."}`
-- Rate limiting: 60 GET/min, 10 POST/min per IP
+- Rate limiting: 60 GET/min, 10 POST/min, 600 JSON-RPC calls/min on `/eth` per IP
 - Faucet: 100 CUR, 1 h cooldown per address + per IP, Cloudflare Turnstile required
 - Auth: optional via CURS3D_API_TOKEN env var
 - CORS: configurable via CURS3D_API_ALLOW_ORIGIN env var
@@ -352,7 +354,7 @@ deploy/
 
 ## Tests
 
-**168 tests, all green** (2026-04-30, post v5 hardfork — ML-DSA-87 migration).
+**181 tests, all green** (2026-05-05, post RPC hash/receipt + network stability pass).
 Breakdown below is approximate. Run `cargo test --lib --no-run` and read the
 binary output for the canonical per-module count.
 - consensus: 15 (validators, selection, slashing, equivocation, finality votes, dedup, jailing, epochs, epoch rewards, inactivity penalty, grace period, apply settlement)
@@ -364,7 +366,7 @@ binary output for the canonical per-module count.
 - crypto/hash: 7 (sha3, merkle root, merkle proof, address derivation, domain separation, checksum roundtrip, checksum rejection)
 - governance: 8 (submit, vote, double vote, pass/execute, reject no quorum, reject no approval, invalid param, vote after deadline)
 - light: 3 (new client, valid proof, invalid proof, empty headers)
-- network: 9 (rate limiter: normal traffic, flood block, peer isolation, cleanup, escalating bans; peer scoring: good behavior, bad->ban, decay, clamped)
+- network: 19 (rate limiter, peer scoring, bounded deserialize, cold sync, stale BlockResponse handling, startup production gate, queued rebroadcasts)
 - storage: 7 (block, account, height, pending, meta, epochs, snapshots)
 - token: 10 (deploy, transfer, insufficient balance, approve+transferFrom, insufficient allowance, duplicate deploy, invalid params, zero amount, self transfer, list)
 - trie: 9 (empty, insert/get, root changes, deterministic root, remove restores, proof generation, proof absent, many entries, update value)

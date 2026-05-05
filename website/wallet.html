@@ -434,8 +434,8 @@
           <span data-lang="fr">Votre <em>wallet</em> CURS3D, dans votre navigateur.</span>
         </h1>
         <p class="lede">
-          <span data-lang="en" class="lang-show">Keys are generated locally, encrypted with your password (Argon2id + AES-256-GCM) and stored only in your browser. The private key never leaves the device. Signing happens on-device against the post-quantum Dilithium-L5 keypair.</span>
-          <span data-lang="fr">Les clés sont générées localement, chiffrées avec votre mot de passe (Argon2id + AES-256-GCM) et stockées uniquement dans le navigateur. La clé privée ne quitte jamais l'appareil. La signature s'effectue sur place avec la paire de clés post-quantique Dilithium-L5.</span>
+          <span data-lang="en" class="lang-show">Keys are generated locally, encrypted with your password (Argon2id + AES-256-GCM) and stored only in your browser. The private key never leaves the device. Signing happens on-device against the post-quantum ML-DSA-87 keypair.</span>
+          <span data-lang="fr">Les clés sont générées localement, chiffrées avec votre mot de passe (Argon2id + AES-256-GCM) et stockées uniquement dans le navigateur. La clé privée ne quitte jamais l'appareil. La signature s'effectue sur place avec la paire de clés post-quantique ML-DSA-87.</span>
         </p>
       </div>
     </section>
@@ -444,7 +444,8 @@
       <div class="wrap">
         <div class="wallet-shell">
 
-          <!-- Banners (insecure connection / status messages) — wallet is write-capable since v5 hardfork -->
+          <!-- Banners (insecure connection / status messages). The wallet is fully write-capable:
+               consensus protocol v5 (ML-DSA-87 / FIPS-204) shipped before software v0.3.5. -->
           <div id="walletBanners" class="wallet-banner-stack"></div>
 
           <!-- ============= LOCKED STATE ============= -->
@@ -456,8 +457,8 @@
                 <span data-lang="fr">Créer un nouveau wallet</span>
               </h2>
               <p>
-                <span data-lang="en" class="lang-show">Generate a fresh Dilithium-L5 keypair locally. Choose a strong password — it encrypts your private key on this device.</span>
-                <span data-lang="fr">Générez une nouvelle paire de clés Dilithium-L5 localement. Choisissez un mot de passe robuste — il chiffre votre clé privée sur cet appareil.</span>
+                <span data-lang="en" class="lang-show">Generate a fresh ML-DSA-87 keypair locally. Choose a strong password — it encrypts your private key on this device.</span>
+                <span data-lang="fr">Générez une nouvelle paire de clés ML-DSA-87 localement. Choisissez un mot de passe robuste — il chiffre votre clé privée sur cet appareil.</span>
               </p>
 
               <div class="callout danger">
@@ -794,7 +795,7 @@
         </div>
       </div>
       <div style="display:flex; justify-content:space-between; padding-top:24px; border-top:1px solid var(--line); font-family:var(--mono); font-size:11px; color:var(--mute); letter-spacing:.08em;">
-        <span>© 2026 CURS3D PROTOCOL · MIT</span>
+        <span>© 2026 CURS3D PROTOCOL · MIT · <b style="color:var(--fg)">v0.3.5</b></span>
         <span>CHAIN-ID <b style="color:var(--fg)">curs3d-public-testnet</b></span>
       </div>
     </div>

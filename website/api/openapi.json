@@ -2,9 +2,9 @@
   "openapi": "3.1.0",
   "info": {
     "title": "CURS3D HTTP API",
-    "version": "1.0.0",
-    "summary": "Public REST + WebSocket + Ethereum-compatible JSON-RPC for the CURS3D Layer 1.",
-    "description": "CURS3D is a quantum-resistant Layer 1 blockchain. Every endpoint returns `{ok: bool, data: any, error: string|null}`. Per-IP rate limits: 60 GET/min, 10 POST/min. Optional bearer auth via `CURS3D_API_TOKEN`.",
+    "version": "0.3.5",
+    "summary": "Public REST + WebSocket + Ethereum-compatible JSON-RPC for the CURS3D Layer 1 (software v0.3.5, consensus protocol v5).",
+    "description": "CURS3D is a quantum-resistant Layer 1 blockchain. Software version v0.3.5 (testnet — v1.0 reserved for the official mainnet launch). Consensus protocol version v5. Every endpoint returns `{ok: bool, data: any, error: string|null}`. Per-IP rate limits: 60 GET/min, 10 POST/min, 600 JSON-RPC calls/min on `/eth`. Optional bearer auth via `CURS3D_API_TOKEN`.",
     "license": {
       "name": "MIT",
       "url": "https://github.com/Pazificateur69/curs3d/blob/main/LICENSE"
@@ -56,9 +56,11 @@
                     "finalized_height": 240,
                     "latest_hash": "7e172dd6b3d69d55...",
                     "genesis_hash": "8a58508589b2e0e2...",
+                    "latest_block_age_secs": 4,
                     "pending_transactions": 0,
-                    "active_validators": 1,
-                    "protocol_version": 1
+                    "active_validators": 3,
+                    "peer_count": 2,
+                    "protocol_version": 5
                   },
                   "error": null
                 }
@@ -72,7 +74,7 @@
       "get": {
         "tags": ["status"],
         "summary": "Liveness check",
-        "description": "Returns 200 if the node is producing or syncing recent blocks (latest block younger than 120s).",
+        "description": "Returns 200 if the node is producing/syncing recent blocks and finality lag is bounded. Healthcheck automation restarts on process/API failure; consensus stalls should alert first, not blindly restart validators.",
         "responses": {
           "200": { "description": "Healthy" },
           "503": { "description": "Stale or unreachable" }
@@ -125,7 +127,7 @@
       "post": {
         "tags": ["transactions"],
         "summary": "Submit a signed transaction",
-        "description": "Body must be a fully Dilithium-L5 signed Transaction (12 kinds: Transfer, Stake, Unstake, DeployContract, CallContract, DeployToken, TokenTransfer, TokenApprove, TokenTransferFrom, SubmitProposal, GovernanceVote). Coinbase is internal-only.",
+        "description": "Body must be a fully ML-DSA-87 signed Transaction (12 kinds: Transfer, Stake, Unstake, DeployContract, CallContract, DeployToken, TokenTransfer, TokenApprove, TokenTransferFrom, SubmitProposal, GovernanceVote). Coinbase is internal-only.",
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SignedTransaction" } } }
@@ -321,7 +323,7 @@
       "post": {
         "tags": ["eth-rpc"],
         "summary": "Ethereum-compatible JSON-RPC",
-        "description": "Ethereum-compatible JSON-RPC subset for Metamask / ethers.js / wagmi / Hardhat / Foundry. Read methods: eth_chainId, eth_blockNumber, eth_gasPrice, eth_getBalance, eth_getTransactionCount, eth_getCode, eth_getStorageAt, eth_getBlockByNumber, eth_getBlockByHash, eth_getTransactionByHash, eth_getTransactionReceipt, eth_getLogs (max range 10,000 blocks), eth_feeHistory, eth_estimateGas, eth_call, net_version, web3_clientVersion, web3_sha3. Write: eth_sendRawTransaction — accepts a Solidity-flavored RLP-signed tx (EIP-1559 / legacy), recovers the secp256k1 sender, executes through revm, and returns the tx hash. Native CURS3D Dilithium-L5 txs (Transfer/Stake/etc.) still go through POST /api/tx/submit.",
+        "description": "Ethereum-compatible JSON-RPC subset for Metamask / ethers.js / wagmi / Hardhat / Foundry. Read methods: eth_chainId, eth_blockNumber, eth_gasPrice, eth_getBalance, eth_getTransactionCount, eth_getCode, eth_getStorageAt, eth_getBlockByNumber, eth_getBlockByHash, eth_getTransactionByHash, eth_getTransactionReceipt, eth_getLogs (max range 10,000 blocks), eth_feeHistory, eth_estimateGas, eth_call, net_version, web3_clientVersion, web3_sha3. Write: eth_sendRawTransaction — accepts a Solidity-flavored RLP-signed tx (EIP-1559 / legacy), recovers the secp256k1 sender, executes through revm, and returns the tx hash. Native CURS3D ML-DSA-87 txs (Transfer/Stake/etc.) still go through POST /api/tx/submit.",
         "requestBody": {
           "required": true,
           "content": {
@@ -386,8 +388,10 @@
                   "finalized_height": { "type": "integer" },
                   "latest_hash": { "type": "string" },
                   "genesis_hash": { "type": "string" },
+                  "latest_block_age_secs": { "type": "integer" },
                   "pending_transactions": { "type": "integer" },
                   "active_validators": { "type": "integer" },
+                  "peer_count": { "type": "integer" },
                   "protocol_version": { "type": "integer" }
                 }
               }
@@ -408,8 +412,8 @@
           "to": { "type": "string", "description": "CUR address" },
           "amount": { "type": "integer", "description": "microtokens (1 CUR = 1_000_000)" },
           "data": { "type": "string", "description": "hex-encoded bytecode or call input" },
-          "sender_public_key": { "type": "string", "description": "hex-encoded Dilithium-L5 public key (~2592 bytes)" },
-          "signature": { "type": "string", "description": "hex-encoded Dilithium-L5 signature (~4595 bytes)" }
+          "sender_public_key": { "type": "string", "description": "hex-encoded ML-DSA-87 public key (~2592 bytes)" },
+          "signature": { "type": "string", "description": "hex-encoded ML-DSA-87 signature (~4595 bytes)" }
         }
       }
     }
