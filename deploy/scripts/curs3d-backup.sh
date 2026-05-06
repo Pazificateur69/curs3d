@@ -4,7 +4,7 @@
 #
 # What it backs up:
 #   - /etc/curs3d/                : wallets (json + password files), genesis
-#   - /var/lib/curs3d/blobs       : sled chain database
+#   - /var/lib/curs3d/curs3d.redb : redb chain database
 #   - /var/lib/curs3d/conf        : node config snapshots
 #   - /etc/systemd/system/curs3d.service : unit file
 #   - /etc/nginx/sites-available/curs3d.conf : nginx config

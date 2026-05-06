@@ -50,7 +50,7 @@ dans le code et ce qui reste pour approcher un niveau L1 serieux.
   - AES-256-GCM + Argon2 wallets
 - Etat:
   - persistance et rebuild de l etat canonique (accounts + contracts + receipts)
-  - sled avec 10 arbres, schema v4, auto-migration
+  - redb avec 10 tables, schema v4, auto-migration
   - snapshots complets avec chunks Merkle verifies
   - snapshots bases sur point finalise quand possible
   - preuves Merkle par chunk de snapshot

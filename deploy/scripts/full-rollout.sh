@@ -59,8 +59,8 @@ ok "All 3 services stopped."
 # ─── 2. Install + optional wipe ──────────────────────────────────────────
 if [ "$WIPE" -eq 1 ]; then
     step "${BOLD}Installing new binary + wiping chain DB${RESET}"
-    # Sled stores trees as bare directories (not just *.sled files), so the
-    # safe wipe is "remove everything except the libp2p identity". Preserve
+    # redb stores the canonical chain in curs3d.redb, but old sled directories
+    # may still exist on nodes upgraded from pre-redb builds. Preserve
     # p2p_identity* so the node keeps its peer ID across restarts (node2/node3
     # already configure node1's PeerId as bootnode — regenerating it would
     # break that config until operators update unit files).

@@ -523,7 +523,8 @@ async fn run_node(
         }
     };
 
-    let chain = match Blockchain::with_storage(data_dir, genesis_config.as_ref()) {
+    let chain = match Blockchain::with_storage_async_persistence(data_dir, genesis_config.as_ref())
+    {
         Ok(chain) => chain,
         Err(e) => {
             eprintln!("Failed to initialize blockchain storage: {}", e);
@@ -879,7 +880,7 @@ async fn show_status(data_dir: &str, rpc_addr: Option<&str>) {
     );
     println!("Consensus:         Proof of Stake");
     println!("Crypto:            ML-DSA-87 + SHA3-256");
-    println!("Storage:           sled");
+    println!("Storage:           redb");
     println!("Data Dir:          {}", data_dir);
     println!("Active Validators: {}", chain.active_validator_count());
     println!("Pending Txs:       {}", chain.pending_transactions.len());

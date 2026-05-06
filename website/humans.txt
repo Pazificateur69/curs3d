@@ -6,7 +6,7 @@ GitHub: https://github.com/Pazificateur69/curs3d
 
 /* THANKS */
 - NIST PQC project (FIPS 202, FIPS 204)
-- The libp2p, hyper, wasmer, sled, and ml-dsa maintainers
+- The libp2p, hyper, wasmer, redb, and ml-dsa maintainers
 - Everyone running an early validator on testnet-1
 
 /* SITE */

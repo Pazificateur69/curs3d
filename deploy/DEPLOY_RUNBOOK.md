@@ -205,7 +205,7 @@ Protocol version: `v5`
 /etc/cron.d/
   curs3d-healthcheck                        # */2 min
 
-/var/lib/curs3d/                            # data dir (sled, p2p_identity.pb)
+/var/lib/curs3d/                            # data dir (redb, p2p_identity.pb)
 /var/log/curs3d-healthcheck.log
 /var/www/curs3d/                            # site statique (index, faucet, api docs, wallet, ...)
 /var/www/curs3d/wallet-wasm/                # bundle wasm-pack (curs3d_wallet_wasm.js + .wasm)
@@ -592,7 +592,7 @@ Le hardfork v5 swap `pqcrypto-dilithium 0.5.0` (round 3, C bindings) ->
 1. Coordonner l'arret simultane des nodes (`systemctl stop curs3d`).
 2. Build le binaire v5 sur chaque node : `RUSTUP_TOOLCHAIN=nightly cargo build --release`.
 3. Wipe complet de la chain DB sur chaque node :
-   `sudo rm -rf /var/lib/curs3d/blocks /var/lib/curs3d/state /var/lib/curs3d/accounts /var/lib/curs3d/*.sled`
+   `sudo rm -f /var/lib/curs3d/curs3d.redb`
    (garder `p2p_identity.pb`).
 4. Regenerer wallets validateurs ET faucet sous v5 (les anciens wallets
    v4 ont des keypairs incompatibles avec ML-DSA-87) :

@@ -25,8 +25,8 @@
 >
 > This is an **experimental developer testnet** for development and testing. **It is not production.** Funds on this chain have **no monetary value**. The chain may be reset without notice. The browser wallet UI is write-capable: create or import a wallet, sign and send transactions, all from the browser via the embedded WASM crypto. The private key never leaves your device. External security audit is **not yet started**. Do not use CURS3D for anything you cannot afford to lose.
 >
-> **Production incident — RESOLVED 2026-05-05 (commit `0476981`):** the first 72h soak caught two cascading issues. Root-cause-fixed, not papered over.
-> 1. **sled 0.34 internal deadlock** under sustained per-block full-state writes (`replace_blocks` + `replace_accounts` + `replace_contracts` + ... on every 10s slot eventually deadlocks sled's IO threadpool on its log-buffer mutex; gdb on the hung process confirmed). Fix: `add_block` now does `put_block` (incremental, O(1)) on every block and the heavy `persist_full_state` only at epoch boundaries (every 32 blocks ≈ 5 min). On restart, `rebuild_canonical_state` replays from the last full persist.
+> **Production incident — storage fix in current tree:** the first soak caught two cascading issues. Root-cause-fixed, not papered over.
+> 1. **sled 0.34 internal deadlock** under sustained writes (confirmed twice by gdb on live hung nodes). The short-term epoch-boundary mitigation was not enough, so persistent storage has been migrated to **redb 4.1**. Live nodes also use async persistence, so consensus/RPC/gossipsub no longer perform disk IO while holding `Mutex<Blockchain>`.
 > 2. **Mesh topology depended on node1 as gossipsub relay** — node2 and node3 only had node1 as `--bootnode`, so when node1's sled deadlock starved its gossipsub task, the mesh partitioned and the chain forked at h=341. Fix: each systemd unit now lists the OTHER two nodes as bootnodes; full mesh, no single SPOF.
 >
 > Verified: all 3 nodes converged at identical hash by h=4 after the rollout, finality lag=0 since h=33, 7 Solidity contracts redeployed cleanly. Full incident log + gdb stack + recipe in [`docs/foundation/22-soak-runbook.md`](docs/foundation/22-soak-runbook.md).
@@ -65,7 +65,7 @@ CURS3D is a **Layer 1 blockchain written from scratch in Rust**, designed to res
 | **Fork choice** | Heaviest chain by cumulative proposer stake |
 | **Slashing** | Cryptographic equivocation proof, 33% penalty, 64-block jail |
 | **Networking** | libp2p 0.54 (Gossipsub + mDNS + noise + yamux) |
-| **Storage** | sled embedded DB, schema v4, auto-migration |
+| **Storage** | redb embedded DB, schema v4, auto-migration |
 
 ## Quick Start
 
@@ -201,7 +201,7 @@ CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technicall
 - **Domain separation** in all hashing (prevents cross-layer collisions)
 - **Checksummed addresses** (EIP-55 style, detects typos)
 - **Rate-limit headers** (X-RateLimit-Limit/Remaining/Window) on all API responses
-- **Persistent storage** (sled, 10 trees, schema v4 with auto-migration)
+- **Persistent storage** (redb, 10 tables, schema v4 with auto-migration)
 - **REST API** (27 endpoints, OpenAPI 3.1 at https://curs3d.fr/api) + WebSocket + **Ethereum-compatible JSON-RPC** (`POST https://rpc.curs3d.fr/eth`, full `eth_sendRawTransaction` + log/receipt/block reads) + TCP RPC + CLI
 - **SDKs**: JavaScript/TypeScript (@curs3d/sdk), Python (curs3d), Rust contract SDK with 5 examples, **`sdk/wasm` browser-side crypto bundle** (24 KB JS + 236 KB WASM, ML-DSA-87 + Argon2id + AES-GCM)
 - **Browser Wallet UI** at [curs3d.fr/wallet](https://curs3d.fr/wallet) — keypair gen, encrypted local storage (Argon2id+AES-GCM), balance / nonce / staked / tx history, **and full signing** (ML-DSA-87 in-browser via the WASM crypto bundle, byte-compatible with the node since v5)
@@ -250,7 +250,7 @@ src/
   light/           Light client: header sync, Merkle proof verification
   network/         libp2p P2P (Gossipsub + mDNS), sync, block production, state sync, rate limiting
   rpc/             TCP JSON RPC (port 9545)
-  storage/         sled DB (10 trees, schema v4, snapshots, migration)
+  storage/         redb DB (10 tables, schema v4, snapshots, migration)
   token/           CUR-20 token standard: deploy, transfer, approve, transferFrom
   vm/
     mod.rs           Wasmer 7 WASM execution, host functions, fuel middleware (native CURS3D contracts; bumped from 5 to 7 on 2026-05-05 to fix x86_64 linker)

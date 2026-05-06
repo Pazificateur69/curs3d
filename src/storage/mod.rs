@@ -1,7 +1,8 @@
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Serialize, de::DeserializeOwned};
-use sled::Db;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::consensus::{EpochSnapshot, EquivocationEvidence};
 use crate::core::block::Block;
@@ -13,16 +14,17 @@ use crate::core::transaction::{Transaction, TransactionKind};
 use crate::crypto::dilithium::Signature;
 use crate::vm::state::ContractState;
 
-const BLOCKS_TREE: &str = "blocks";
-const STATE_TREE: &str = "accounts";
-const META_TREE: &str = "meta";
-const PENDING_TREE: &str = "pending";
-const EVIDENCE_TREE: &str = "slashing_evidence";
-const EPOCH_TREE: &str = "epochs";
-const CONTRACT_TREE: &str = "contracts";
-const RECEIPT_TREE: &str = "receipts";
-const SNAPSHOT_MANIFEST_TREE: &str = "snapshot_manifests";
-const SNAPSHOT_CHUNK_TREE: &str = "snapshot_chunks";
+const BLOCKS_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("blocks");
+const STATE_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("accounts");
+const META_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("meta");
+const PENDING_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("pending");
+const EVIDENCE_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("slashing_evidence");
+const EPOCH_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("epochs");
+const CONTRACT_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("contracts");
+const RECEIPT_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("receipts");
+const SNAPSHOT_MANIFEST_TABLE: TableDefinition<&[u8], &[u8]> =
+    TableDefinition::new("snapshot_manifests");
+const SNAPSHOT_CHUNK_TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("snapshot_chunks");
 pub const HEIGHT_KEY: &[u8] = b"chain_height";
 pub const SCHEMA_VERSION_KEY: &[u8] = b"schema_version";
 pub const CURRENT_SCHEMA_VERSION: u64 = 4;
@@ -187,38 +189,88 @@ impl LegacyBlockV1 {
     }
 }
 
+#[derive(Clone)]
 pub struct Storage {
-    db: Db,
+    db: Arc<Database>,
 }
 
 impl Storage {
-    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, sled::Error> {
-        let db = sled::open(path)?;
-        Ok(Storage { db })
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, StorageError> {
+        let db_path = Self::database_file(path.as_ref())?;
+        let db = Database::create(&db_path).map_err(StorageError::redb)?;
+        let storage = Storage { db: Arc::new(db) };
+        storage.initialize_tables()?;
+        Ok(storage)
+    }
+
+    fn database_file(path: &Path) -> Result<PathBuf, StorageError> {
+        if path.extension().is_some_and(|ext| ext == "redb") {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| StorageError::Io(e.to_string()))?;
+            }
+            return Ok(path.to_path_buf());
+        }
+        std::fs::create_dir_all(path).map_err(|e| StorageError::Io(e.to_string()))?;
+        Ok(path.join("curs3d.redb"))
+    }
+
+    fn initialize_tables(&self) -> Result<(), StorageError> {
+        let write = self.db.begin_write().map_err(StorageError::redb)?;
+        {
+            let _ = write.open_table(BLOCKS_TABLE).map_err(StorageError::redb)?;
+            let _ = write.open_table(STATE_TABLE).map_err(StorageError::redb)?;
+            let _ = write.open_table(META_TABLE).map_err(StorageError::redb)?;
+            let _ = write
+                .open_table(PENDING_TABLE)
+                .map_err(StorageError::redb)?;
+            let _ = write
+                .open_table(EVIDENCE_TABLE)
+                .map_err(StorageError::redb)?;
+            let _ = write.open_table(EPOCH_TABLE).map_err(StorageError::redb)?;
+            let _ = write
+                .open_table(CONTRACT_TABLE)
+                .map_err(StorageError::redb)?;
+            let _ = write
+                .open_table(RECEIPT_TABLE)
+                .map_err(StorageError::redb)?;
+            let _ = write
+                .open_table(SNAPSHOT_MANIFEST_TABLE)
+                .map_err(StorageError::redb)?;
+            let _ = write
+                .open_table(SNAPSHOT_CHUNK_TABLE)
+                .map_err(StorageError::redb)?;
+        }
+        write.commit().map_err(StorageError::redb)?;
+        Ok(())
     }
 
     #[allow(dead_code)]
     pub fn put_block(&self, block: &Block) -> Result<(), StorageError> {
-        let tree = self.db.open_tree(BLOCKS_TREE)?;
+        let write = self.db.begin_write().map_err(StorageError::redb)?;
         let key = block.header.height.to_be_bytes();
         let value =
             bincode::serialize(block).map_err(|e| StorageError::Serialize(e.to_string()))?;
-        tree.insert(key, value)?;
-
-        let meta = self.db.open_tree(META_TREE)?;
-        meta.insert(HEIGHT_KEY, &block.header.height.to_be_bytes())?;
-
-        self.db.flush()?;
+        {
+            let mut blocks = write.open_table(BLOCKS_TABLE).map_err(StorageError::redb)?;
+            blocks
+                .insert(key.as_slice(), value.as_slice())
+                .map_err(StorageError::redb)?;
+            let mut meta = write.open_table(META_TABLE).map_err(StorageError::redb)?;
+            meta.insert(HEIGHT_KEY, key.as_slice())
+                .map_err(StorageError::redb)?;
+        }
+        write.commit().map_err(StorageError::redb)?;
         Ok(())
     }
 
     #[allow(dead_code)]
     pub fn get_block(&self, height: u64) -> Result<Option<Block>, StorageError> {
-        let tree = self.db.open_tree(BLOCKS_TREE)?;
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let tree = read.open_table(BLOCKS_TABLE).map_err(StorageError::redb)?;
         let key = height.to_be_bytes();
-        match tree.get(key)? {
+        match tree.get(key.as_slice()).map_err(StorageError::redb)? {
             Some(data) => {
-                let block: Block = bincode::deserialize(&data)
+                let block: Block = bincode::deserialize(data.value())
                     .map_err(|e| StorageError::Serialize(e.to_string()))?;
                 Ok(Some(block))
             }
@@ -231,13 +283,14 @@ impl Storage {
         height: u64,
         chain_id: &str,
     ) -> Result<Option<Block>, StorageError> {
-        let tree = self.db.open_tree(BLOCKS_TREE)?;
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let tree = read.open_table(BLOCKS_TABLE).map_err(StorageError::redb)?;
         let key = height.to_be_bytes();
-        match tree.get(key)? {
-            Some(data) => match bincode::deserialize::<Block>(&data) {
+        match tree.get(key.as_slice()).map_err(StorageError::redb)? {
+            Some(data) => match bincode::deserialize::<Block>(data.value()) {
                 Ok(block) => Ok(Some(block)),
                 Err(_) => {
-                    let block: LegacyBlockV1 = bincode::deserialize(&data)
+                    let block: LegacyBlockV1 = bincode::deserialize(data.value())
                         .map_err(|e| StorageError::Serialize(e.to_string()))?;
                     Ok(Some(block.into_current(chain_id)))
                 }
@@ -247,11 +300,12 @@ impl Storage {
     }
 
     pub fn get_height(&self) -> Result<Option<u64>, StorageError> {
-        let meta = self.db.open_tree(META_TREE)?;
-        match meta.get(HEIGHT_KEY)? {
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let meta = read.open_table(META_TABLE).map_err(StorageError::redb)?;
+        match meta.get(HEIGHT_KEY).map_err(StorageError::redb)? {
             Some(data) => {
                 let bytes: [u8; 8] = data
-                    .as_ref()
+                    .value()
                     .try_into()
                     .map_err(|_| StorageError::Serialize("invalid height bytes".to_string()))?;
                 Ok(Some(u64::from_be_bytes(bytes)))
@@ -261,10 +315,15 @@ impl Storage {
     }
 
     pub fn put_account(&self, address: &[u8], state: &AccountState) -> Result<(), StorageError> {
-        let tree = self.db.open_tree(STATE_TREE)?;
+        let write = self.db.begin_write().map_err(StorageError::redb)?;
         let value =
             bincode::serialize(state).map_err(|e| StorageError::Serialize(e.to_string()))?;
-        tree.insert(address, value)?;
+        {
+            let mut tree = write.open_table(STATE_TABLE).map_err(StorageError::redb)?;
+            tree.insert(address, value.as_slice())
+                .map_err(StorageError::redb)?;
+        }
+        write.commit().map_err(StorageError::redb)?;
         Ok(())
     }
 
@@ -272,24 +331,29 @@ impl Storage {
         &self,
         accounts: &HashMap<Vec<u8>, AccountState>,
     ) -> Result<(), StorageError> {
-        let tree = self.db.open_tree(STATE_TREE)?;
-        tree.clear()?;
+        let write = self.db.begin_write().map_err(StorageError::redb)?;
+        let mut tree = write.open_table(STATE_TABLE).map_err(StorageError::redb)?;
+        tree.retain(|_, _| false).map_err(StorageError::redb)?;
         let mut entries: Vec<(&Vec<u8>, &AccountState)> = accounts.iter().collect();
         entries.sort_by_key(|(a, _)| *a);
         for (address, state) in entries {
             let value =
                 bincode::serialize(state).map_err(|e| StorageError::Serialize(e.to_string()))?;
-            tree.insert(address, value)?;
+            tree.insert(address.as_slice(), value.as_slice())
+                .map_err(StorageError::redb)?;
         }
+        drop(tree);
+        write.commit().map_err(StorageError::redb)?;
         Ok(())
     }
 
     #[allow(dead_code)]
     pub fn get_account(&self, address: &[u8]) -> Result<Option<AccountState>, StorageError> {
-        let tree = self.db.open_tree(STATE_TREE)?;
-        match tree.get(address)? {
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let tree = read.open_table(STATE_TABLE).map_err(StorageError::redb)?;
+        match tree.get(address).map_err(StorageError::redb)? {
             Some(data) => {
-                let state: AccountState = bincode::deserialize(&data)
+                let state: AccountState = bincode::deserialize(data.value())
                     .map_err(|e| StorageError::Serialize(e.to_string()))?;
                 Ok(Some(state))
             }
@@ -299,12 +363,13 @@ impl Storage {
 
     #[allow(dead_code)]
     pub fn get_account_compat(&self, address: &[u8]) -> Result<Option<AccountState>, StorageError> {
-        let tree = self.db.open_tree(STATE_TREE)?;
-        match tree.get(address)? {
-            Some(data) => match bincode::deserialize::<AccountState>(&data) {
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let tree = read.open_table(STATE_TABLE).map_err(StorageError::redb)?;
+        match tree.get(address).map_err(StorageError::redb)? {
+            Some(data) => match bincode::deserialize::<AccountState>(data.value()) {
                 Ok(state) => Ok(Some(state)),
                 Err(_) => {
-                    let state: LegacyAccountStateV1 = bincode::deserialize(&data)
+                    let state: LegacyAccountStateV1 = bincode::deserialize(data.value())
                         .map_err(|e| StorageError::Serialize(e.to_string()))?;
                     Ok(Some(state.into()))
                 }
@@ -315,55 +380,64 @@ impl Storage {
 
     #[allow(dead_code)]
     pub fn get_all_accounts(&self) -> Result<Vec<(Vec<u8>, AccountState)>, StorageError> {
-        let tree = self.db.open_tree(STATE_TREE)?;
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let tree = read.open_table(STATE_TABLE).map_err(StorageError::redb)?;
         let mut accounts = Vec::new();
-        for entry in tree.iter() {
-            let (key, value) = entry?;
-            let state: AccountState =
-                bincode::deserialize(&value).map_err(|e| StorageError::Serialize(e.to_string()))?;
-            accounts.push((key.to_vec(), state));
+        for entry in tree.iter().map_err(StorageError::redb)? {
+            let (key, value) = entry.map_err(StorageError::redb)?;
+            let state: AccountState = bincode::deserialize(value.value())
+                .map_err(|e| StorageError::Serialize(e.to_string()))?;
+            accounts.push((key.value().to_vec(), state));
         }
         Ok(accounts)
     }
 
     pub fn get_all_accounts_compat(&self) -> Result<Vec<(Vec<u8>, AccountState)>, StorageError> {
-        let tree = self.db.open_tree(STATE_TREE)?;
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let tree = read.open_table(STATE_TABLE).map_err(StorageError::redb)?;
         let mut accounts = Vec::new();
-        for entry in tree.iter() {
-            let (key, value) = entry?;
-            let state = match bincode::deserialize::<AccountState>(&value) {
+        for entry in tree.iter().map_err(StorageError::redb)? {
+            let (key, value) = entry.map_err(StorageError::redb)?;
+            let state = match bincode::deserialize::<AccountState>(value.value()) {
                 Ok(state) => state,
                 Err(_) => {
-                    let legacy: LegacyAccountStateV1 = bincode::deserialize(&value)
+                    let legacy: LegacyAccountStateV1 = bincode::deserialize(value.value())
                         .map_err(|e| StorageError::Serialize(e.to_string()))?;
                     legacy.into()
                 }
             };
-            accounts.push((key.to_vec(), state));
+            accounts.push((key.value().to_vec(), state));
         }
         Ok(accounts)
     }
 
     pub fn replace_pending_transactions(&self, txs: &[Transaction]) -> Result<(), StorageError> {
-        let tree = self.db.open_tree(PENDING_TREE)?;
-        tree.clear()?;
+        let write = self.db.begin_write().map_err(StorageError::redb)?;
+        let mut tree = write
+            .open_table(PENDING_TABLE)
+            .map_err(StorageError::redb)?;
+        tree.retain(|_, _| false).map_err(StorageError::redb)?;
         for tx in txs {
             let key = tx.hash();
             let value =
                 bincode::serialize(tx).map_err(|e| StorageError::Serialize(e.to_string()))?;
-            tree.insert(key, value)?;
+            tree.insert(key.as_slice(), value.as_slice())
+                .map_err(StorageError::redb)?;
         }
+        drop(tree);
+        write.commit().map_err(StorageError::redb)?;
         Ok(())
     }
 
     #[allow(dead_code)]
     pub fn get_all_pending_transactions(&self) -> Result<Vec<Transaction>, StorageError> {
-        let tree = self.db.open_tree(PENDING_TREE)?;
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let tree = read.open_table(PENDING_TABLE).map_err(StorageError::redb)?;
         let mut txs = Vec::new();
-        for entry in tree.iter() {
-            let (_key, value) = entry?;
-            let tx: Transaction =
-                bincode::deserialize(&value).map_err(|e| StorageError::Serialize(e.to_string()))?;
+        for entry in tree.iter().map_err(StorageError::redb)? {
+            let (_key, value) = entry.map_err(StorageError::redb)?;
+            let tx: Transaction = bincode::deserialize(value.value())
+                .map_err(|e| StorageError::Serialize(e.to_string()))?;
             txs.push(tx);
         }
         txs.sort_by_key(|tx| (tx.timestamp, tx.nonce));
@@ -371,20 +445,27 @@ impl Storage {
     }
 
     pub fn replace_blocks(&self, blocks: &[Block]) -> Result<(), StorageError> {
-        let tree = self.db.open_tree(BLOCKS_TREE)?;
-        tree.clear()?;
-        let meta = self.db.open_tree(META_TREE)?;
+        let write = self.db.begin_write().map_err(StorageError::redb)?;
+        let mut tree = write.open_table(BLOCKS_TABLE).map_err(StorageError::redb)?;
+        tree.retain(|_, _| false).map_err(StorageError::redb)?;
         for block in blocks {
             let key = block.header.height.to_be_bytes();
             let value =
                 bincode::serialize(block).map_err(|e| StorageError::Serialize(e.to_string()))?;
-            tree.insert(key, value)?;
+            tree.insert(key.as_slice(), value.as_slice())
+                .map_err(StorageError::redb)?;
         }
+        drop(tree);
+        let mut meta = write.open_table(META_TABLE).map_err(StorageError::redb)?;
         if let Some(last) = blocks.last() {
-            meta.insert(HEIGHT_KEY, &last.header.height.to_be_bytes())?;
+            let key = last.header.height.to_be_bytes();
+            meta.insert(HEIGHT_KEY, key.as_slice())
+                .map_err(StorageError::redb)?;
         } else {
-            meta.remove(HEIGHT_KEY)?;
+            meta.remove(HEIGHT_KEY).map_err(StorageError::redb)?;
         }
+        drop(meta);
+        write.commit().map_err(StorageError::redb)?;
         Ok(())
     }
 
@@ -392,27 +473,36 @@ impl Storage {
         &self,
         contracts: &HashMap<Vec<u8>, ContractState>,
     ) -> Result<(), StorageError> {
-        let tree = self.db.open_tree(CONTRACT_TREE)?;
-        tree.clear()?;
+        let write = self.db.begin_write().map_err(StorageError::redb)?;
+        let mut tree = write
+            .open_table(CONTRACT_TABLE)
+            .map_err(StorageError::redb)?;
+        tree.retain(|_, _| false).map_err(StorageError::redb)?;
         let mut entries: Vec<(&Vec<u8>, &ContractState)> = contracts.iter().collect();
         entries.sort_by_key(|(a, _)| *a);
         for (address, contract) in entries {
             let value =
                 bincode::serialize(contract).map_err(|e| StorageError::Serialize(e.to_string()))?;
-            tree.insert(address, value)?;
+            tree.insert(address.as_slice(), value.as_slice())
+                .map_err(StorageError::redb)?;
         }
+        drop(tree);
+        write.commit().map_err(StorageError::redb)?;
         Ok(())
     }
 
     #[allow(dead_code)]
     pub fn get_all_contracts(&self) -> Result<Vec<(Vec<u8>, ContractState)>, StorageError> {
-        let tree = self.db.open_tree(CONTRACT_TREE)?;
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let tree = read
+            .open_table(CONTRACT_TABLE)
+            .map_err(StorageError::redb)?;
         let mut contracts = Vec::new();
-        for entry in tree.iter() {
-            let (key, value) = entry?;
-            let contract: ContractState =
-                bincode::deserialize(&value).map_err(|e| StorageError::Serialize(e.to_string()))?;
-            contracts.push((key.to_vec(), contract));
+        for entry in tree.iter().map_err(StorageError::redb)? {
+            let (key, value) = entry.map_err(StorageError::redb)?;
+            let contract: ContractState = bincode::deserialize(value.value())
+                .map_err(|e| StorageError::Serialize(e.to_string()))?;
+            contracts.push((key.value().to_vec(), contract));
         }
         Ok(contracts)
     }
@@ -421,27 +511,34 @@ impl Storage {
         &self,
         receipts: &HashMap<Vec<u8>, Receipt>,
     ) -> Result<(), StorageError> {
-        let tree = self.db.open_tree(RECEIPT_TREE)?;
-        tree.clear()?;
+        let write = self.db.begin_write().map_err(StorageError::redb)?;
+        let mut tree = write
+            .open_table(RECEIPT_TABLE)
+            .map_err(StorageError::redb)?;
+        tree.retain(|_, _| false).map_err(StorageError::redb)?;
         let mut entries: Vec<(&Vec<u8>, &Receipt)> = receipts.iter().collect();
         entries.sort_by_key(|(a, _)| *a);
         for (tx_hash, receipt) in entries {
             let value =
                 bincode::serialize(receipt).map_err(|e| StorageError::Serialize(e.to_string()))?;
-            tree.insert(tx_hash, value)?;
+            tree.insert(tx_hash.as_slice(), value.as_slice())
+                .map_err(StorageError::redb)?;
         }
+        drop(tree);
+        write.commit().map_err(StorageError::redb)?;
         Ok(())
     }
 
     #[allow(dead_code)]
     pub fn get_all_receipts(&self) -> Result<Vec<(Vec<u8>, Receipt)>, StorageError> {
-        let tree = self.db.open_tree(RECEIPT_TREE)?;
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let tree = read.open_table(RECEIPT_TABLE).map_err(StorageError::redb)?;
         let mut receipts = Vec::new();
-        for entry in tree.iter() {
-            let (key, value) = entry?;
-            let receipt: Receipt =
-                bincode::deserialize(&value).map_err(|e| StorageError::Serialize(e.to_string()))?;
-            receipts.push((key.to_vec(), receipt));
+        for entry in tree.iter().map_err(StorageError::redb)? {
+            let (key, value) = entry.map_err(StorageError::redb)?;
+            let receipt: Receipt = bincode::deserialize(value.value())
+                .map_err(|e| StorageError::Serialize(e.to_string()))?;
+            receipts.push((key.value().to_vec(), receipt));
         }
         Ok(receipts)
     }
@@ -450,14 +547,15 @@ impl Storage {
         &self,
         chain_id: &str,
     ) -> Result<Vec<Transaction>, StorageError> {
-        let tree = self.db.open_tree(PENDING_TREE)?;
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let tree = read.open_table(PENDING_TABLE).map_err(StorageError::redb)?;
         let mut txs = Vec::new();
-        for entry in tree.iter() {
-            let (_key, value) = entry?;
-            let tx = match bincode::deserialize::<Transaction>(&value) {
+        for entry in tree.iter().map_err(StorageError::redb)? {
+            let (_key, value) = entry.map_err(StorageError::redb)?;
+            let tx = match bincode::deserialize::<Transaction>(value.value()) {
                 Ok(tx) => tx,
                 Err(_) => {
-                    let legacy: LegacyTransactionV1 = bincode::deserialize(&value)
+                    let legacy: LegacyTransactionV1 = bincode::deserialize(value.value())
                         .map_err(|e| StorageError::Serialize(e.to_string()))?;
                     legacy.into_current(chain_id)
                 }
@@ -469,22 +567,32 @@ impl Storage {
     }
 
     pub fn put_evidence(&self, evidence: &EquivocationEvidence) -> Result<(), StorageError> {
-        let tree = self.db.open_tree(EVIDENCE_TREE)?;
+        let write = self.db.begin_write().map_err(StorageError::redb)?;
         let key = evidence.key();
         let value =
             bincode::serialize(evidence).map_err(|e| StorageError::Serialize(e.to_string()))?;
-        tree.insert(key, value)?;
+        {
+            let mut tree = write
+                .open_table(EVIDENCE_TABLE)
+                .map_err(StorageError::redb)?;
+            tree.insert(key.as_slice(), value.as_slice())
+                .map_err(StorageError::redb)?;
+        }
+        write.commit().map_err(StorageError::redb)?;
         Ok(())
     }
 
     #[allow(dead_code)]
     pub fn get_all_evidence(&self) -> Result<Vec<EquivocationEvidence>, StorageError> {
-        let tree = self.db.open_tree(EVIDENCE_TREE)?;
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let tree = read
+            .open_table(EVIDENCE_TABLE)
+            .map_err(StorageError::redb)?;
         let mut evidence_list = Vec::new();
-        for entry in tree.iter() {
-            let (_key, value) = entry?;
-            let evidence: EquivocationEvidence =
-                bincode::deserialize(&value).map_err(|e| StorageError::Serialize(e.to_string()))?;
+        for entry in tree.iter().map_err(StorageError::redb)? {
+            let (_key, value) = entry.map_err(StorageError::redb)?;
+            let evidence: EquivocationEvidence = bincode::deserialize(value.value())
+                .map_err(|e| StorageError::Serialize(e.to_string()))?;
             evidence_list.push(evidence);
         }
         Ok(evidence_list)
@@ -494,19 +602,22 @@ impl Storage {
     pub fn get_slashed_addresses(
         &self,
     ) -> Result<std::collections::HashSet<Vec<u8>>, StorageError> {
-        let tree = self.db.open_tree(EVIDENCE_TREE)?;
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let tree = read
+            .open_table(EVIDENCE_TABLE)
+            .map_err(StorageError::redb)?;
         let mut addresses = std::collections::HashSet::new();
-        for entry in tree.iter() {
-            let (_key, value) = entry?;
-            if let Ok(evidence) = bincode::deserialize::<EquivocationEvidence>(&value) {
+        for entry in tree.iter().map_err(StorageError::redb)? {
+            let (_key, value) = entry.map_err(StorageError::redb)?;
+            if let Ok(evidence) = bincode::deserialize::<EquivocationEvidence>(value.value()) {
                 addresses.insert(crate::crypto::hash::address_bytes_from_public_key(
                     &evidence.validator_public_key,
                 ));
                 continue;
             }
 
-            let legacy: LegacyEquivocationEvidenceV1 =
-                bincode::deserialize(&value).map_err(|e| StorageError::Serialize(e.to_string()))?;
+            let legacy: LegacyEquivocationEvidenceV1 = bincode::deserialize(value.value())
+                .map_err(|e| StorageError::Serialize(e.to_string()))?;
             let _ = (
                 legacy.height,
                 legacy.block_hash_a,
@@ -529,12 +640,13 @@ impl Storage {
         &self,
         key: &[u8],
     ) -> Result<Option<GenesisConfig>, StorageError> {
-        let meta = self.db.open_tree(META_TREE)?;
-        match meta.get(key)? {
-            Some(data) => match bincode::deserialize::<GenesisConfig>(&data) {
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let meta = read.open_table(META_TABLE).map_err(StorageError::redb)?;
+        match meta.get(key).map_err(StorageError::redb)? {
+            Some(data) => match bincode::deserialize::<GenesisConfig>(data.value()) {
                 Ok(value) => Ok(Some(value)),
                 Err(_) => {
-                    let legacy: LegacyGenesisConfigV1 = bincode::deserialize(&data)
+                    let legacy: LegacyGenesisConfigV1 = bincode::deserialize(data.value())
                         .map_err(|e| StorageError::Serialize(e.to_string()))?;
                     Ok(Some(legacy.into()))
                 }
@@ -544,17 +656,23 @@ impl Storage {
     }
 
     pub fn put_meta<T: Serialize>(&self, key: &[u8], value: &T) -> Result<(), StorageError> {
-        let meta = self.db.open_tree(META_TREE)?;
+        let write = self.db.begin_write().map_err(StorageError::redb)?;
         let data = bincode::serialize(value).map_err(|e| StorageError::Serialize(e.to_string()))?;
-        meta.insert(key, data)?;
+        {
+            let mut meta = write.open_table(META_TABLE).map_err(StorageError::redb)?;
+            meta.insert(key, data.as_slice())
+                .map_err(StorageError::redb)?;
+        }
+        write.commit().map_err(StorageError::redb)?;
         Ok(())
     }
 
     pub fn get_meta<T: DeserializeOwned>(&self, key: &[u8]) -> Result<Option<T>, StorageError> {
-        let meta = self.db.open_tree(META_TREE)?;
-        match meta.get(key)? {
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let meta = read.open_table(META_TABLE).map_err(StorageError::redb)?;
+        match meta.get(key).map_err(StorageError::redb)? {
             Some(data) => {
-                let value: T = bincode::deserialize(&data)
+                let value: T = bincode::deserialize(data.value())
                     .map_err(|e| StorageError::Serialize(e.to_string()))?;
                 Ok(Some(value))
             }
@@ -570,11 +688,16 @@ impl Storage {
         epoch: u64,
         snapshot: &EpochSnapshot,
     ) -> Result<(), StorageError> {
-        let tree = self.db.open_tree(EPOCH_TREE)?;
+        let write = self.db.begin_write().map_err(StorageError::redb)?;
         let key = epoch.to_be_bytes();
         let value =
             bincode::serialize(snapshot).map_err(|e| StorageError::Serialize(e.to_string()))?;
-        tree.insert(key, value)?;
+        {
+            let mut tree = write.open_table(EPOCH_TABLE).map_err(StorageError::redb)?;
+            tree.insert(key.as_slice(), value.as_slice())
+                .map_err(StorageError::redb)?;
+        }
+        write.commit().map_err(StorageError::redb)?;
         Ok(())
     }
 
@@ -582,26 +705,31 @@ impl Storage {
         &self,
         snapshots: &HashMap<u64, EpochSnapshot>,
     ) -> Result<(), StorageError> {
-        let tree = self.db.open_tree(EPOCH_TREE)?;
-        tree.clear()?;
+        let write = self.db.begin_write().map_err(StorageError::redb)?;
+        let mut tree = write.open_table(EPOCH_TABLE).map_err(StorageError::redb)?;
+        tree.retain(|_, _| false).map_err(StorageError::redb)?;
         let mut entries: Vec<(&u64, &EpochSnapshot)> = snapshots.iter().collect();
         entries.sort_by_key(|(epoch, _)| **epoch);
         for (epoch, snapshot) in entries {
             let key = epoch.to_be_bytes();
             let value =
                 bincode::serialize(snapshot).map_err(|e| StorageError::Serialize(e.to_string()))?;
-            tree.insert(key, value)?;
+            tree.insert(key.as_slice(), value.as_slice())
+                .map_err(StorageError::redb)?;
         }
+        drop(tree);
+        write.commit().map_err(StorageError::redb)?;
         Ok(())
     }
 
     #[allow(dead_code)]
     pub fn get_epoch_snapshot(&self, epoch: u64) -> Result<Option<EpochSnapshot>, StorageError> {
-        let tree = self.db.open_tree(EPOCH_TREE)?;
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let tree = read.open_table(EPOCH_TABLE).map_err(StorageError::redb)?;
         let key = epoch.to_be_bytes();
-        match tree.get(key)? {
+        match tree.get(key.as_slice()).map_err(StorageError::redb)? {
             Some(data) => {
-                let snapshot: EpochSnapshot = bincode::deserialize(&data)
+                let snapshot: EpochSnapshot = bincode::deserialize(data.value())
                     .map_err(|e| StorageError::Serialize(e.to_string()))?;
                 Ok(Some(snapshot))
             }
@@ -611,17 +739,18 @@ impl Storage {
 
     #[allow(dead_code)]
     pub fn get_all_epoch_snapshots(&self) -> Result<Vec<(u64, EpochSnapshot)>, StorageError> {
-        let tree = self.db.open_tree(EPOCH_TREE)?;
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let tree = read.open_table(EPOCH_TABLE).map_err(StorageError::redb)?;
         let mut snapshots = Vec::new();
-        for entry in tree.iter() {
-            let (key, value) = entry?;
+        for entry in tree.iter().map_err(StorageError::redb)? {
+            let (key, value) = entry.map_err(StorageError::redb)?;
             let epoch_bytes: [u8; 8] = key
-                .as_ref()
+                .value()
                 .try_into()
                 .map_err(|_| StorageError::Serialize("invalid epoch key".to_string()))?;
             let epoch = u64::from_be_bytes(epoch_bytes);
-            let snapshot: EpochSnapshot =
-                bincode::deserialize(&value).map_err(|e| StorageError::Serialize(e.to_string()))?;
+            let snapshot: EpochSnapshot = bincode::deserialize(value.value())
+                .map_err(|e| StorageError::Serialize(e.to_string()))?;
             snapshots.push((epoch, snapshot));
         }
         Ok(snapshots)
@@ -634,20 +763,30 @@ impl Storage {
         height: u64,
         manifest: &SnapshotManifest,
     ) -> Result<(), StorageError> {
-        let tree = self.db.open_tree(SNAPSHOT_MANIFEST_TREE)?;
+        let write = self.db.begin_write().map_err(StorageError::redb)?;
         let key = height.to_be_bytes();
         let value =
             bincode::serialize(manifest).map_err(|e| StorageError::Serialize(e.to_string()))?;
-        tree.insert(key, value)?;
+        {
+            let mut tree = write
+                .open_table(SNAPSHOT_MANIFEST_TABLE)
+                .map_err(StorageError::redb)?;
+            tree.insert(key.as_slice(), value.as_slice())
+                .map_err(StorageError::redb)?;
+        }
+        write.commit().map_err(StorageError::redb)?;
         Ok(())
     }
 
     #[allow(dead_code)]
     pub fn get_latest_snapshot_manifest(&self) -> Result<Option<SnapshotManifest>, StorageError> {
-        let tree = self.db.open_tree(SNAPSHOT_MANIFEST_TREE)?;
-        match tree.last()? {
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let tree = read
+            .open_table(SNAPSHOT_MANIFEST_TABLE)
+            .map_err(StorageError::redb)?;
+        match tree.last().map_err(StorageError::redb)? {
             Some((_key, value)) => {
-                let manifest: SnapshotManifest = bincode::deserialize(&value)
+                let manifest: SnapshotManifest = bincode::deserialize(value.value())
                     .map_err(|e| StorageError::Serialize(e.to_string()))?;
                 Ok(Some(manifest))
             }
@@ -670,23 +809,36 @@ impl Storage {
                 chunk.index, count
             )));
         }
-        let tree = self.db.open_tree(SNAPSHOT_CHUNK_TREE)?;
+        let write = self.db.begin_write().map_err(StorageError::redb)?;
         let mut key = height.to_be_bytes().to_vec();
         key.extend_from_slice(&(chunk.index as u64).to_be_bytes());
         let value =
             bincode::serialize(chunk).map_err(|e| StorageError::Serialize(e.to_string()))?;
-        tree.insert(key, value)?;
+        {
+            let mut tree = write
+                .open_table(SNAPSHOT_CHUNK_TABLE)
+                .map_err(StorageError::redb)?;
+            tree.insert(key.as_slice(), value.as_slice())
+                .map_err(StorageError::redb)?;
+        }
+        write.commit().map_err(StorageError::redb)?;
         Ok(())
     }
 
     pub fn get_snapshot_chunks(&self, height: u64) -> Result<Vec<StateChunk>, StorageError> {
-        let tree = self.db.open_tree(SNAPSHOT_CHUNK_TREE)?;
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let tree = read
+            .open_table(SNAPSHOT_CHUNK_TABLE)
+            .map_err(StorageError::redb)?;
         let prefix = height.to_be_bytes();
         let mut chunks = Vec::new();
-        for entry in tree.scan_prefix(prefix) {
-            let (_key, value) = entry?;
-            let chunk: StateChunk =
-                bincode::deserialize(&value).map_err(|e| StorageError::Serialize(e.to_string()))?;
+        for entry in tree.iter().map_err(StorageError::redb)? {
+            let (key, value) = entry.map_err(StorageError::redb)?;
+            if !key.value().starts_with(&prefix) {
+                continue;
+            }
+            let chunk: StateChunk = bincode::deserialize(value.value())
+                .map_err(|e| StorageError::Serialize(e.to_string()))?;
             chunks.push(chunk);
         }
         chunks.sort_by_key(|chunk| chunk.index);
@@ -699,12 +851,15 @@ impl Storage {
         height: u64,
         index: usize,
     ) -> Result<Option<StateChunk>, StorageError> {
-        let tree = self.db.open_tree(SNAPSHOT_CHUNK_TREE)?;
+        let read = self.db.begin_read().map_err(StorageError::redb)?;
+        let tree = read
+            .open_table(SNAPSHOT_CHUNK_TABLE)
+            .map_err(StorageError::redb)?;
         let mut key = height.to_be_bytes().to_vec();
         key.extend_from_slice(&(index as u64).to_be_bytes());
-        match tree.get(key)? {
+        match tree.get(key.as_slice()).map_err(StorageError::redb)? {
             Some(data) => {
-                let chunk: StateChunk = bincode::deserialize(&data)
+                let chunk: StateChunk = bincode::deserialize(data.value())
                     .map_err(|e| StorageError::Serialize(e.to_string()))?;
                 Ok(Some(chunk))
             }
@@ -713,17 +868,24 @@ impl Storage {
     }
 
     pub fn flush(&self) -> Result<(), StorageError> {
-        self.db.flush()?;
         Ok(())
     }
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
-    #[error("sled error: {0}")]
-    Sled(#[from] sled::Error),
+    #[error("redb error: {0}")]
+    Redb(String),
+    #[error("io error: {0}")]
+    Io(String),
     #[error("serialization error: {0}")]
     Serialize(String),
+}
+
+impl StorageError {
+    fn redb(error: impl std::fmt::Display) -> Self {
+        StorageError::Redb(error.to_string())
+    }
 }
 
 #[cfg(test)]

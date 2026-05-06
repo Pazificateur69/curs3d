@@ -1,0 +1,47 @@
+[Unit]
+Description=CURS3D Node 3 — Quantum-Resistant Blockchain (IONOS Berlin x86_64)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=curs3d
+Group=curs3d
+WorkingDirectory=/opt/curs3d
+
+ExecStart=/usr/local/bin/curs3d node     --port 4337     --data-dir /var/lib/curs3d     --validator-wallet /etc/curs3d/validator.json     --validator-password-file /etc/curs3d/validator.password     --rpc-addr 127.0.0.1:9545     --http-addr 127.0.0.1:8080     --genesis-config /etc/curs3d/genesis.public-testnet.json     --bootnode /ip4/144.24.192.222/tcp/4337/p2p/12D3KooWLttF4EJ1SjiLEiXvJ1yqmJawLafv47r55T5xzSt1GHn2      --bootnode /ip4/84.235.238.213/tcp/4337/p2p/12D3KooWCL7dNFN2xz8yM65HDnNJUWF28K5qAd6d5ACT5ZCL1pb8     --public-addr /ip4/31.70.70.62/tcp/4337
+
+Restart=always
+RestartSec=3
+
+LimitNOFILE=65536
+LimitNPROC=4096
+MemoryMax=1500M
+TasksMax=4096
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=curs3d
+
+# Hardening
+ProtectSystem=full
+ProtectHome=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+ReadOnlyPaths=/etc/curs3d
+ReadWritePaths=/var/lib/curs3d
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+PrivateDevices=yes
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

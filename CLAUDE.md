@@ -1,14 +1,17 @@
 # CLAUDE.md — Project Context for CURS3D
 
-State as of: **2026-05-05** (software **v0.3.5** + consensus protocol **v5** + 3-validator testnet, node3 IONOS Berlin x86_64 added 2026-05-05, wasmer 5 -> 7 bump for x86_64 linker fix on the same day, Solidity portfolio deployed at chain-id 1800329576, **BACKUP_LEADER_TIMEOUT 12s → 30s fix shipped late 2026-05-05 after parallel-fork incident at h=270**, **72h soak monitor running locally** since 2026-05-05 23:02 UTC writing to `~/curs3d-soak/`). **`v1.0` is reserved for the official mainnet launch — do not bump the software version just because the consensus protocol bumps.**
+State as of: **2026-05-06** (software **v0.3.5** + consensus protocol **v5** + 3-validator testnet, node3 IONOS Berlin x86_64 added 2026-05-05, wasmer 5 -> 7 bump for x86_64 linker fix on the same day, Solidity portfolio deployed at chain-id 1800329576, **BACKUP_LEADER_TIMEOUT 12s → 30s fix shipped late 2026-05-05 after parallel-fork incident at h=270**, **storage migrated from sled to redb after the overnight soak reproduced sled deadlock**, **72h soak monitor running locally** since 2026-05-05 23:02 UTC writing to `~/curs3d-soak/`). **`v1.0` is reserved for the official mainnet launch — do not bump the software version just because the consensus protocol bumps.**
 
-## Production incident — RESOLVED 2026-05-05 23:50 UTC
+## Production incident — storage fix upgraded 2026-05-06
 
-The 2026-05-05 fork incident root-cause was identified by gdb stack trace
-on the live deadlocked node1 and fixed in commit `0476981`. Both layers
-that contributed to the cascade are now closed.
+The 2026-05-05 fork incident root cause was identified by gdb stack trace
+on the live deadlocked node1. The first mitigation reduced sled write
+pressure, but the overnight soak reproduced the same sled 0.34 deadlock at
+later heights. The current tree applies the long-term fix: redb replaces
+sled as the canonical embedded database, and live node persistence remains
+asynchronous so disk IO cannot block consensus/RPC/gossipsub.
 
-### Layer 1 — sled 0.34 internal deadlock under per-block full-state writes
+### Layer 1 — sled 0.34 internal deadlock under sustained writes
 gdb showed node1's main thread blocked in
 `add_block → persist_full_state → storage.replace_contracts → sled tree
 insert → sled segment-accountant OneShot wait`, while every sled-io-N
@@ -17,13 +20,11 @@ worker was parked on `parking_lot::raw_mutex::RawMutex::lock_slow` inside
 deadlock — the chain mutex was held the whole time, starving the API
 and gossipsub tasks.
 
-Fix: `add_block` now does only an incremental `storage.put_block(&block)`
-on every block; the heavy `persist_full_state` (which calls `replace_*`
-on every sled tree, ~6 full-tree rewrites) runs only at epoch
-boundaries (every 32 blocks ≈ 5 min by default). On restart,
-`rebuild_canonical_state` replays from the last full persist, so worst
-case is one epoch of replay at boot. Reduces sled write pressure ~32×
-and breaks the deadlock condition.
+Fix: storage moved to redb (`curs3d.redb` in the node data dir). In live
+node mode, `add_block`, finality, mempool admission, snapshot application,
+and slashing enqueue bounded persistence jobs instead of touching disk
+while holding `Mutex<Blockchain>`. This removes the sled failure mode and
+keeps the consensus critical path independent from storage latency.
 
 ### Layer 2 — mesh topology depended on node1 as gossipsub relay
 node2 and node3 each only listed node1 as `--bootnode`, so when node1's
@@ -232,7 +233,7 @@ src/
   light/mod.rs         Light client: header-only sync, Merkle proof verification
   network/mod.rs       libp2p 0.54 P2P, Gossipsub, mDNS, sync, block production, state sync, per-peer rate limiting, peer scoring/reputation
   rpc/mod.rs           TCP JSON RPC (port 9545, used by CLI)
-  storage/mod.rs       sled database (10 trees). Schema v4.
+  storage/mod.rs       redb database (10 tables). Schema v4.
   token/mod.rs         CUR-20 token standard: deploy, transfer, approve, transferFrom, registry
   trie/mod.rs          Sparse Merkle Trie: 256-bit key space, O(log n) proofs, incremental updates
   vm/
@@ -450,7 +451,7 @@ Run a specific test: `RUSTUP_TOOLCHAIN=nightly cargo test test_name --lib`
 - `ml-dsa = "=0.1.0-rc.9"` — Post-quantum signatures, FIPS-204 ML-DSA-87 (NIST level 5, pure Rust). Pinned to the same version as `sdk/wasm` so browser-signed transactions verify on the node byte-for-byte.
 - `signature = "3.0.0"` — RustCrypto signature traits used with `ml-dsa`.
 - `sha3` — Keccak hashing
-- `sled` — Embedded key-value database
+- `redb` — Embedded key-value database
 - `libp2p` 0.54 — P2P networking (Gossipsub + mDNS + noise + yamux)
 - `hyper` 1.x — HTTP server
 - `wasmer` 7 + `wasmer-types` 7 — Native CURS3D WASM VM with Cranelift (bumped from 5 on 2026-05-05 to fix `__rust_probestack` linker error on x86_64; ARM was unaffected)
@@ -562,9 +563,9 @@ sudo systemctl stop curs3d.service
 # 2. Build the v5 binary.
 RUSTUP_TOOLCHAIN=nightly cargo build --release
 
-# 3. Wipe the v4 chain DB. (p2p_identity.pb may be preserved.)
-sudo rm -rf /var/lib/curs3d/blocks /var/lib/curs3d/state \
-            /var/lib/curs3d/accounts /var/lib/curs3d/*.sled
+# 3. Wipe the pre-redb chain DB. (p2p_identity.pb may be preserved.)
+sudo find /var/lib/curs3d -mindepth 1 -maxdepth 1 \
+  -not -name 'p2p_identity*' -exec rm -rf {} +
 
 # 4. Regenerate the validator wallet under v5 ML-DSA-87.
 curs3d wallet --output /etc/curs3d/validator.json \

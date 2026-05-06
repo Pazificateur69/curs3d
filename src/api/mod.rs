@@ -839,7 +839,10 @@ async fn handle_request(
                 .map(|start| start.elapsed().as_secs())
                 .unwrap_or_default();
             let latest_ts = chain.latest_block().header.timestamp;
-            let block_age = chrono::Utc::now().timestamp().saturating_sub(latest_ts).max(0) as u64;
+            let block_age = chrono::Utc::now()
+                .timestamp()
+                .saturating_sub(latest_ts)
+                .max(0) as u64;
             let proto_version = chain.protocol_version_at_height(chain.height());
             let head = chain.height();
             let final_height = chain.finalized_height();

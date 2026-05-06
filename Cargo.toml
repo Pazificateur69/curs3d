@@ -22,8 +22,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 bincode = "1"
 
-# Persistence
-sled = "0.34"
+# Persistence (redb replaces sled after soak deadlocks in sled 0.34)
+redb = "4.1"
 
 # Wallet encryption
 aes-gcm = "0.10"

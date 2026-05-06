@@ -1,0 +1,65 @@
+[Unit]
+Description=CURS3D Node 1 — Quantum-Resistant Blockchain
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+EnvironmentFile=/etc/curs3d/secrets.env
+Type=simple
+User=curs3d
+Group=curs3d
+WorkingDirectory=/opt/curs3d
+
+Environment=CURS3D_API_ALLOW_ORIGIN=https://explorer.curs3d.fr
+Environment=CURS3D_FAUCET_WALLET=/etc/curs3d/faucet.json
+Environment=CURS3D_FAUCET_PASSWORD_FILE=/etc/curs3d/faucet.password
+Environment=CURS3D_FAUCET_FEE=1000
+Environment=CURS3D_FAUCET_COOLDOWN_FILE=/var/lib/curs3d/faucet_cooldowns.json
+
+ExecStart=/usr/local/bin/curs3d node \
+    --port 4337 \
+    --data-dir /var/lib/curs3d \
+    --validator-wallet /etc/curs3d/validator.json \
+    --validator-password-file /etc/curs3d/validator.password \
+    --rpc-addr 127.0.0.1:9545 \
+    --genesis-config /etc/curs3d/genesis.public-testnet.json \
+    --bootnode /ip4/84.235.238.213/tcp/4337/p2p/12D3KooWCL7dNFN2xz8yM65HDnNJUWF28K5qAd6d5ACT5ZCL1pb8 \
+    --bootnode /ip4/31.70.70.62/tcp/4337/p2p/12D3KooWPxvzCmTjDK4pn4E4gPnWdoVTr1wS8z3pdo7yM1oMZrGY \
+    --public-addr /dns4/api.curs3d.fr/tcp/4337
+
+Restart=always
+RestartSec=3
+
+LimitNOFILE=65536
+LimitNPROC=4096
+MemoryMax=5G
+TasksMax=4096
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=curs3d
+
+ProtectSystem=full
+ProtectHome=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+ReadOnlyPaths=/etc/curs3d
+ReadWritePaths=/var/lib/curs3d
+
+
+# Additional hardening (added by audit)
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+PrivateDevices=yes
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

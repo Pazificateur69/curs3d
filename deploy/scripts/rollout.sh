@@ -86,7 +86,7 @@ for entry in "${NODES[@]}"; do
     HOST="${entry%%:*}"
     if [ "$WIPE" -eq 1 ]; then
         SCRIPT="sudo install -m 755 /tmp/curs3d.new /usr/local/bin/curs3d \
-            && sudo rm -rf /var/lib/curs3d/blocks /var/lib/curs3d/state /var/lib/curs3d/accounts /var/lib/curs3d/*.sled \
+            && sudo find /var/lib/curs3d -mindepth 1 -maxdepth 1 -not -name 'p2p_identity*' -exec rm -rf {} + \
             && sudo chown -R curs3d:curs3d /var/lib/curs3d"
     else
         SCRIPT="sudo install -m 755 /tmp/curs3d.new /usr/local/bin/curs3d"

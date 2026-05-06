@@ -1,4 +1,8 @@
 use std::collections::{HashMap, HashSet};
+use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::sync::mpsc::{SyncSender, TrySendError, sync_channel};
+use std::sync::{Arc, Mutex as StdMutex};
+use std::thread::{self, JoinHandle};
 
 use serde::{Deserialize, Serialize};
 
@@ -43,6 +47,12 @@ const MIN_REPLACEMENT_PRIORITY_BUMP_PCT: u64 = 25;
 /// clearer error and bounds long-term storage growth.
 pub const MAX_CONTRACT_CODE_BYTES: usize = 256 * 1024;
 const CHAIN_CONFIG_KEY: &[u8] = b"chain_config";
+/// Bound on the small-job channel (FinalizedHeight / PendingTransactions /
+/// EquivocationEvidence / Shutdown). FullState is *not* routed through this
+/// channel — it goes through a single-slot latest-wins mutex so we can never
+/// silently drop a snapshot/reorg/epoch persist. 8 is plenty: the producer
+/// rate for these small jobs is at most a few per second under heavy traffic.
+const PERSISTENCE_QUEUE_CAPACITY: usize = 8;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GenesisAllocation {
@@ -295,6 +305,277 @@ pub struct Blockchain {
     /// hashes EVM tooling actually has.
     pub evm_tx_hash_index: HashMap<Vec<u8>, (u64, usize)>,
     storage: Option<Storage>,
+    persistence: PersistenceMode,
+}
+
+enum PersistenceMode {
+    Sync,
+    Async(PersistenceHandle),
+}
+
+/// Async persistence with two paths:
+///   - `full_state_slot`: single-buffered, latest-wins. The producer always
+///     overwrites the previous (queued-but-unprocessed) snapshot, so a
+///     newer FullState supersedes an older one without ever being silently
+///     dropped. Triggers `signal_sender` to wake the worker.
+///   - `signal_sender` + small-job receiver: bounded channel for
+///     FinalizedHeight / PendingTransactions / EquivocationEvidence and
+///     the FullStateSignal/Shutdown sentinels.
+///
+/// Worker drains the FullState slot first (priority), then the small-job
+/// channel. This keeps the chain mutex critical path non-blocking while
+/// guaranteeing snapshots / reorg results / epoch persists never vanish.
+///
+/// The worker job loop is wrapped in `catch_unwind` so a redb panic on one
+/// job logs and the worker keeps running for the next. On `Drop`, the
+/// handle sends `Shutdown` and joins the thread (with a timeout) so
+/// in-flight writes finish before the process exits.
+struct PersistenceHandle {
+    full_state_slot: Arc<StdMutex<Option<Box<PersistedChainState>>>>,
+    signal_sender: SyncSender<PersistJob>,
+    join_handle: StdMutex<Option<JoinHandle<()>>>,
+}
+
+struct PersistedChainState {
+    genesis_config: GenesisConfig,
+    finalized_height: u64,
+    blocks: Vec<Block>,
+    accounts: HashMap<Vec<u8>, AccountState>,
+    contracts: HashMap<Vec<u8>, ContractState>,
+    receipts: HashMap<Vec<u8>, Receipt>,
+    epoch_snapshots: HashMap<u64, EpochSnapshot>,
+    pending_transactions: Vec<Transaction>,
+    token_registry: TokenRegistry,
+    governance: GovernanceState,
+}
+
+enum PersistJob {
+    /// Sentinel routed via the signal channel; the actual `PersistedChainState`
+    /// lives in the `full_state_slot` mutex (latest-wins). Worker takes the
+    /// slot's content when it dequeues this signal.
+    FullStateSignal,
+    PendingTransactions(Vec<Transaction>),
+    FinalizedHeight(u64),
+    EquivocationEvidence {
+        evidence: Box<EquivocationEvidence>,
+        address: Vec<u8>,
+        account: Option<AccountState>,
+    },
+    /// Graceful shutdown: drain the FullState slot, then exit the worker loop.
+    Shutdown,
+}
+
+impl PersistenceHandle {
+    fn spawn(storage: Storage) -> Self {
+        let (sender, receiver) = sync_channel::<PersistJob>(PERSISTENCE_QUEUE_CAPACITY);
+        let full_state_slot: Arc<StdMutex<Option<Box<PersistedChainState>>>> =
+            Arc::new(StdMutex::new(None));
+        let worker_slot = Arc::clone(&full_state_slot);
+        let join = thread::Builder::new()
+            .name("curs3d-persistence".to_string())
+            .spawn(move || {
+                Self::run_worker(storage, receiver, worker_slot);
+            })
+            .expect("failed to spawn curs3d persistence worker");
+
+        Self {
+            full_state_slot,
+            signal_sender: sender,
+            join_handle: StdMutex::new(Some(join)),
+        }
+    }
+
+    fn run_worker(
+        storage: Storage,
+        receiver: std::sync::mpsc::Receiver<PersistJob>,
+        full_state_slot: Arc<StdMutex<Option<Box<PersistedChainState>>>>,
+    ) {
+        while let Ok(job) = receiver.recv() {
+            // Always drain the FullState slot first when we wake up so that a
+            // newer-arriving FullState from any path (epoch boundary, snapshot
+            // apply, reorg) wins over staler signals still queued. This is
+            // what makes the design loss-free for FullState: the slot holds
+            // the latest value, and signals just nudge the worker.
+            loop {
+                let pending = full_state_slot.lock().unwrap_or_else(|p| p.into_inner()).take();
+                let Some(state) = pending else { break };
+                Self::execute(
+                    || Blockchain::write_full_state_to_storage(&storage, &state),
+                    "full_state",
+                );
+            }
+
+            match job {
+                PersistJob::FullStateSignal => {
+                    // Slot was already drained above; nothing more to do.
+                }
+                PersistJob::PendingTransactions(txs) => {
+                    Self::execute(
+                        || -> Result<(), StorageError> {
+                            storage.replace_pending_transactions(&txs)?;
+                            storage.flush()?;
+                            Ok(())
+                        },
+                        "pending_transactions",
+                    );
+                }
+                PersistJob::FinalizedHeight(height) => {
+                    Self::execute(
+                        || -> Result<(), StorageError> {
+                            storage.put_meta(b"finalized_height", &height)?;
+                            storage.flush()?;
+                            Ok(())
+                        },
+                        "finalized_height",
+                    );
+                }
+                PersistJob::EquivocationEvidence {
+                    evidence,
+                    address,
+                    account,
+                } => {
+                    Self::execute(
+                        || -> Result<(), StorageError> {
+                            storage.put_evidence(&evidence)?;
+                            if let Some(account) = account {
+                                storage.put_account(&address, &account)?;
+                            }
+                            storage.flush()?;
+                            Ok(())
+                        },
+                        "equivocation_evidence",
+                    );
+                }
+                PersistJob::Shutdown => {
+                    // Drain one more time in case a final FullState arrived
+                    // between the loop above and this branch.
+                    if let Some(state) = full_state_slot
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .take()
+                    {
+                        Self::execute(
+                            || Blockchain::write_full_state_to_storage(&storage, &state),
+                            "full_state_shutdown",
+                        );
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Run a persistence job under `catch_unwind` so a redb panic on one
+    /// payload doesn't tear down the worker. Logs success / failure / panic
+    /// distinctly so the operator can tell them apart in journald.
+    fn execute<F, E>(job: F, label: &'static str)
+    where
+        F: FnOnce() -> Result<(), E>,
+        E: std::fmt::Display,
+    {
+        let started = std::time::Instant::now();
+        let result = catch_unwind(AssertUnwindSafe(job));
+        match result {
+            Ok(Ok(())) => tracing::debug!(
+                target: "storage",
+                event = "async_persist_ok",
+                job = label,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+            ),
+            Ok(Err(err)) => tracing::error!(
+                target: "storage",
+                event = "async_persist_failed",
+                job = label,
+                error = %err,
+            ),
+            Err(panic) => {
+                let msg = if let Some(s) = panic.downcast_ref::<&str>() {
+                    (*s).to_string()
+                } else if let Some(s) = panic.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "<non-string panic payload>".to_string()
+                };
+                tracing::error!(
+                    target: "storage",
+                    event = "async_persist_panicked",
+                    job = label,
+                    panic = %msg,
+                );
+            }
+        }
+    }
+
+    /// Producer-side enqueue for `FullState`: replaces the slot's contents
+    /// (latest-wins) and signals the worker. Never blocks the chain mutex
+    /// critical path; never silently drops state.
+    fn enqueue_full_state(&self, state: Box<PersistedChainState>) {
+        // 1. Replace any older queued FullState. Any prior unprocessed
+        //    snapshot is now stale because this one supersedes it.
+        if let Ok(mut slot) = self.full_state_slot.lock() {
+            *slot = Some(state);
+        }
+        // 2. Wake the worker. If the small-job channel is full we don't
+        //    care — the slot is set, and the worker will see it on its
+        //    next dequeue (small jobs run on a tight cadence).
+        let _ = self.signal_sender.try_send(PersistJob::FullStateSignal);
+    }
+
+    /// Producer-side enqueue for the small idempotent jobs. Logs and drops
+    /// on full queue (each of these jobs is recreated on the next event).
+    fn try_enqueue(&self, job: PersistJob, label: &'static str) {
+        match self.signal_sender.try_send(job) {
+            Ok(()) => {}
+            Err(TrySendError::Full(_)) => tracing::warn!(
+                target: "storage",
+                event = "async_persist_skipped",
+                job = label,
+                reason = "queue_full",
+            ),
+            Err(TrySendError::Disconnected(_)) => tracing::error!(
+                target: "storage",
+                event = "async_persist_skipped",
+                job = label,
+                reason = "worker_disconnected",
+            ),
+        }
+    }
+}
+
+impl Drop for PersistenceHandle {
+    fn drop(&mut self) {
+        // Best-effort graceful shutdown: signal Shutdown so the worker
+        // drains the FullState slot one last time, then join. If the
+        // channel is already closed (worker died), skip the send.
+        let _ = self.signal_sender.try_send(PersistJob::Shutdown);
+        if let Ok(mut guard) = self.join_handle.lock()
+            && let Some(handle) = guard.take()
+            && let Err(e) = handle.join()
+        {
+            tracing::error!(
+                target: "storage",
+                event = "async_persist_join_failed",
+                panic = ?e,
+            );
+        }
+    }
+}
+
+impl PersistedChainState {
+    fn from_chain(chain: &Blockchain) -> Self {
+        Self {
+            genesis_config: chain.genesis_config.clone(),
+            finalized_height: chain.finality_tracker.finalized_height,
+            blocks: chain.blocks.clone(),
+            accounts: chain.accounts.clone(),
+            contracts: chain.contracts.clone(),
+            receipts: chain.receipts.clone(),
+            epoch_snapshots: chain.epoch_snapshots.clone(),
+            pending_transactions: chain.pending_transactions.clone(),
+            token_registry: chain.token_registry.clone(),
+            governance: chain.governance.clone(),
+        }
+    }
 }
 
 struct BlockExecution {
@@ -361,6 +642,7 @@ impl Blockchain {
             tx_hash_index: HashMap::new(),
             evm_tx_hash_index: HashMap::new(),
             storage: None,
+            persistence: PersistenceMode::Sync,
         })
     }
 
@@ -368,7 +650,22 @@ impl Blockchain {
         data_dir: &str,
         genesis_config: Option<&GenesisConfig>,
     ) -> Result<Self, ChainError> {
-        let storage = Storage::open(data_dir).map_err(StorageError::from)?;
+        Self::with_storage_mode(data_dir, genesis_config, false)
+    }
+
+    pub fn with_storage_async_persistence(
+        data_dir: &str,
+        genesis_config: Option<&GenesisConfig>,
+    ) -> Result<Self, ChainError> {
+        Self::with_storage_mode(data_dir, genesis_config, true)
+    }
+
+    fn with_storage_mode(
+        data_dir: &str,
+        genesis_config: Option<&GenesisConfig>,
+        async_persistence: bool,
+    ) -> Result<Self, ChainError> {
+        let storage = Storage::open(data_dir)?;
 
         if let Some(stored_height) = storage.get_height()? {
             let schema_version = storage.get_schema_version()?.unwrap_or(1);
@@ -480,7 +777,8 @@ impl Blockchain {
                 block_hash_to_height: HashMap::new(),
                 tx_hash_index: HashMap::new(),
                 evm_tx_hash_index: HashMap::new(),
-                storage: Some(storage),
+                storage: Some(storage.clone()),
+                persistence: PersistenceMode::Sync,
             };
 
             chain.rebuild_canonical_state()?;
@@ -489,11 +787,19 @@ impl Blockchain {
                 chain.persist_full_state()?;
             }
 
+            if async_persistence {
+                chain.persistence = PersistenceMode::Async(PersistenceHandle::spawn(storage));
+            }
+
             Ok(chain)
         } else {
             let mut chain = Self::from_genesis(genesis_config.cloned().unwrap_or_default())?;
-            chain.storage = Some(storage);
+            chain.storage = Some(storage.clone());
             chain.persist_full_state()?;
+
+            if async_persistence {
+                chain.persistence = PersistenceMode::Async(PersistenceHandle::spawn(storage));
+            }
 
             tracing::info!(
                 "Initialized new blockchain from genesis config: {}",
@@ -1594,37 +1900,16 @@ impl Blockchain {
         }
         self.rebuild_receipt_indexes();
         self.remove_block_transactions_from_mempool(&block);
-        // Persistence policy: incremental on every block, full state only at
-        // epoch boundaries.
-        //
-        // Why: `persist_full_state` calls `replace_*` on every sled tree
-        // (blocks, accounts, contracts, receipts, epoch_snapshots, pending),
-        // each of which iterates and rewrites the whole tree. On every block,
-        // sled 0.34's IO threadpool gets flooded with ~6 full-tree rewrites
-        // — and once the chain accumulates state, the threadpool deadlocks
-        // on its internal log-buffer mutex (verified via gdb on 2026-05-05:
-        // every sled-io worker parked in `RawMutex::lock_slow` while the
-        // main thread held `chain.lock()` waiting on `OneShot::wait`). That
-        // freezes the API, starves gossipsub, and ultimately partitions the
-        // mesh into a fork.
-        //
-        // The fix is two-layered:
-        //   1. Always persist the new block (incremental, cheap).
-        //   2. Persist the full state only at epoch boundaries (every
-        //      `epoch_length` blocks, default 32 = ~5 min) instead of every
-        //      block (~every 10 s). Reduces sled write pressure by ~32× and
-        //      breaks the deadlock conditions observed in production.
-        // On restart, the chain rebuilds in-memory state by replaying blocks
-        // from the last persisted full-state checkpoint, so up to one epoch
-        // of replay is the worst case — well within boot-time budget.
-        // `put_block` writes the block under its height key AND updates
-        // HEIGHT_KEY in the meta tree, so we get the height bookkeeping for
-        // free without a second write.
-        if let Some(ref storage) = self.storage {
-            storage.put_block(&block)?;
-        }
+        // In live node mode, sled writes are handled by a bounded background
+        // worker. gdb traces from the May 2026 soak showed sled 0.34 can park
+        // its IO workers on an internal mutex while `add_block` is holding the
+        // chain mutex. Keeping all sled calls out of this critical path means
+        // storage can stall without freezing consensus, RPC, or gossipsub.
+        // The synchronous branch remains for deterministic unit tests and
+        // offline CLI tooling.
+        self.persist_added_block(&block)?;
         let height = block.header.height;
-        let is_epoch_boundary = self.epoch_length > 0 && height % self.epoch_length == 0;
+        let is_epoch_boundary = self.epoch_length > 0 && height.is_multiple_of(self.epoch_length);
         if is_epoch_boundary {
             self.persist_full_state()?;
         }
@@ -1660,11 +1945,7 @@ impl Blockchain {
             self.block_tree
                 .set_finalized(finalized.hash.clone(), finalized.height);
 
-            // Persist finalized height
-            if let Some(ref storage) = self.storage {
-                let _ = storage.put_meta(b"finalized_height", &finalized.height);
-                let _ = storage.flush();
-            }
+            self.persist_finalized_height(finalized.height);
 
             tracing::info!(
                 "Block #{} finalized (hash: {})",
@@ -1696,15 +1977,7 @@ impl Blockchain {
             pos.slash_with_evidence(&mut self.accounts, evidence, self.jail_duration_blocks)?;
         self.slashed_validators = pos.slashed_validators;
 
-        // Persist
-        if let Some(ref storage) = self.storage {
-            let _ = storage.put_evidence(evidence);
-            let address = hash::address_bytes_from_public_key(&evidence.validator_public_key);
-            if let Some(state) = self.accounts.get(&address) {
-                let _ = storage.put_account(&address, state);
-            }
-            let _ = storage.flush();
-        }
+        self.persist_equivocation(evidence);
 
         tracing::warn!(
             target: "audit",
@@ -1870,23 +2143,66 @@ impl Blockchain {
     }
 
     fn persist_full_state(&self) -> Result<(), ChainError> {
-        if let Some(ref storage) = self.storage {
-            storage.put_meta(CHAIN_CONFIG_KEY, &self.genesis_config)?;
-            storage.put_meta(b"finalized_height", &self.finality_tracker.finalized_height)?;
-            storage.put_meta(
-                crate::storage::SCHEMA_VERSION_KEY,
-                &crate::storage::CURRENT_SCHEMA_VERSION,
-            )?;
-            storage.put_meta(crate::storage::TOKEN_REGISTRY_KEY, &self.token_registry)?;
-            storage.put_meta(crate::storage::GOVERNANCE_STATE_KEY, &self.governance)?;
-            storage.replace_blocks(&self.blocks)?;
-            storage.replace_accounts(&self.accounts)?;
-            storage.replace_contracts(&self.contracts)?;
-            storage.replace_receipts(&self.receipts)?;
-            storage.replace_epoch_snapshots(&self.epoch_snapshots)?;
-            storage.replace_pending_transactions(&self.pending_transactions)?;
-            storage.flush()?;
+        if self.storage.is_none() {
+            return Ok(());
         }
+
+        let started = std::time::Instant::now();
+        let state = PersistedChainState::from_chain(self);
+        let elapsed_ms = started.elapsed().as_millis() as u64;
+        // Surface clone latency: this work happens under chain.lock(), so a
+        // slow clone directly translates into consensus / RPC / gossipsub
+        // jitter. Above 200ms is a yellow flag, above 500ms is red.
+        if elapsed_ms > 200 {
+            tracing::warn!(
+                target: "storage",
+                event = "persisted_state_clone_slow",
+                elapsed_ms,
+                blocks = state.blocks.len(),
+                accounts = state.accounts.len(),
+                contracts = state.contracts.len(),
+            );
+        } else {
+            tracing::debug!(
+                target: "storage",
+                event = "persisted_state_clone",
+                elapsed_ms,
+                blocks = state.blocks.len(),
+            );
+        }
+
+        match &self.persistence {
+            PersistenceMode::Sync => {
+                if let Some(ref storage) = self.storage {
+                    Self::write_full_state_to_storage(storage, &state)?;
+                }
+            }
+            PersistenceMode::Async(handle) => {
+                handle.enqueue_full_state(Box::new(state));
+            }
+        }
+        Ok(())
+    }
+
+    fn write_full_state_to_storage(
+        storage: &Storage,
+        state: &PersistedChainState,
+    ) -> Result<(), ChainError> {
+        storage.put_meta(CHAIN_CONFIG_KEY, &state.genesis_config)?;
+        storage.put_meta(b"finalized_height", &state.finalized_height)?;
+        storage.put_meta(
+            crate::storage::SCHEMA_VERSION_KEY,
+            &crate::storage::CURRENT_SCHEMA_VERSION,
+        )?;
+        storage.put_meta(crate::storage::TOKEN_REGISTRY_KEY, &state.token_registry)?;
+        storage.put_meta(crate::storage::GOVERNANCE_STATE_KEY, &state.governance)?;
+        storage.replace_blocks(&state.blocks)?;
+        storage.replace_accounts(&state.accounts)?;
+        storage.replace_contracts(&state.contracts)?;
+        storage.replace_receipts(&state.receipts)?;
+        storage.replace_epoch_snapshots(&state.epoch_snapshots)?;
+        storage.replace_pending_transactions(&state.pending_transactions)?;
+        storage.flush()?;
         Ok(())
     }
 
@@ -3628,11 +3944,77 @@ impl Blockchain {
     }
 
     fn persist_pending_transactions(&self) -> Result<(), ChainError> {
-        if let Some(ref storage) = self.storage {
-            storage.replace_pending_transactions(&self.pending_transactions)?;
-            storage.flush()?;
+        match &self.persistence {
+            PersistenceMode::Sync => {
+                if let Some(ref storage) = self.storage {
+                    storage.replace_pending_transactions(&self.pending_transactions)?;
+                    storage.flush()?;
+                }
+            }
+            PersistenceMode::Async(handle) => {
+                handle.try_enqueue(
+                    PersistJob::PendingTransactions(self.pending_transactions.clone()),
+                    "pending_transactions",
+                );
+            }
         }
         Ok(())
+    }
+
+    fn persist_added_block(&self, block: &Block) -> Result<(), ChainError> {
+        match &self.persistence {
+            PersistenceMode::Sync => {
+                if let Some(ref storage) = self.storage {
+                    storage.put_block(block)?;
+                }
+            }
+            PersistenceMode::Async(_) => {
+                // Full state snapshots at epoch boundaries persist blocks,
+                // state, receipts, and pending txs together. Avoiding one
+                // sled write per block is the point of async live mode.
+            }
+        }
+        Ok(())
+    }
+
+    fn persist_finalized_height(&self, height: u64) {
+        match &self.persistence {
+            PersistenceMode::Sync => {
+                if let Some(ref storage) = self.storage {
+                    let _ = storage.put_meta(b"finalized_height", &height);
+                    let _ = storage.flush();
+                }
+            }
+            PersistenceMode::Async(handle) => {
+                handle.try_enqueue(PersistJob::FinalizedHeight(height), "finalized_height");
+            }
+        }
+    }
+
+    fn persist_equivocation(&self, evidence: &EquivocationEvidence) {
+        let address = hash::address_bytes_from_public_key(&evidence.validator_public_key);
+        let account = self.accounts.get(&address).cloned();
+        match &self.persistence {
+            PersistenceMode::Sync => {
+                if let Some(ref storage) = self.storage {
+                    let _ = storage.put_evidence(evidence);
+                    if let Some(ref account) = account {
+                        let _ = storage.put_account(&address, account);
+                    }
+                    let _ = storage.flush();
+                }
+            }
+            PersistenceMode::Async(handle) => {
+                handle.try_enqueue(
+                    PersistJob::EquivocationEvidence {
+                        evidence: Box::new(evidence.clone()),
+                        address,
+                        account,
+                    },
+                    "equivocation_evidence",
+                );
+            }
+        }
     }
 
     fn rebuild_canonical_state(&mut self) -> Result<(), ChainError> {
@@ -4334,6 +4716,141 @@ mod tests {
                 + call_receipt.gas_refunded,
             20 * 1_000_000
         );
+    }
+
+    #[test]
+    fn test_async_persistence_does_not_write_on_each_block() {
+        let dir = tempfile::tempdir().unwrap();
+        let validator = KeyPair::generate();
+        let genesis = GenesisConfig {
+            chain_id: "curs3d-async-persist-test".to_string(),
+            chain_name: "curs3d-async-persist-test".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            epoch_length: 8,
+            allocations: vec![GenesisAllocation {
+                public_key: hex::encode(&validator.public_key),
+                balance: 1_000_000_000,
+                staked_balance: 5_000,
+            }],
+            ..Default::default()
+        };
+        let data_dir = dir.path().to_str().unwrap();
+        let mut chain =
+            Blockchain::with_storage_async_persistence(data_dir, Some(&genesis)).unwrap();
+
+        let stored_before = chain.storage.as_ref().unwrap().get_height().unwrap();
+        assert_eq!(stored_before, Some(0));
+
+        for _ in 0..3 {
+            let block = chain.create_block(&validator).unwrap();
+            chain.add_block(block).unwrap();
+        }
+
+        let stored_after = chain.storage.as_ref().unwrap().get_height().unwrap();
+        assert_eq!(
+            stored_after,
+            Some(0),
+            "live async mode must not synchronously write sled on each block"
+        );
+        assert_eq!(chain.height(), 3);
+    }
+
+    /// Regression for the post-incident audit: write enough blocks to cross
+    /// at least one epoch boundary, drop the async chain (which triggers
+    /// `Drop::drop` on `PersistenceHandle` → Shutdown signal → drain →
+    /// join), reopen, and verify the persisted state matches what was in
+    /// memory. Catches:
+    ///   - latest-wins FullState slot losing data (it should NEVER lose);
+    ///   - graceful shutdown not actually flushing the slot;
+    ///   - reopen taking a stale snapshot.
+    #[test]
+    fn test_async_persistence_reopen_intact_after_epoch_boundary() {
+        let dir = tempfile::tempdir().unwrap();
+        let validator = KeyPair::generate();
+        let genesis = GenesisConfig {
+            chain_id: "curs3d-async-reopen-test".to_string(),
+            chain_name: "curs3d-async-reopen-test".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            // Small epoch so we cross multiple boundaries inside a unit test.
+            epoch_length: 4,
+            allocations: vec![GenesisAllocation {
+                public_key: hex::encode(&validator.public_key),
+                balance: 1_000_000_000,
+                staked_balance: 5_000,
+            }],
+            ..Default::default()
+        };
+        let data_dir = dir.path().to_str().unwrap();
+
+        let last_hash = {
+            let mut chain =
+                Blockchain::with_storage_async_persistence(data_dir, Some(&genesis)).unwrap();
+            // 12 blocks = 3 epochs (boundaries at 4, 8, 12) → at least three
+            // FullState signals. The last MUST land on disk.
+            for _ in 0..12 {
+                let block = chain.create_block(&validator).unwrap();
+                chain.add_block(block).unwrap();
+            }
+            assert_eq!(chain.height(), 12);
+            chain.latest_hash().to_vec()
+            // chain (and PersistenceHandle) drops here → Shutdown sentinel
+            // is sent and the worker joins. The latest FullState in the
+            // single-buffered slot is drained on the way out.
+        };
+
+        let reopened = Blockchain::with_storage(data_dir, Some(&genesis)).unwrap();
+        assert_eq!(
+            reopened.height(),
+            12,
+            "graceful shutdown must drain the FullState slot before exit"
+        );
+        assert_eq!(
+            reopened.latest_hash(),
+            last_hash.as_slice(),
+            "reopened tip hash must match what was in memory at drop time"
+        );
+    }
+
+    /// Regression for "queue full silently drops state". Hammer
+    /// `persist_full_state` faster than the worker can drain by repeatedly
+    /// calling it without yielding. The latest-wins slot guarantees the
+    /// final state lands; older snapshots may be coalesced but are never
+    /// processed staler than the tip.
+    #[test]
+    fn test_async_persistence_full_state_is_latest_wins_under_pressure() {
+        let dir = tempfile::tempdir().unwrap();
+        let validator = KeyPair::generate();
+        let genesis = GenesisConfig {
+            chain_id: "curs3d-async-pressure-test".to_string(),
+            chain_name: "curs3d-async-pressure-test".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            epoch_length: 1, // every block is an epoch boundary
+            allocations: vec![GenesisAllocation {
+                public_key: hex::encode(&validator.public_key),
+                balance: 1_000_000_000,
+                staked_balance: 5_000,
+            }],
+            ..Default::default()
+        };
+        let data_dir = dir.path().to_str().unwrap();
+
+        let final_hash = {
+            let mut chain =
+                Blockchain::with_storage_async_persistence(data_dir, Some(&genesis)).unwrap();
+            for _ in 0..50 {
+                let block = chain.create_block(&validator).unwrap();
+                chain.add_block(block).unwrap();
+            }
+            assert_eq!(chain.height(), 50);
+            chain.latest_hash().to_vec()
+        };
+
+        let reopened = Blockchain::with_storage(data_dir, Some(&genesis)).unwrap();
+        assert_eq!(reopened.height(), 50, "final block must reach disk");
+        assert_eq!(reopened.latest_hash(), final_hash.as_slice());
     }
 
     /// End-to-end: deploy a real SDK-compiled wasm contract through the chain

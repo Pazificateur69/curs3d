@@ -1,27 +1,31 @@
 # CURS3D 10/10 Execution Checklist
 
-Date: 2026-05-05
+Date: 2026-05-06
 Status: living checklist for recruiter/investor-grade readiness.
 Soak in progress: launched 2026-05-05T23:02Z, monitor PID `~/curs3d-soak/soak.pid`,
 alerts log `~/curs3d-soak/soak.alerts`. **First soak hour caught a real
 production incident — see "Active blockers" below.**
 
-## Active blockers — RESOLVED 2026-05-05 (commit `0476981`)
+## Active blockers — RESOLVED IN CODE 2026-05-06
 
 1. **~~Chain-mutex deadlock under load (node1)~~** — gdb on the hung
    process showed sled 0.34's IO threadpool deadlocking on its
-   internal log-buffer mutex under sustained per-block `replace_*`
-   writes. Fixed by reducing persist frequency: incremental
-   `put_block` on every block, full `persist_full_state` only at
-   epoch boundaries (every 32 blocks). ~32× less sled write pressure.
+   internal log-buffer mutex under sustained writes. The first
+   mitigation, "put_block every block + full state at epoch boundary",
+   lasted only a few hours: sled deadlocked again around h=351/h=383.
+   The long-term fix is now in code: persistent storage moved from sled
+   to redb, and the live node path still uses async persistence as a
+   second layer. `add_block`, finality, mempool admission, snapshot
+   application, and slashing no longer perform disk IO while holding
+   `Mutex<Blockchain>`.
 2. **~~Mesh topology relies on node1 as relay~~** — node2 and node3
    now have each other in `--bootnode` lists too. Peer IDs preserved
    across restarts. Mesh is full (3 nodes, 2 peers each), no single
    relay SPOF. See `22-soak-runbook.md` "Real incident log" →
    "Resolution" for the exact commands.
 
-Post-fix testnet state at commit time: h=91, finalized=91, lag=0,
-all 3 nodes on identical hash. 7 Solidity contracts redeployed.
+Post-fix requirement before marking this live-resolved: redeploy the new
+binary, restart the 3 nodes, then pass a fresh 24h soak and a 72h soak.
 
 ## Priority 1 — Stability, CI, Deployment
 
@@ -38,8 +42,8 @@ all 3 nodes on identical hash. 7 Solidity contracts redeployed.
 - [x] Same-height divergent verified peer: node pauses production and requests snapshot.
 - [x] Higher verified peer tip: node pauses production and requests blocks/snapshot before producing.
 - [ ] **Mesh resilience to single-node failure** — see Active blocker #2.
-- [ ] **Chain-mutex deadlock-free under sustained load** — see Active blocker #1.
-- [ ] Live soak: 24h, then 72h, with all public validators on same height/hash/finality and no operator wipe. *Soak monitor running; current run will fail on the active blockers above. Not a soak script bug — the soak is doing its job.*
+- [x] **Chain-mutex deadlock-free by design:** storage migrated to redb and live node mode keeps disk writes out of the consensus critical path.
+- [ ] Live soak: 24h, then 72h, with all public validators on same height/hash/finality and no operator wipe.
 
 ### Monitoring
 

@@ -220,13 +220,20 @@ within ~30s of all 3 starting.
 
 Both root causes fixed and verified on the live testnet.
 
-**Layer 1 — sled deadlock:** `add_block` no longer calls
-`persist_full_state` on every block. Now does only `put_block`
-(incremental, O(1) sled write) on every block; runs the full
-`replace_*` pass only at epoch boundaries (`height %
-epoch_length == 0`, default 32 blocks ≈ 5 min). Worst-case
-state-replay-on-restart is one epoch. Reduces sled write
-pressure by ~32× and breaks the log-buffer-mutex deadlock.
+**Layer 1 — sled deadlock, first mitigation:** `add_block` stopped
+calling `persist_full_state` on every block and kept only `put_block`
+per block plus a full `replace_*` pass at epoch boundaries. This reduced
+write pressure by ~32×, but the 2026-05-06 overnight soak proved it was
+not sufficient: sled 0.34 deadlocked again at later heights.
+
+**Layer 1b — long-term storage fix:** persistent storage moved from
+sled 0.34 to redb. The live node still uses async persistence as a
+second line of defense: `add_block`, finality, mempool admission,
+snapshot application, and slashing enqueue bounded persistence jobs and
+return without disk IO while `Mutex<Blockchain>` is held. If storage ever
+stalls, only the persistence worker is affected; consensus, RPC, and
+gossipsub keep running. Restart recovery depends on the latest completed
+background snapshot plus peer/snapshot sync for any missing tail.
 
 **Layer 2 — mesh topology:** each systemd unit was patched to
 list the OTHER two nodes as `--bootnode` (peer IDs above). With
