@@ -765,3 +765,44 @@ ssh curs3d-node1 "sudo certbot renew --force-renewal && sudo systemctl reload ng
 ### Oracle reclaim (Free Tier)
 Restaurer depuis restic (`b2:curs3d-backups-pazent:curs3d-node1`),
 puis rejouer `deploy/scripts/setup-node.sh`.
+
+### Cross-compile : `cross build` echoue avec `detected conflict: lib/rustlib/.../libaddr2line-*.rlib`
+
+Symptome (vu depuis le Mac):
+
+```
+error: failed to install component: 'rust-std-aarch64-unknown-linux-gnu',
+detected conflict: 'lib/rustlib/aarch64-unknown-linux-gnu/lib/libaddr2line-XXXX.rlib'
+Error:
+   1: `rustup target add aarch64-unknown-linux-gnu --toolchain nightly-x86_64-unknown-linux-gnu` failed
+```
+
+Cause : la toolchain `nightly-x86_64-unknown-linux-gnu` du Mac contient
+des fichiers `rust-std` orphelins (sur disque mais plus dans le manifest
+rustup), typiquement laisses par un `rustup update` partiellement avorte
+ou une rotation rapide de la rolling nightly.
+
+**Recovery propre (a essayer d'abord)** :
+
+```bash
+rustup toolchain uninstall nightly-x86_64-unknown-linux-gnu
+rustup toolchain install   nightly-x86_64-unknown-linux-gnu --force-non-host --profile minimal
+rustup target add aarch64-unknown-linux-gnu --toolchain nightly-x86_64-unknown-linux-gnu
+rustup target add x86_64-unknown-linux-gnu --toolchain nightly-x86_64-unknown-linux-gnu
+RUSTUP_TOOLCHAIN=nightly cross build --release --target aarch64-unknown-linux-gnu
+```
+
+**Last resort (si la voie propre echoue toujours avec le meme conflit)** :
+si rustup retourne "does not have target X installed" mais le fichier
+`libaddr2line-*.rlib` existe encore sur disque, le manifest et le filesystem
+sont desynchronises. Supprimer le repertoire orphelin manuellement :
+
+```bash
+# A reserver aux cas ou rustup uninstall/install ne suffit pas
+rm -rf ~/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu/lib/rustlib/aarch64-unknown-linux-gnu
+rustup target add aarch64-unknown-linux-gnu --toolchain nightly-x86_64-unknown-linux-gnu
+```
+
+Cette etape ne doit pas devenir routine ; si tu y reviens souvent c'est
+qu'une autre cause sous-jacente (autre outil ecrivant dans `~/.rustup`,
+filesystem en read-only intermittent, etc.) merite une investigation.
