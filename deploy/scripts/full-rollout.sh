@@ -2,6 +2,13 @@
 #
 # CURS3D — full coordinated rollout (binary + chain wipe + restart + verify).
 #
+# Use this script ONLY for situations that require all 3 nodes to come up
+# together: storage format migrations (sled → redb, redb v1 → v2), hardforks
+# (consensus/genesis change), or the very first cluster bootstrap. For
+# routine binary-only updates that share the on-disk format, prefer
+# `deploy/scripts/rollout-staggered.sh` — it keeps 2/3 of the cluster live
+# during the upgrade so finality and the public RPC never go dark.
+#
 # Pre-requisite: each node has a freshly built /home/ubuntu/curs3d/target/release/curs3d
 # binary (run via SSH cargo build before invoking this script).
 #

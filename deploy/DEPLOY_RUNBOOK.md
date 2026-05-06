@@ -392,6 +392,73 @@ nc -z -w5 144.24.192.222 4337 && echo OK || echo BLOCKED
 
 ## Redeploy (mise a jour du code)
 
+> **Recommandation par defaut**: la voie longue-duree, zero-downtime, c'est
+> **(1) cross-compile depuis le Mac → (2) staggered rollout via
+> `deploy/scripts/rollout-staggered.sh`**. Voir les deux sections ci-dessous.
+> Les anciennes voies (`ssh + git pull + cargo build` sur chaque VPS, ou
+> `full-rollout.sh` qui restart les 3 nodes en simultane) restent documentees
+> pour les cas particuliers (hardfork, wipe, premier bootstrap).
+
+### Voie 1 — Cross-compile depuis le Mac (recommandee)
+
+```bash
+# One-time setup (Mac)
+brew install --cask orbstack    # ou Docker Desktop
+cargo install cross
+rustup target add aarch64-unknown-linux-gnu x86_64-unknown-linux-gnu
+
+# A chaque release (ces 2 commandes peuvent tourner en parallele)
+cross build --release --target aarch64-unknown-linux-gnu   # node1 + node2 (Oracle ARM)
+cross build --release --target x86_64-unknown-linux-gnu    # node3 (IONOS x86)
+```
+
+Avantages :
+- Pas besoin de garder une copie du source code synchronisee sur chaque VPS.
+- Pas de toolchain Rust a maintenir sur les VPS (libere ~3 GB et evite que
+  les builds OOM sur les 2 GB de RAM de node3).
+- Build deterministe : meme binaire, meme empreinte, deployable plusieurs fois.
+- `curs3d` ARM et x86 dans le meme commit, traceable dans `target/`.
+
+### Voie 2 — Staggered rollout (zero downtime)
+
+`deploy/scripts/rollout-staggered.sh` push les binaires pre-build (Voie 1)
+puis redemarre **un seul node a la fois**, dans l'ordre `node3 → node2 → node1`,
+avec une fenetre d'observation de 10 min entre chaque (configurable).
+
+Le mesh mutuel (`deploy/systemd/curs3d-node{1,2,3}.service` listent les 2 autres
+comme `--bootnode`) garantit que pendant qu'un node redemarre, les 2 autres
+continuent a produire et finaliser des blocs (la finalite BFT tient avec 2/3
+de stake online). Si le redemarrage d'un node echoue, le script avorte AVANT
+de toucher les nodes suivants.
+
+```bash
+# Apres cross-compile :
+./deploy/scripts/rollout-staggered.sh
+
+# Variantes :
+OBSERVE_SECS=300 ./deploy/scripts/rollout-staggered.sh                       # observation plus courte (5 min)
+ORDER='curs3d-node3 curs3d-node2 curs3d-node1' ./deploy/scripts/rollout-staggered.sh   # ordre custom
+```
+
+Health gates entre chaque node :
+1. La chain (RPC public) doit continuer a avancer pendant la fenetre — preuve
+   que les 2 autres nodes produisent toujours.
+2. Le node redemarre doit repondre `/api/status` avec `height>0` ET
+   `peer_count>=2` — preuve qu'il a rejoint le mesh.
+3. Si l'un des deux echoue, `die` et arret immediat avant de continuer.
+
+**Quand NE PAS utiliser staggered** :
+- Storage format change (sled <-> redb, redb v1 <-> v2, etc.). Les nodes
+  ne peuvent pas lire la DB de l'ancienne version, donc une migration
+  coordonnee + wipe est requise → utiliser `full-rollout.sh --wipe`.
+- Hardfork du protocole (consensus, gossipsub topic, signature scheme,
+  block format). Mixed-version peers diverge silencieusement → coordonner
+  un cold restart.
+
+### Voie 3 — Old school (build par VPS — fallback)
+
+Conserve pour les cas de debug ou quand cross-compile n'est pas dispo.
+
 ```bash
 ssh curs3d-node1
 cd ~/curs3d
@@ -404,7 +471,7 @@ curl -s http://localhost:8080/api/status | jq .data.height
 
 > **Heads-up build time :** depuis le hardfork v4, `revm 38` ajoute ~200
 > deps. Premier build clean sur Oracle ARM Free Tier : 5–8 min ;
-> incrementaux : ~1 min.
+> incrementaux : ~1 min. Sur node3 IONOS x86 (2 GB RAM + swap 6 GB) : 15–25 min.
 
 Mettre a jour le site web (statique + bundle WASM wallet) :
 

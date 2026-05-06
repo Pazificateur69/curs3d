@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 #
-# CURS3D coordinated rolling restart.
+# CURS3D coordinated rolling restart (parallel — all 3 down at once).
+#
+# For routine zero-downtime upgrades, prefer `rollout-staggered.sh` which
+# keeps 2 of 3 validators online and gates each restart on health checks.
+# Use this script only when you NEED the cold-restart-window semantics
+# (typically with --wipe after a hardfork or a known mesh divergence).
 #
 # Pushes pre-built binaries to all 3 nodes, stops them simultaneously, installs,
 # starts them within a tight window so the gossip mesh forms before any node

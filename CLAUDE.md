@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Context for CURS3D
 
-State as of: **2026-05-06** (software **v0.3.5** + consensus protocol **v5** + 3-validator testnet, node3 IONOS Berlin x86_64 added 2026-05-05, wasmer 5 -> 7 bump for x86_64 linker fix on the same day, Solidity portfolio deployed at chain-id 1800329576, **BACKUP_LEADER_TIMEOUT 12s → 30s fix shipped late 2026-05-05 after parallel-fork incident at h=270**, **storage migrated from sled to redb after the overnight soak reproduced sled deadlock**, **72h soak monitor running locally** since 2026-05-05 23:02 UTC writing to `~/curs3d-soak/`). **`v1.0` is reserved for the official mainnet launch — do not bump the software version just because the consensus protocol bumps.**
+State as of: **2026-05-06** (software **v0.3.5** + consensus protocol **v5** + 3-validator testnet, node3 IONOS Berlin x86_64 added 2026-05-05, wasmer 5 -> 7 bump for x86_64 linker fix on the same day, Solidity portfolio deployed at chain-id 1800329576, **BACKUP_LEADER_TIMEOUT 12s → 30s fix shipped late 2026-05-05 after parallel-fork incident at h=270**, **storage migrated from sled to redb after the overnight soak reproduced sled deadlock**, **deploy path standardized on cross-compile from Mac + `rollout-staggered.sh` (zero-downtime, node3 → node2 → node1)**, **72h soak monitor running locally** since 2026-05-05 23:02 UTC writing to `~/curs3d-soak/`). **`v1.0` is reserved for the official mainnet launch — do not bump the software version just because the consensus protocol bumps.**
 
 ## Production incident — storage fix upgraded 2026-05-06
 
@@ -169,8 +169,11 @@ the public 3-validator testnet, but they affect specific surfaces.
 4. **Persisted state-root divergence at epoch boundaries — fixed in `f461aa4`.**
    Epoch settlement now runs through the same helper during block apply and
    boot replay. Covered by `test_restart_across_epoch_boundary`.
-5. **Cross-compile from Mac** — `cross` is installed but needs Docker
-   Desktop / OrbStack running. Today, builds happen on the ARM VPSes.
+5. **Cross-compile from Mac is now the recommended deploy path.** `cross`
+   + OrbStack/Docker → `target/{aarch64,x86_64}-unknown-linux-gnu/release/curs3d`
+   → `deploy/scripts/rollout-staggered.sh` (see "Deploy" below). The legacy
+   per-VPS build path (`ssh && git pull && cargo build`) still works but is
+   no longer the default — node3's 2 GB of RAM make in-VPS builds fragile.
 6. **No PGP key for security disclosures yet.** A signed contact channel
    is a TODO. Until it is published, security issues are reported privately
    via GitHub security advisories on `Pazificateur69/curs3d`. The plan is to
@@ -274,6 +277,10 @@ deploy/
                          (nginx-status.conf serves Grafana at /, Uptime-Kuma at /status/).
   nginx/                 Public TLS config for api.curs3d.fr + explorer.curs3d.fr + curs3d.fr
   scripts/
+    rollout-staggered.sh  Default deploy path: scp pre-built binaries, restart node3→node2→node1
+                          one at a time with health gates between each (zero-downtime).
+    full-rollout.sh       Coordinated cold restart for storage/hardfork changes (--wipe optional).
+    rollout.sh            Older companion to full-rollout.sh (parallel scp + parallel restart).
     add-node.sh           Automated Oracle ARM validator deployment
     setup-node.sh         First-boot bootstrap (creates curs3d user, dirs, units)
     init-localnet.sh      Local 2-validator dev net
@@ -283,7 +290,10 @@ deploy/
     curs3d-captcha-verify.py
                           Cloudflare Turnstile verifier for the faucet (port 127.0.0.1:8090)
   systemd/
-    curs3d.service        Main node unit (EnvironmentFile=/etc/curs3d/secrets.env, hardened)
+    curs3d.service        Main node unit template (EnvironmentFile=/etc/curs3d/secrets.env, hardened)
+    curs3d-node1.service  Live node1 unit (mutual bootnodes: lists node2 + node3 as --bootnode)
+    curs3d-node2.service  Live node2 unit (mutual bootnodes: lists node1 + node3 as --bootnode)
+    curs3d-node3.service  Live node3 unit (mutual bootnodes: lists node1 + node2 as --bootnode)
     curs3d-captcha.service Faucet captcha verifier
     curs3d-backup.service + curs3d-backup.timer  restic to B2 every 6 h
     curs3d-healthcheck.cron */2 min, posts to Discord on restart loops
@@ -521,6 +531,71 @@ The wallet's CSP needs `wasm-unsafe-eval` in `script-src` for instantiate;
 the `curs3d.fr` vhost was updated accordingly.
 
 Serve locally: `cd website && python3 -m http.server 3000`.
+
+## Deploy
+
+Three deploy paths exist, listed best → fallback:
+
+### 1. Cross-compile + staggered rollout (default, zero-downtime)
+
+Used for routine code changes that keep the on-disk format and gossipsub
+topic stable.
+
+```bash
+# One-time setup on the operator Mac
+brew install --cask orbstack
+cargo install cross
+rustup target add aarch64-unknown-linux-gnu x86_64-unknown-linux-gnu
+
+# Per release (these can run in parallel)
+cross build --release --target aarch64-unknown-linux-gnu     # node1, node2
+cross build --release --target x86_64-unknown-linux-gnu      # node3
+./deploy/scripts/rollout-staggered.sh                        # node3 → node2 → node1
+```
+
+`rollout-staggered.sh`:
+- scp's both binaries to all 3 nodes in parallel (no chain effect).
+- Restarts one node at a time, in the order `node3 → node2 → node1`.
+- Between each node, observes `OBSERVE_SECS` (default 600s) and gates on
+  (a) chain head still advancing on the public RPC,
+  (b) the just-restarted node's local /api/status reporting `height>0` and `peer_count>=2`.
+- Aborts before touching the next node if either gate fails.
+- Mutual-bootnode mesh in `deploy/systemd/curs3d-node*.service` ensures the
+  remaining 2 nodes form a productive 2/3-quorum throughout.
+
+### 2. Coordinated cold restart (`full-rollout.sh --wipe`)
+
+For storage-format changes (sled→redb, redb v1→v2, etc.), hardforks, or
+genesis regeneration. Stops all 3, optionally wipes the chain DB
+(preserving `p2p_identity*`), installs the new binary, and starts all 3
+within a tight window so the gossipsub mesh forms before any node produces
+alone (which would create a boot fork).
+
+```bash
+./deploy/scripts/full-rollout.sh --wipe   # required when redb file format incompatible
+./deploy/scripts/full-rollout.sh --no-wipe # binary swap only (rare; staggered usually preferable)
+```
+
+This script expects each VPS to have already built the binary at
+`/home/ubuntu/curs3d/target/release/curs3d`, so it's typically combined with
+a `git pull && cargo build --release` over SSH first.
+
+### 3. Per-VPS git pull + cargo build (legacy fallback)
+
+Kept for emergencies and for the historical procedures documented in the
+hardfork sections below. Slower (5–25 min build per node) and load-bearing
+on each VPS having a Rust toolchain — node3's 2 GB of RAM is tight enough
+that this is fragile.
+
+```bash
+ssh curs3d-nodeN
+cd ~/curs3d && git pull
+RUSTUP_TOOLCHAIN=nightly cargo build --release
+sudo install -m 755 target/release/curs3d /usr/local/bin/curs3d
+sudo systemctl restart curs3d
+```
+
+The full operational runbook lives in `deploy/DEPLOY_RUNBOOK.md`.
 
 ## Hardfork procedure (v4 → v5: ML-DSA-87 migration)
 
