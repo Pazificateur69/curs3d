@@ -441,8 +441,9 @@ ORDER='curs3d-node3 curs3d-node2 curs3d-node1' ./deploy/scripts/rollout-staggere
 ```
 
 Health gates entre chaque node :
-1. La chain (RPC public) doit continuer a avancer pendant la fenetre — preuve
-   que les 2 autres nodes produisent toujours.
+1. La chain doit continuer a avancer sur les **deux autres nodes** via leurs
+   `/api/status` locaux SSH — preuve que le cluster produit toujours meme si
+   le RPC public node1 est temporairement redemarre.
 2. Le node redemarre doit repondre `/api/status` avec `height>0` ET
    `peer_count>=2` — preuve qu'il a rejoint le mesh.
 3. Si l'un des deux echoue, `die` et arret immediat avant de continuer.
@@ -454,6 +455,29 @@ Health gates entre chaque node :
 - Hardfork du protocole (consensus, gossipsub topic, signature scheme,
   block format). Mixed-version peers diverge silencieusement → coordonner
   un cold restart.
+
+### Voie 2b — Full rollout coordonne avec wipe
+
+Utiliser uniquement pour storage-format change, hardfork, genesis regen, ou
+bootstrap initial. Le script stoppe les 3 nodes, installe le binaire deja build
+sur chaque VPS, wipe `/var/lib/curs3d` en preservant `p2p_identity*`, puis
+redemarre les 3 nodes ensemble.
+
+```bash
+./deploy/scripts/full-rollout.sh --wipe
+```
+
+Gates obligatoires du script :
+1. Les 3 `/api/status` locaux doivent converger au meme `height` + meme
+   `latest_hash` a `h >= 4`, avec `peer_count >= 2` partout.
+2. Le RPC public doit servir cette nouvelle chain (`eth_blockNumber >= 4`).
+3. La finalite doit s'activer sur les 3 nodes apres le premier epoch boundary.
+
+Apres un wipe, toutes les adresses EVM de testnet sont a redeployer :
+```bash
+cd contracts
+./deploy.sh --force
+```
 
 ### Voie 3 — Old school (build par VPS — fallback)
 

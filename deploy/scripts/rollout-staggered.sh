@@ -70,6 +70,27 @@ declare -A BIN_OF=(
     [curs3d-node3]="$X86_BIN"
 )
 
+node_height() {
+    local host="$1"
+    local json
+    json="$(ssh "$host" "curl -sf --max-time 3 http://127.0.0.1:8080/api/status" 2>/dev/null || true)"
+    printf '%s' "$json" | jq -r '.data.height // 0' 2>/dev/null || echo 0
+}
+
+cluster_max_height() {
+    local skip="${1:-}"
+    local max=0
+    local height
+    for host in $ORDER; do
+        [ "$host" = "$skip" ] && continue
+        height="$(node_height "$host")"
+        if [ "$height" -gt "$max" ] 2>/dev/null; then
+            max="$height"
+        fi
+    done
+    echo "$max"
+}
+
 # ─── Pre-flight ──────────────────────────────────────────────────────────
 step "${BOLD}Pre-flight${RESET}"
 [ -x "$ARM_BIN" ] || die "missing ARM binary: $ARM_BIN — run cross build first (see DEPLOY_RUNBOOK.md \"Cross-compile depuis Mac\")"
@@ -77,11 +98,11 @@ step "${BOLD}Pre-flight${RESET}"
 ok "ARM binary: $(stat -f%z "$ARM_BIN" 2>/dev/null || stat -c%s "$ARM_BIN") bytes"
 ok "x86 binary: $(stat -f%z "$X86_BIN" 2>/dev/null || stat -c%s "$X86_BIN") bytes"
 
-# Snapshot pre-rollout chain state so we can prove progress per-node.
-START_HEIGHT_HEX="$(curl -sf --max-time 5 -X POST "$RPC" -H 'Content-Type: application/json' \
-    -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
-    | jq -r '.result // "0x0"' 2>/dev/null || echo "0x0")"
-START_HEIGHT="$(printf '%d\n' "$START_HEIGHT_HEX" 2>/dev/null || echo 0)"
+# Snapshot pre-rollout chain state so we can prove progress per-node. Prefer
+# local node APIs over the public RPC because node1 may be restarted last and
+# `rpc.curs3d.fr` is allowed to be temporarily dark while the other two
+# validators continue producing.
+START_HEIGHT="$(cluster_max_height)"
 ok "Starting height: $START_HEIGHT"
 [ "$START_HEIGHT" -gt 0 ] || die "chain head is 0 — refusing to staggered-rollout into a non-producing chain. Use full-rollout.sh first."
 
@@ -108,18 +129,16 @@ for HOST in $ORDER; do
     echo
     step "${BOLD}[$NODE_IDX/$TOTAL] Restarting $HOST${RESET}"
 
-    BEFORE_HEIGHT_HEX="$(curl -sf --max-time 5 -X POST "$RPC" -H 'Content-Type: application/json' \
-        -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
-        | jq -r '.result // "0x0"' 2>/dev/null || echo "0x0")"
-    BEFORE_HEIGHT="$(printf '%d\n' "$BEFORE_HEIGHT_HEX" 2>/dev/null || echo 0)"
+    BEFORE_HEIGHT="$(cluster_max_height "$HOST")"
     info "  height before: $BEFORE_HEIGHT"
 
     ssh "$HOST" "sudo install -m 755 /tmp/curs3d.new /usr/local/bin/curs3d && sudo systemctl restart curs3d"
     ok "  restart issued — service back up"
 
     # Health gate before moving to next node:
-    #   1. The chain (read via the public RPC, served from node1) must keep
-    #      advancing — proves the OTHER two nodes still produce.
+    #   1. The chain (read via the other nodes' local APIs over SSH) must keep
+    #      advancing — proves the OTHER two nodes still produce even if the
+    #      public RPC endpoint is on the node being restarted.
     #   2. The restarted node's local /api/status must answer 200, height>0,
     #      peer_count>=2 — proves it rejoined the mesh and started syncing.
     step "  Observing $OBSERVE_SECS s (chain progress + peer rejoin)"
@@ -131,10 +150,7 @@ for HOST in $ORDER; do
         sleep 15
         TICK=$((SECONDS - LAST_TICK))
 
-        H_HEX="$(curl -sf --max-time 5 -X POST "$RPC" -H 'Content-Type: application/json' \
-            -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
-            | jq -r '.result // "0x0"' 2>/dev/null || echo "0x0")"
-        CHAIN_HEIGHT="$(printf '%d\n' "$H_HEX" 2>/dev/null || echo 0)"
+        CHAIN_HEIGHT="$(cluster_max_height "$HOST")"
 
         LOCAL_JSON="$(ssh "$HOST" "curl -sf --max-time 3 http://127.0.0.1:8080/api/status" 2>/dev/null || echo '{}')"
         LOCAL_HEIGHT="$(echo "$LOCAL_JSON" | jq -r '.data.height // 0' 2>/dev/null || echo 0)"
@@ -164,10 +180,7 @@ for HOST in $ORDER; do
         die "  ABORTING staggered rollout — fix $HOST before continuing the next nodes" 3
     fi
 
-    NEW_CHAIN_HEIGHT_HEX="$(curl -sf --max-time 5 -X POST "$RPC" -H 'Content-Type: application/json' \
-        -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' \
-        | jq -r '.result // "0x0"' 2>/dev/null || echo "0x0")"
-    NEW_CHAIN_HEIGHT="$(printf '%d\n' "$NEW_CHAIN_HEIGHT_HEX" 2>/dev/null || echo 0)"
+    NEW_CHAIN_HEIGHT="$(cluster_max_height "$HOST")"
     if [ "$NEW_CHAIN_HEIGHT" -le "$BEFORE_HEIGHT" ]; then
         warn "  Chain did not advance during $HOST observation window ($BEFORE_HEIGHT → $NEW_CHAIN_HEIGHT)"
         warn "  This means the OTHER two nodes have stalled — DO NOT continue the rollout"

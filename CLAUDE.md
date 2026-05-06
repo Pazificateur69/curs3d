@@ -1,6 +1,6 @@
 # CLAUDE.md — Project Context for CURS3D
 
-State as of: **2026-05-06** (software **v0.3.5** + consensus protocol **v5** + 3-validator testnet, node3 IONOS Berlin x86_64 added 2026-05-05, wasmer 5 -> 7 bump for x86_64 linker fix on the same day, Solidity portfolio deployed at chain-id 1800329576, **BACKUP_LEADER_TIMEOUT 12s → 30s fix shipped late 2026-05-05 after parallel-fork incident at h=270**, **storage migrated from sled to redb after the overnight soak reproduced sled deadlock**, **deploy path standardized on cross-compile from Mac + `rollout-staggered.sh` (zero-downtime, node3 → node2 → node1)**, **72h soak monitor running locally** since 2026-05-05 23:02 UTC writing to `~/curs3d-soak/`). **`v1.0` is reserved for the official mainnet launch — do not bump the software version just because the consensus protocol bumps.**
+State as of: **2026-05-06** (software **v0.3.5** + consensus protocol **v5** + 3-validator testnet, node3 IONOS Berlin x86_64 added 2026-05-05, wasmer 5 -> 7 bump for x86_64 linker fix on the same day, **BACKUP_LEADER_TIMEOUT 12s → 30s fix shipped late 2026-05-05 after parallel-fork incident at h=270**, **storage migrated from sled to redb after the overnight soak reproduced sled deadlock**, **deploy path standardized on cross-compile from Mac + `rollout-staggered.sh` for binary-only updates and `full-rollout.sh --wipe` for storage/hardfork changes**). **`v1.0` is reserved for the official mainnet launch — do not bump the software version just because the consensus protocol bumps.**
 
 ## Production incident — storage fix upgraded 2026-05-06
 
@@ -37,20 +37,19 @@ three nodes have direct connections to each other (full mesh, not
 node1-as-hub). Peer IDs are preserved across restarts since the new
 wipe in `full-rollout.sh` keeps `p2p_identity*`.
 
-### Verification
-After the rollout with both fixes:
-- All 3 nodes converged at the SAME hash by h=4
-- Finality kicked in at h=33 (after first epoch boundary persist)
-- h=91 finalized=91, lag=0, all 3 nodes identical hash
-- Solidity portfolio (7 contracts) redeployed; both Token minters wired
-- Soak monitor still running (`~/curs3d-soak/soak.pid`); fresh polls
-  show no DIVERGENCE / STALL / API_DROP since the rollout
+### Verification Gate
+The redb migration is a storage-format change. It is not safe to ship through a
+staggered rollout. The required live gate is:
+- deploy the same redb binary to node1/node2/node3
+- run `deploy/scripts/full-rollout.sh --wipe`
+- require all 3 local `/api/status` responses to report the same height/hash by
+  at least h=4 with `peer_count >= 2`
+- wait for finality to activate on all 3 nodes after the first epoch boundary
+- redeploy the Solidity portfolio and refresh `contracts/deployments/1800329576.json`
+- start a fresh 24h soak, then a 72h soak before saying "production-ready"
 
-The soak log at `~/curs3d-soak/soak.alerts` keeps the historical
-incident as evidence. The cumulative counters in `soak.stdout`
-include those pre-fix events; new alerts since the rollout = 0
-DIVERGENCE, 0 STALL, 1 transient API_DROP (forge deploy rate-limit,
-auto-recovered).
+Historical soak logs in `~/curs3d-soak/` are useful evidence, but pre-redb
+alerts must not be counted as post-fix failures or post-fix successes.
 
 ## What is this project?
 
@@ -557,7 +556,7 @@ cross build --release --target x86_64-unknown-linux-gnu      # node3
 - scp's both binaries to all 3 nodes in parallel (no chain effect).
 - Restarts one node at a time, in the order `node3 → node2 → node1`.
 - Between each node, observes `OBSERVE_SECS` (default 600s) and gates on
-  (a) chain head still advancing on the public RPC,
+  (a) chain head still advancing on the other validators' local `/api/status`,
   (b) the just-restarted node's local /api/status reporting `height>0` and `peer_count>=2`.
 - Aborts before touching the next node if either gate fails.
 - Mutual-bootnode mesh in `deploy/systemd/curs3d-node*.service` ensures the

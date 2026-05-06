@@ -3,6 +3,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::mpsc::{SyncSender, TrySendError, sync_channel};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
@@ -53,6 +54,8 @@ const CHAIN_CONFIG_KEY: &[u8] = b"chain_config";
 /// silently drop a snapshot/reorg/epoch persist. 8 is plenty: the producer
 /// rate for these small jobs is at most a few per second under heavy traffic.
 const PERSISTENCE_QUEUE_CAPACITY: usize = 8;
+const PERSISTENCE_SHUTDOWN_SIGNAL_TIMEOUT: Duration = Duration::from_secs(1);
+const PERSISTENCE_JOIN_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GenesisAllocation {
@@ -397,7 +400,10 @@ impl PersistenceHandle {
             // what makes the design loss-free for FullState: the slot holds
             // the latest value, and signals just nudge the worker.
             loop {
-                let pending = full_state_slot.lock().unwrap_or_else(|p| p.into_inner()).take();
+                let pending = full_state_slot
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .take();
                 let Some(state) = pending else { break };
                 Self::execute(
                     || Blockchain::write_full_state_to_storage(&storage, &state),
@@ -545,18 +551,70 @@ impl PersistenceHandle {
 impl Drop for PersistenceHandle {
     fn drop(&mut self) {
         // Best-effort graceful shutdown: signal Shutdown so the worker
-        // drains the FullState slot one last time, then join. If the
-        // channel is already closed (worker died), skip the send.
-        let _ = self.signal_sender.try_send(PersistJob::Shutdown);
+        // drains the FullState slot one last time. Never block forever here:
+        // shutdown must remain possible even if the persistence backend is
+        // wedged inside an OS/database call.
+        let mut shutdown = PersistJob::Shutdown;
+        let shutdown_started = Instant::now();
+        loop {
+            match self.signal_sender.try_send(shutdown) {
+                Ok(()) => break,
+                Err(TrySendError::Full(job)) => {
+                    shutdown = job;
+                    if shutdown_started.elapsed() >= PERSISTENCE_SHUTDOWN_SIGNAL_TIMEOUT {
+                        tracing::error!(
+                            target: "storage",
+                            event = "async_persist_shutdown_signal_timeout",
+                            timeout_ms = PERSISTENCE_SHUTDOWN_SIGNAL_TIMEOUT.as_millis() as u64,
+                        );
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Err(TrySendError::Disconnected(_)) => break,
+            }
+        }
         if let Ok(mut guard) = self.join_handle.lock()
             && let Some(handle) = guard.take()
-            && let Err(e) = handle.join()
         {
-            tracing::error!(
-                target: "storage",
-                event = "async_persist_join_failed",
-                panic = ?e,
-            );
+            let (done_tx, done_rx) = std::sync::mpsc::channel();
+            match thread::Builder::new()
+                .name("curs3d-persistence-join".to_string())
+                .spawn(move || {
+                    let result = handle.join();
+                    let _ = done_tx.send(result);
+                }) {
+                Ok(_) => match done_rx.recv_timeout(PERSISTENCE_JOIN_TIMEOUT) {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => {
+                        tracing::error!(
+                            target: "storage",
+                            event = "async_persist_join_failed",
+                            panic = ?e,
+                        );
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                        tracing::error!(
+                            target: "storage",
+                            event = "async_persist_join_timeout",
+                            timeout_ms = PERSISTENCE_JOIN_TIMEOUT.as_millis() as u64,
+                        );
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        tracing::error!(
+                            target: "storage",
+                            event = "async_persist_join_disconnected",
+                        );
+                    }
+                },
+                Err(e) => {
+                    tracing::error!(
+                        target: "storage",
+                        event = "async_persist_join_thread_spawn_failed",
+                        error = %e,
+                    );
+                }
+            }
         }
     }
 }
@@ -4754,6 +4812,27 @@ mod tests {
             "live async mode must not synchronously write sled on each block"
         );
         assert_eq!(chain.height(), 3);
+    }
+
+    #[test]
+    fn test_async_persistence_drop_timeout_does_not_block_indefinitely() {
+        let (sender, receiver) = sync_channel::<PersistJob>(1);
+        let handle = thread::spawn(move || {
+            let _ = receiver.recv();
+            thread::sleep(Duration::from_secs(60));
+        });
+        let persistence = PersistenceHandle {
+            full_state_slot: Arc::new(StdMutex::new(None)),
+            signal_sender: sender,
+            join_handle: StdMutex::new(Some(handle)),
+        };
+
+        let started = std::time::Instant::now();
+        drop(persistence);
+        assert!(
+            started.elapsed() < Duration::from_secs(6),
+            "PersistenceHandle::drop must timeout instead of blocking process shutdown"
+        );
     }
 
     /// Regression for the post-incident audit: write enough blocks to cross
