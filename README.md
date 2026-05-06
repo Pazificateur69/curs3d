@@ -170,10 +170,15 @@ docker compose down              # Stop
 
 Use the deployment assets in [`deploy/`](deploy/):
 
-- [`deploy/scripts/deploy.sh`](deploy/scripts/deploy.sh) — One-shot VPS deployment script
+- [`deploy/scripts/rollout-staggered.sh`](deploy/scripts/rollout-staggered.sh) — **Default** zero-downtime rollout: scp pre-built binaries, restart `node3 → node2 → node1` one at a time with health gates between each.
+- [`deploy/scripts/full-rollout.sh`](deploy/scripts/full-rollout.sh) — Coordinated cold restart for storage-format migrations or hardforks (`--wipe` optional).
+- [`deploy/scripts/deploy.sh`](deploy/scripts/deploy.sh) — One-shot single-VPS bootstrap.
 - [`deploy/docker-compose.public.yml`](deploy/docker-compose.public.yml)
-- [`deploy/systemd/curs3d.service`](deploy/systemd/curs3d.service)
+- [`deploy/systemd/curs3d.service`](deploy/systemd/curs3d.service) — Template (per-node units with mutual bootnodes are in the same dir)
 - [`deploy/nginx/curs3d.conf`](deploy/nginx/curs3d.conf)
+- Operational runbook: [`deploy/DEPLOY_RUNBOOK.md`](deploy/DEPLOY_RUNBOOK.md)
+
+For routine code changes, the default flow is **(1) cross-compile from your Mac with `cross` + Docker/OrbStack → (2) `./deploy/scripts/rollout-staggered.sh`**. The mutual-bootnode mesh keeps 2 of 3 validators producing throughout, so the chain never goes dark during the upgrade.
 
 ## What's Built (Current State)
 
