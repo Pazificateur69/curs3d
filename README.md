@@ -35,7 +35,7 @@ CURS3D is a **Layer 1 blockchain written from scratch in Rust**, designed to res
 
 > **MetaMask works.** Point your wallet at `https://rpc.curs3d.fr/eth` (or `https://api.curs3d.fr/eth`), chain ID `1800329576`, and you can deploy Solidity, send ETH-style txs, sign with ethers.js / wagmi, and use Hardhat / Foundry against the live testnet. EVM transactions are signed with secp256k1 ECDSA (standard Ethereum) and accepted by design — that's how MetaMask compat works. Native CURS3D transactions (Stake / governance / native deploy) sign with ML-DSA-87 and go through `POST /api/tx/submit`. Both families produce blocks on the same chain.
 
-> **Status (2026-05-06 — software v0.3.5, consensus protocol v5, 3-validator testnet):** the current tree contains the redb storage migration and mesh fixes required after the overnight soak incident. Public operators should verify the live cluster with `full-rollout.sh --wipe`, confirm all 3 validators share the same hash, wait for finality to activate, then redeploy the Solidity portfolio and update `contracts/deployments/1800329576.json`. Browser wallet UI ([curs3d.fr/wallet](https://curs3d.fr/wallet)) signs ML-DSA-87 transactions natively via the WASM bundle.
+> **Status (2026-05-06 — software v0.3.5, consensus protocol v5, 2-validator testnet):** the redb storage migration is now live on node1 + node2. node3 (IONOS Berlin) was reset on 2026-05-06 after a network outage and is currently out of cluster pending an SSH-stack issue we haven't yet root-caused; the genesis was regenerated 2-validator-only (file SHA-256 `165c5f9d2a77719ecada5937753465806d83429588df06f0f25cea5c274bbf4e`) so finality keeps progressing. node3 will be re-added as a dynamic post-genesis validator (no hardfork) once SSH is recoverable — see [`CLAUDE.md`](CLAUDE.md) "node3 — temporarily out of cluster" and [`deploy/DEPLOY_RUNBOOK.md`](deploy/DEPLOY_RUNBOOK.md) "Ajout de validateur post-genesis". Browser wallet UI ([curs3d.fr/wallet](https://curs3d.fr/wallet)) signs ML-DSA-87 transactions natively via the WASM bundle.
 
 ### MetaMask / Hardhat / Foundry network config
 
@@ -227,7 +227,7 @@ CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technicall
 
 ## Known Issues
 
-These are tracked in [`CLAUDE.md`](CLAUDE.md) and reproduced here so anyone running a node, building against the API, or evaluating CURS3D sees them up front. None block the public 3-validator testnet, but they do shape what is and isn't safe to rely on today.
+These are tracked in [`CLAUDE.md`](CLAUDE.md) and reproduced here so anyone running a node, building against the API, or evaluating CURS3D sees them up front. None block the public 2-validator testnet (node3 pending re-add as a dynamic validator), but they do shape what is and isn't safe to rely on today.
 
 - **External security audit not yet performed.** Internal audit cycles (3-AI council 2026-04, Codex passes 2026-05) have closed many findings, but no third-party firm has reviewed the codebase. Treat this testnet accordingly.
 - **State-root divergence at epoch boundaries — fixed in `f461aa4`.** Root cause: epoch settlement applied at block-apply time but skipped at boot replay; identical helper now runs in both paths. Regression test added (`test_restart_across_epoch_boundary`).

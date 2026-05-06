@@ -41,7 +41,7 @@ die()  { printf "%s✗%s %s\n" "$RED" "$RESET" "$*" >&2; exit "${2:-1}"; }
 info() { printf "%s%s%s\n" "$DIM" "$*" "$RESET"; }
 
 NODES=(curs3d-node1 curs3d-node2 curs3d-node3)
-SRC_BIN="/home/ubuntu/curs3d/target/release/curs3d"
+SRC_BIN="${SRC_BIN:-/home/ubuntu/curs3d/target/release/curs3d}"
 DEST_BIN="/usr/local/bin/curs3d"
 RPC_URL="${CURS3D_RPC_URL:-https://rpc.curs3d.fr/eth}"
 CONVERGENCE_WAIT_SECS="${CONVERGENCE_WAIT_SECS:-360}"

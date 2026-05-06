@@ -1,6 +1,33 @@
 # CLAUDE.md — Project Context for CURS3D
 
-State as of: **2026-05-06** (software **v0.3.5** + consensus protocol **v5** + 3-validator testnet, node3 IONOS Berlin x86_64 added 2026-05-05, wasmer 5 -> 7 bump for x86_64 linker fix on the same day, **BACKUP_LEADER_TIMEOUT 12s → 30s fix shipped late 2026-05-05 after parallel-fork incident at h=270**, **storage migrated from sled to redb after the overnight soak reproduced sled deadlock**, **deploy path standardized on cross-compile from Mac + `rollout-staggered.sh` for binary-only updates and `full-rollout.sh --wipe` for storage/hardfork changes**). **`v1.0` is reserved for the official mainnet launch — do not bump the software version just because the consensus protocol bumps.**
+State as of: **2026-05-06** (software **v0.3.5** + consensus protocol **v5** + **2-validator testnet** on n1 + n2, node3 reset/down pending re-add as dynamic post-genesis validator — see "node3 — temporarily out of cluster" below, wasmer 5 -> 7 bump for x86_64 linker fix on 2026-05-05, **BACKUP_LEADER_TIMEOUT 12s → 30s fix shipped late 2026-05-05 after parallel-fork incident at h=270**, **storage migrated from sled to redb after the overnight soak reproduced sled deadlock — deployed live 2026-05-06**, **new genesis 2-validators regenerated on 2026-05-06** (SHA256 `165c5f9d2a77719ecada5937753465806d83429588df06f0f25cea5c274bbf4e`), **deploy path standardized on cross-compile from Mac + `rollout-staggered.sh` for binary-only updates and `full-rollout.sh --wipe` for storage/hardfork changes**). **`v1.0` is reserved for the official mainnet launch — do not bump the software version just because the consensus protocol bumps.**
+
+## node3 — temporarily out of cluster (2026-05-06)
+
+node3 (IONOS Berlin x86_64) was reset/reinstalled on 2026-05-06 after a
+network outage cascaded into a hard SSH lockout. The replacement Ubuntu
+24.04 install on the same VPS now ignores pubkey-based auth despite a
+valid `~/.ssh/authorized_keys`, valid permissions, an unlocked `ubuntu`
+account, and OpenSSH `userauth_pubkey: authenticated 0` on the server
+side after `Accepted key`. Diagnosis still pending — likely an Ubuntu
+24.04 + OpenSSH 10.2p1 PAM-stack interaction we have not isolated.
+
+Decision: keep production live with a **2-validator testnet (n1 + n2)**
+rather than block on the SSH debug. Each validator stakes 50 000 CUR for
+a total active stake of 100 000 CUR; finality requires `> 2/3 of online
+stake`, which 2/2 (100 %) meets cleanly. The new genesis was regenerated
+on 2026-05-06 from the n1 + n2 wallets only (file SHA256 above).
+
+To re-add node3 later (when SSH is recoverable):
+1. Bootstrap on the fresh VPS via `deploy/scripts/cloud-init-node3.yaml`
+   followed by `deploy/scripts/bootstrap-curs3d-node3.sh`.
+2. Generate a fresh validator wallet on node3 (Argon2id is host-bound).
+3. Fund the new address from the faucet (≥ 1 500 CUR).
+4. Submit a `Stake` transaction.
+5. node3 becomes an active validator at the next epoch boundary
+   (procedure `deploy/DEPLOY_RUNBOOK.md` § "Ajout de validateur post-genesis").
+No hardfork or genesis regen required — that's the whole point of dynamic
+validator activation.
 
 ## Production incident — storage fix upgraded 2026-05-06
 
@@ -98,15 +125,15 @@ signatures produced in the browser verify on the node byte-for-byte.
 
 - **Chain ID:** `curs3d-public-testnet`
 - **Protocol version:** **v5** (ML-DSA-87 / FIPS-204 native signatures — browser wallet interop)
-- **Genesis hash (chain block, v5 — regen 2026-05-05 with 3 validators in genesis):** `81420887fb59cd7c4837b2195bedbbb78291bd835e5b72162337f10d26f315d6`
-- **Genesis JSON file SHA-256:** `702be65951ec6b29efb157fe96f8aba0baf14fc24bfab3926976d2b8e25ca1c1`
-- **Active validators:** **3** (node1 + node2 + node3 — all in genesis since the 2026-05-05 regen, each staking 50 000 CUR = 33.3% of total stake)
+- **Genesis JSON file SHA-256 (regen 2026-05-06 with 2 validators):** `165c5f9d2a77719ecada5937753465806d83429588df06f0f25cea5c274bbf4e`
+- **Old 3-validator genesis SHA-256 (regen 2026-05-05):** `702be65951ec6b29efb157fe96f8aba0baf14fc24bfab3926976d2b8e25ca1c1` *(superseded — kept for traceability)*
+- **Old 3-validator chain genesis hash:** `81420887fb59cd7c4837b2195bedbbb78291bd835e5b72162337f10d26f315d6` *(superseded)*
+- **Active validators:** **2** (node1 + node2 — genesis regenerated 2026-05-06 after node3 SSH lockout; each stakes 50 000 CUR = 50 % of total stake online; node3 to be re-added dynamically when SSH is recoverable, see "node3 — temporarily out of cluster" above)
 - **Validator (node1, raw 20B):** `a770be29d4c0066263855ea5ade6387d503f1cea`
 - **Validator (node1, CUR EIP-55):** `CURA770bE29d4C0066263855Ea5ADE6387d503f1Cea`
 - **Validator (node2, raw 20B):** `d5e78c78ff164fb4eac641d5a2802134b8a2d836`
 - **Validator (node2, CUR EIP-55):** `CURd5E78C78FF164fb4eAC641d5a2802134B8A2D836`
-- **Validator (node3, raw 20B):** `367880f848aee1bd2d934107a2ff6743b4aaa3d7`
-- **Validator (node3, CUR EIP-55):** `CUR367880f848aee1Bd2D934107A2fF6743B4AaA3D7` (50 000 CUR staked, 33.3% du total, actif depuis 2026-05-05)
+- **Validator (node3 — out of cluster 2026-05-06):** old wallet `CUR367880f848aee1Bd2D934107A2fF6743B4AaA3D7` is no longer in genesis. A new wallet will be generated on the rebuilt VPS and added dynamically post-genesis (see "node3 — temporarily out of cluster" above).
 - **Faucet:** regenerated under v5 — see `/etc/curs3d/faucet.json` on `ssh curs3d-node1` (100 CUR, 1 h cooldown per address+IP, captcha-gated, 2 000 000 CUR initial alloc)
 - **Bootnode multiaddr:** `/dns4/api.curs3d.fr/tcp/4337/p2p/12D3KooWLttF4EJ1SjiLEiXvJ1yqmJawLafv47r55T5xzSt1GHn2`
 

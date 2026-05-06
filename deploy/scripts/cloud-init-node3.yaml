@@ -1,0 +1,127 @@
+#cloud-config
+# CURS3D node3 reprovisioning — IONOS VPS 2-2-80, Ubuntu 24.04 x86_64.
+# Paste this in IONOS panel → "Cloud-Init" / "User Data" field at server creation.
+#
+# What it does:
+#   - hostname / timezone / locale
+#   - ubuntu user with sudo NOPASSWD, key-only SSH, password explicitly UNLOCKED
+#     (this is the gotcha that bit us last time: cloud-init defaults to
+#      lock_passwd: true which sets `!` in /etc/shadow → PAM rejects pubkey)
+#   - 6 GB swapfile (mandatory on 2 GB RAM for cargo build)
+#   - ufw + fail2ban with operator IP 92.137.37.53 whitelisted
+#   - sshd hardening (key-only, no password, AllowUsers ubuntu)
+#   - apt packages required to build curs3d
+# After cloud-init finishes (~3-5 min), SSH in as `ubuntu` and run
+# `bootstrap-curs3d-node3.sh` to install Rust + clone the repo + build.
+
+hostname: curs3d-node3
+manage_etc_hosts: true
+timezone: Europe/Paris
+locale: en_US.UTF-8
+
+# --- packages ---
+package_update: true
+package_upgrade: false
+packages:
+  - build-essential
+  - pkg-config
+  - libssl-dev
+  - clang
+  - llvm
+  - git
+  - curl
+  - jq
+  - ufw
+  - fail2ban
+  - htop
+  - tmux
+  - unzip
+  - rsync
+
+# --- ssh: key-only, password auth disabled at the daemon level ---
+ssh_pwauth: false
+
+# --- users: ubuntu UNLOCKED so PAM doesn't reject pubkey login ---
+users:
+  - default
+  - name: ubuntu
+    sudo: 'ALL=(ALL) NOPASSWD:ALL'
+    shell: /bin/bash
+    groups: [sudo]
+    lock_passwd: false        # critical: prevents the !-prefix lock that breaks pubkey
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINEHoDbU3Re9HGef/xyX0TtNpu1neczFcmbHw5BFSiA3 alessandro.gagliardi225145@gmail.com
+
+# --- write hardening configs before runcmd ---
+write_files:
+  - path: /etc/fail2ban/jail.d/whitelist.local
+    content: |
+      [DEFAULT]
+      # Operator Mac residential IP — whitelist so retry storms don't lock us out.
+      ignoreip = 127.0.0.1/8 ::1 92.137.37.53
+      bantime = 3600
+      findtime = 600
+      maxretry = 5
+    permissions: '0644'
+
+  - path: /etc/ssh/sshd_config.d/99-curs3d.conf
+    content: |
+      # CURS3D node3 SSH policy
+      PubkeyAuthentication yes
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+      AllowUsers ubuntu
+      MaxAuthTries 5
+      LoginGraceTime 30
+    permissions: '0644'
+
+  - path: /etc/sysctl.d/99-curs3d.conf
+    content: |
+      # Network tuning for libp2p gossip + redb writes
+      net.core.somaxconn = 4096
+      net.ipv4.tcp_max_syn_backlog = 4096
+      net.ipv4.tcp_fin_timeout = 30
+      vm.swappiness = 10
+    permissions: '0644'
+
+# --- post-install commands (run as root, in order) ---
+runcmd:
+  # 1. Belt-and-suspenders: ensure ubuntu password is NOT locked even if
+  #    lock_passwd: false above is ignored by some IONOS cloud-init quirk.
+  - [bash, -lc, "passwd -d ubuntu || true"]
+
+  # 2. UFW: deny in by default, allow only the ports we use.
+  - [bash, -lc, "ufw --force reset"]
+  - [bash, -lc, "ufw default deny incoming"]
+  - [bash, -lc, "ufw default allow outgoing"]
+  - [bash, -lc, "ufw allow 22/tcp"]
+  - [bash, -lc, "ufw allow 80/tcp"]
+  - [bash, -lc, "ufw allow 443/tcp"]
+  - [bash, -lc, "ufw allow 4337/tcp"]
+  - [bash, -lc, "ufw allow from 92.137.37.53"]
+  - [bash, -lc, "ufw --force enable"]
+
+  # 3. Enable fail2ban (already installed by `packages`).
+  - [bash, -lc, "systemctl enable --now fail2ban"]
+
+  # 4. Apply sysctl tuning.
+  - [bash, -lc, "sysctl --system"]
+
+  # 5. 6 GB swap (mandatory: 2 GB RAM not enough for cargo build of revm/wasmer).
+  - [bash, -lc, "if [ ! -f /swapfile ]; then fallocate -l 6G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab; fi"]
+
+  # 6. Restart sshd with the new policy file.
+  - [bash, -lc, "systemctl restart ssh"]
+
+  # 7. Pre-create the curs3d source directory so rsync/scp from the operator
+  #    Mac succeeds out of the box.
+  - [bash, -lc, "install -d -o ubuntu -g ubuntu /home/ubuntu/curs3d"]
+  - [bash, -lc, "install -d -o ubuntu -g ubuntu /home/ubuntu/curs3d-new"]
+
+# --- final message in /var/log/cloud-init-output.log ---
+final_message: |
+  CURS3D node3 cloud-init done in $UPTIME s.
+  Next steps from the operator Mac:
+    ssh curs3d-node3                       # verify login
+    bash deploy/scripts/bootstrap-curs3d-node3.sh   # rust + curs3d build

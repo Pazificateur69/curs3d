@@ -1,6 +1,6 @@
 # CURS3D — Runbook ops du testnet public
 
-Derniere mise a jour: **2026-05-05 (apres-midi — hardfork v5 deploye + node3 IONOS Berlin)**
+Derniere mise a jour: **2026-05-06 (redb storage migration deployed + 2-validator genesis regen + node3 temporarily out of cluster pending SSH recovery)**
 
 ## Architecture (etat actuel)
 
@@ -11,31 +11,38 @@ Derniere mise a jour: **2026-05-05 (apres-midi — hardfork v5 deploye + node3 I
                                  |
                   +--------------+---------------+---------------+
                   |                              |               |
-       [node1 — bootstrap + API]      [node2 — validateur]   [node3 — validateur]
+       [node1 — bootstrap + API]      [node2 — validateur]   [node3 — out of cluster, 2026-05-06]
        144.24.192.222                  84.235.238.213          31.70.70.62
        Oracle ARM Free Tier            Oracle ARM Free Tier    IONOS VPS x86_64
-       eu-marseille-1 (FR)             eu-marseille-1 (FR)     eu-de-berlin (DE)
-       6 GB RAM, 1 OCPU                6 GB RAM, 1 OCPU        2 GB RAM, 2 vCore
-       nginx + TLS Let's Encrypt       curs3d.service          curs3d.service
-       curs3d.service                                          (swap 6 GB)
+       eu-marseille-1 (FR)             eu-marseille-1 (FR)     reset, SSH lockout pending diag
+       6 GB RAM, 1 OCPU                6 GB RAM, 1 OCPU        (a re-add via Stake post-genesis)
+       nginx + TLS Let's Encrypt       curs3d.service
+       curs3d.service
        curs3d-captcha.service
        curs3d-backup.timer
        curs3d-healthcheck.cron
        Docker stack: prometheus + grafana + uptime-kuma + node-exporter
 ```
 
-- **3 validateurs ACTIFS** depuis le 2026-05-05 (ajout node3 IONOS Berlin x86_64).
-  Chaque validateur stake 50 000 CUR (33.3% chacun). Le scheduling slot-leader
-  deterministe (`343a7a1`) elimine les forks multi-validateurs. L'activation
-  dynamique de validateur est supportee : node3 a stake post-genesis, active a
-  l'epoch suivante (cf. section "Ajout de validateur post-genesis").
-- Le testnet a ete REDEMARRE le 2026-05-05 lors du bump wasmer 5 -> 7
-  (fix __rust_probestack sur x86_64) PUIS regenere une seconde fois apres
-  un fork resolu en incluant les 3 validateurs directement dans le genesis
-  (sidesteppe le bug RequestBlocks pendant la catch-up). Wallets validateurs
-  inchanges (les keypairs ML-DSA-87 sont preservees), seul le genesis a evolue.
-  Nouveau genesis (chain block hash) : `81420887fb59cd7c4837b2195bedbbb78291bd835e5b72162337f10d26f315d6`.
-  Genesis JSON file SHA-256 : `702be65951ec6b29efb157fe96f8aba0baf14fc24bfab3926976d2b8e25ca1c1`.
+- **2 validateurs ACTIFS** depuis le 2026-05-06 (genesis regenere a 2 validators
+  apres incident node3). Chaque validateur stake 50 000 CUR = 50 % du total
+  online. Le scheduling slot-leader deterministe (`343a7a1`) elimine les forks
+  multi-validateurs.
+- **Genesis JSON file SHA-256 (regen 2026-05-06)** : `165c5f9d2a77719ecada5937753465806d83429588df06f0f25cea5c274bbf4e`.
+  Wallets validateurs inchanges (n1 + n2 keypairs ML-DSA-87 preservees).
+- **node3** : VPS reset le 2026-05-06 apres outage reseau. Cloud-init applique
+  via `deploy/scripts/cloud-init-node3.yaml`, mais SSH par cle est rejete
+  apres "Server accepts key" → `userauth_pubkey: authenticated 0` (signature
+  verification echoue cote serveur). Diagnostic en cours, hypothese probable
+  Ubuntu 24.04 + OpenSSH 10.2p1 PAM stack interaction. node3 sera re-ajoute
+  comme validateur dynamique post-genesis (procedure "Ajout de validateur
+  post-genesis" plus bas) une fois SSH recupere.
+- Historique : la chain a ete redemarree le 2026-05-05 lors du bump wasmer
+  5 -> 7 (fix __rust_probestack sur x86_64), genesis regenere une seconde fois
+  apres un fork resolu en incluant les 3 validateurs directement, puis sled
+  -> redb migre le 2026-05-06 (fix deadlock IoBufs::write_to_log) et
+  finalement regenere a 2 validators apres incident node3. Anciens hashes
+  preserves pour tracabilite (CLAUDE.md).
 - node4 : reporte (capacite ARM Oracle a re-evaluer plus tard, ou autre provider).
 - Diversification geo + provider + arch : node1+node2 sur Oracle ARM Marseille,
   node3 sur IONOS x86_64 Berlin. Reduit le risque de panne provider/region/arch.
@@ -74,7 +81,7 @@ incompatibles entre `pqcrypto-dilithium` et `ml-dsa`).
 |------|-----|------|------------|------|-----|
 | node1 | 144.24.192.222 | Bootstrap + API + site + status | `CURA770bE29d4C0066263855Ea5ADE6387d503f1Cea` | **actif** | `ssh curs3d-node1` |
 | node2 | 84.235.238.213 | Validateur | `CURd5E78C78FF164fb4eAC641d5a2802134B8A2D836` | **actif** | `ssh curs3d-node2` |
-| node3 | 31.70.70.62 | Validateur (IONOS Berlin x86_64) | `CUR367880f848aee1Bd2D934107A2fF6743B4AaA3D7` | **actif** (50 000 CUR staked, 33.3% du total, depuis 2026-05-05) | `ssh curs3d-node3` |
+| node3 | 31.70.70.62 | _(ex-validateur — out of cluster 2026-05-06)_ | _(wallet a regenerer sur la nouvelle install)_ | **down** (SSH lockout post-reset, voir "node3 temporarily out of cluster" dans CLAUDE.md) | `ssh curs3d-node3` (pending fix) |
 | Faucet | — | Wallet faucet | _regen v5, voir `/etc/curs3d/faucet.json` sur node1_ | — | — |
 
 Note : les addresses des validateurs ont change au hardfork v5 (les cles
