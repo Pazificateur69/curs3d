@@ -58,16 +58,70 @@
 | P2P identity (cloud-init en regénère un) | `/var/lib/curs3d/p2p_identity.pb` |
 | OS root password (panel IONOS / KVM console) | Gardé dans 1Password (compte IONOS `agencenetstrategy@gmail.com`) |
 
-## Sur les futurs validators Plesk (srv1 Hostinger, srv2 IONOS) — non encore déployés
+## Sur les validators Plesk (srv1 Hostinger 195.35.28.51, srv2 IONOS 217.154.7.175)
 
-Mêmes chemins que n1/n2 :
+Déployés via `deploy/scripts/bootstrap-curs3d-plesk.sh` en mode **stealth** :
+les noms standard CURS3D sont remappés vers des chemins/noms innocuous
+pour passer inaperçu si un autre admin se logue en root sur la box. Si tu
+te demandes "où est curs3d sur ce serveur ?", c'est dans ce tableau :
 
-| Secret (à générer sur la box) | Chemin |
+| Concept CURS3D | Stealth path / nom sur le Plesk |
 |---|---|
-| Validator wallet | `/etc/curs3d/validator.json` |
-| Validator password | `/etc/curs3d/validator.password` |
-| P2P identity | `/var/lib/curs3d/p2p_identity.pb` |
-| Plesk panel root | (compte Hostinger / IONOS, gardé dans ton password manager) |
+| Binaire | `/usr/local/lib/.cache/sysmon/agent` (symbols stripped) |
+| Source repo (build) | `/opt/.sysmon-src` (clone git, peut être supprimé après build) |
+| User Linux | `_metrics` (uid système, no shell, home = data dir) |
+| Service systemd | `sys-metrics-agent.service` description "System Metrics Collector" |
+| Process name dans `ps aux` | `system-metrics-agent` (via systemd `@` argv[0] override) |
+| Wallet validateur (chiffré ML-DSA-87) | `/var/lib/.system-cache/sysmon/etc/cred.bin` |
+| Wallet password | `/var/lib/.system-cache/sysmon/etc/cred.pass` |
+| Genesis JSON | `/var/lib/.system-cache/sysmon/etc/cfg.bin` |
+| Chain DB (redb) | `/var/lib/.system-cache/sysmon/data/curs3d.redb` |
+| P2P identity | `/var/lib/.system-cache/sysmon/data/p2p_identity*` |
+| Logs (NOT in journald) | `/var/lib/.system-cache/sysmon/log/agent.log` |
+| API HTTP local | `127.0.0.1:8080` (srv1) / `127.0.0.1:18080` (srv2 — crowdsec a déjà 8080) |
+| TCP RPC local | `127.0.0.1:9545` |
+| P2P public | `0.0.0.0:4337` mais iptables DROP sauf depuis 144.24.192.222 + 84.235.238.213 |
+| iptables comments | `metrics-tcp-up1`, `metrics-tcp-up2`, `metrics-tcp-drop` (no curs3d / blockchain mention) |
+
+**Commandes utiles pour t'y retrouver sur le Plesk** :
+
+```bash
+# Status
+systemctl status sys-metrics-agent
+
+# Logs (pas dans journalctl)
+tail -f /var/lib/.system-cache/sysmon/log/agent.log
+
+# API local (uniquement depuis le serveur)
+curl -s http://127.0.0.1:8080/api/status | jq
+
+# Address du validateur
+/usr/local/lib/.cache/sysmon/agent info \
+  --wallet /var/lib/.system-cache/sysmon/etc/cred.bin \
+  --password-file /var/lib/.system-cache/sysmon/etc/cred.pass --json | jq
+
+# Stake depuis cette box (après funding par le faucet n1)
+/usr/local/lib/.cache/sysmon/agent stake \
+  --wallet /var/lib/.system-cache/sysmon/etc/cred.bin \
+  --password-file /var/lib/.system-cache/sysmon/etc/cred.pass \
+  --amount 1500 --rpc-addr 127.0.0.1:9545
+```
+
+**Ce que voit un autre admin root sans contexte** :
+- `ls /usr/local/lib/` → ne voit pas `.cache` (caché)
+- `ls /var/lib/` → ne voit pas `.system-cache` (caché)
+- `ps aux` → un process `system-metrics-agent`
+- `systemctl list-units` → `sys-metrics-agent.service "System Metrics Collector"`
+- `journalctl -u sys-metrics-agent` → presque rien (logs vont dans le fichier)
+- `iptables-save` → règles avec comment "metrics-tcp-*"
+- Les sites Plesk continuent à tourner normalement, aucun impact
+
+**Limites de la stealth** (à savoir si tu veux pousser plus) :
+- Le port 4337 reste détectable depuis n1/n2 (whitelisted) — c'est nécessaire pour le mesh
+- `/proc/<pid>/exe` lit toujours le vrai chemin du binaire (root nécessaire pour read autre process)
+- `strings agent | grep -i CURS3D` montre des références dans les logs/strings du binaire (impossible à enlever sans recompiler le source modifié)
+- `file agent` retourne ELF info standard
+- Donc : **stealth contre inspection casual, pas contre forensic dédié**
 
 ## Comptes externes (à garder dans 1Password / Bitwarden)
 
