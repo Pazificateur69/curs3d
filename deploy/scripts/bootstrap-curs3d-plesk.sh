@@ -181,11 +181,20 @@ fi
 step "7/10 user + hidden directories"
 id -u "$STEALTH_USER" >/dev/null 2>&1 || useradd -r -s /usr/sbin/nologin -d "$STEALTH_DATA" "$STEALTH_USER"
 mkdir -p "$STEALTH_BASE" "$STEALTH_ETC" "$STEALTH_DATA" "$STEALTH_LOG"
-chown root:root "$STEALTH_BASE" "$STEALTH_ETC"
-chown "$STEALTH_USER:$STEALTH_USER" "$STEALTH_DATA" "$STEALTH_LOG"
-chmod 700 "$STEALTH_BASE" "$STEALTH_ETC" "$STEALTH_DATA" "$STEALTH_LOG"
-# Make the parent dir a hidden listing target (already starts with .)
-ok "  user '$STEALTH_USER' + $STEALTH_BASE (700) + sub-dirs"
+# Layout & permissions:
+#   /var/lib/.system-cache/         drwx--x--x  root:root   ← traversable, not listable
+#   /var/lib/.system-cache/sysmon/  drwx--x--x  root:root   ← idem
+#   .../sysmon/etc/                 drwx------  _metrics    ← only the service user reads
+#   .../sysmon/data/                drwx------  _metrics    ← idem
+#   .../sysmon/log/                 drwx------  _metrics    ← idem
+# 711 on parents = the service user can `cd` to its subdirs (needs +x to
+# traverse) but no one can `ls` the parent → stays hidden in casual review.
+GRANDPARENT="$(dirname "$STEALTH_BASE")"
+chown root:root "$GRANDPARENT" "$STEALTH_BASE"
+chmod 711 "$GRANDPARENT" "$STEALTH_BASE"
+chown "$STEALTH_USER:$STEALTH_USER" "$STEALTH_ETC" "$STEALTH_DATA" "$STEALTH_LOG"
+chmod 700 "$STEALTH_ETC" "$STEALTH_DATA" "$STEALTH_LOG"
+ok "  user '$STEALTH_USER' + $GRANDPARENT (711) + $STEALTH_BASE (711) + subdirs (700 $STEALTH_USER:$STEALTH_USER)"
 
 # ─── 8. Wallet ──────────────────────────────────────────────────────────
 step "8/10 validator wallet (cred.bin)"
