@@ -96,12 +96,17 @@ H1_DEC="$(printf '%d\n' "$H1_HEX")"
 [ "$H1_DEC" -gt 0 ] || die "chain at height 0 — wait for block production" 2
 info "  current height: $H1_DEC"
 
-step "Waiting 12s to confirm chain is advancing..."
-sleep 12
-H2_HEX="$(rpc_call '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | jq -r '.result // empty')"
-H2_DEC="$(printf '%d\n' "$H2_HEX")"
+CURS3D_DEPLOY_ADVANCE_TIMEOUT="${CURS3D_DEPLOY_ADVANCE_TIMEOUT:-30}"
+step "Waiting up to ${CURS3D_DEPLOY_ADVANCE_TIMEOUT}s to confirm chain is advancing..."
+H2_DEC="$H1_DEC"
+DEADLINE=$((SECONDS + CURS3D_DEPLOY_ADVANCE_TIMEOUT))
+while [ "$SECONDS" -lt "$DEADLINE" ] && [ "$H2_DEC" -le "$H1_DEC" ]; do
+    sleep 3
+    H2_HEX="$(rpc_call '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' | jq -r '.result // empty')"
+    H2_DEC="$(printf '%d\n' "$H2_HEX")"
+done
 if [ "$H2_DEC" -le "$H1_DEC" ]; then
-    die "chain not advancing: was $H1_DEC, still $H2_DEC after 12s. Investigate node health before deploying." 2
+    die "chain not advancing: was $H1_DEC, still $H2_DEC after ${CURS3D_DEPLOY_ADVANCE_TIMEOUT}s. Investigate node health before deploying." 2
 fi
 ok "Chain advancing: $H1_DEC → $H2_DEC"
 

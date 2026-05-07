@@ -64,19 +64,30 @@ three nodes have direct connections to each other (full mesh, not
 node1-as-hub). Peer IDs are preserved across restarts since the new
 wipe in `full-rollout.sh` keeps `p2p_identity*`.
 
-### Verification Gate
-The redb migration is a storage-format change. It is not safe to ship through a
-staggered rollout. The required live gate is:
-- deploy the same redb binary to node1/node2/node3
-- run `deploy/scripts/full-rollout.sh --wipe`
-- require all 3 local `/api/status` responses to report the same height/hash by
-  at least h=4 with `peer_count >= 2`
-- wait for finality to activate on all 3 nodes after the first epoch boundary
-- redeploy the Solidity portfolio and refresh `contracts/deployments/1800329576.json`
-- start a fresh 24h soak, then a 72h soak before saying "production-ready"
+### Verification Gate — done 2026-05-06 / 2026-05-07
+- ✅ redb binary deployed on n1+n2 via `deploy/scripts/full-rollout.sh --wipe`
+- ✅ both nodes reported same height/hash from h=2; finality active by h=32
+- ✅ Chain ran 15h+ without alerts before the next operator action; redb file
+  byte-identical at 141 561 856 B on both nodes confirms state consistency
+- ✅ Solidity portfolio redeployed 2026-05-07 with a fresh deployer keystore
+  (old one's password was lost; new keystore at `~/.curs3d/deployer.keystore`
+  protected by a 24-byte random password stored at `~/.curs3d/deployer.password`
+  chmod 600). Live addresses in `contracts/deployments/1800329576.json`:
+  - token   `0x32927628483E8b664772BADFe8a7BD2562Af9852`
+  - faucet  `0x555fC00bdd6112ec713243372A730410629bEA3B`
+  - staking `0xc49206Bd7789b64E49e090DA8DE734395dfECE94`
+  - governance `0xe6DCb0672A221Cf9F894C165091b9FEB6c0B2288`
+  - attestations `0xeBC212d8afcecbCC8b3E1A0320e1d80Cb61b5BDe`
+  - vault   `0x39262f965c37C9C06234e5DB2e7C41ACA693e15b`
+  - escrow  `0x8496CCB04fCdbf26a9786dbfd10C3D513E582538`
+  - deployer `0x89C5abd9576869E5C6593Ce8C5f462F9C7dBA295` (also arbitrator)
+- ⏳ 24h soak running; 72h soak to follow before "production-ready" sign-off
 
 Historical soak logs in `~/curs3d-soak/` are useful evidence, but pre-redb
 alerts must not be counted as post-fix failures or post-fix successes.
+
+A complete index of every password / keystore / wallet location lives in
+`docs/SECRETS.md` (paths only, never values).
 
 ## What is this project?
 

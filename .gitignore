@@ -35,3 +35,12 @@ avancement.md
 todo.md
 docs/L1_TODO.md
 .claude/
+
+# Belt+suspenders for secrets — see docs/SECRETS.md
+*.keystore
+*.keystore.lost.*
+deployer.password
+secrets.env
+alerts.env
+captcha.env
+restic.env
