@@ -391,13 +391,13 @@ deploy/
 - Merkle proof generation and verification
 
 ### network/mod.rs
-- NetworkMessage variants: NewBlock, NewTransaction, RequestBlocks, BlockResponse, HeightAnnounce (signed), SlashingEvidence, FinalityVote, RequestSnapshot, SnapshotManifest, SnapshotChunk
+- NetworkMessage variants: NewBlock, NewTransaction, RequestBlocks, BlockResponse, HeightAnnounce (signed, includes verified public peer-address hints for peer exchange), SlashingEvidence, FinalityVote, RequestSnapshot, SnapshotManifest, SnapshotChunk
 - `PeerRateLimiter` — Per-peer message rate limiting with escalating bans
 - `PeerScorer` — Reputation system: score decay, behavior-based scoring, automatic ban below threshold
 - Block acceptance → positive score, block rejection → negative score, rate limit → penalty
 - Block production: every 10 seconds, gated by `slot_leader(next_height, ...)` (v4)
-- Height announce: every 30 seconds (signed by validators)
-- Sync: batch of 50 blocks, 15s timeout, 3 retries (latent bug, see Known bugs #4)
+- Height announce: every 30 seconds (signed by validators). Verified announces also carry `public_addrs`; peers store them in `/var/lib/curs3d/peerstore.json` and redial them on restart. This removes the old requirement to manually edit every existing node whenever a validator is added.
+- Sync: batch of 50 blocks, 30s timeout, 3 retries, then snapshot escalation. Validators stay behind a sync gate until verified peer tips are stable for 3 production ticks, so a restarted or late-joining node cannot produce on a stale fork before catching up.
 - Network topic: derived from chain_id + protocol_version. Commit `6dcafbf`
   pins `protocol_version_at_height(0)` to the active baseline so the gossipsub
   topic is stable from genesis instead of churning on the first upgrade boundary.

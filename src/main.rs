@@ -5,6 +5,7 @@ use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use clap::{Parser, Subcommand};
 use libp2p::{Multiaddr, identity};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{Mutex, RwLock};
 use tracing::info;
 
@@ -653,6 +654,8 @@ async fn run_node(
         &network_topic,
         p2p_identity,
         &public_multiaddrs,
+        &bootnode_addresses,
+        Some(PathBuf::from(data_dir).join("peerstore.json")),
     )
     .await
     {
@@ -797,10 +800,15 @@ async fn send_tokens(
         }
     };
 
+    let chain_id = match resolve_chain_id(data_dir, rpc_addr).await {
+        Ok(chain_id) => chain_id,
+        Err(err) => {
+            eprintln!("Failed to resolve live chain id: {}", err);
+            return;
+        }
+    };
     let mut tx = crate::core::transaction::Transaction::new(
-        &resolve_chain_id(data_dir, rpc_addr)
-            .await
-            .unwrap_or_else(|_| "curs3d-devnet".to_string()),
+        &chain_id,
         w.keypair.public_key.clone(),
         to_bytes,
         amount_micro,
@@ -948,10 +956,15 @@ async fn stake_tokens(
         return;
     }
 
+    let chain_id = match resolve_chain_id(data_dir, rpc_addr).await {
+        Ok(chain_id) => chain_id,
+        Err(err) => {
+            eprintln!("Failed to resolve live chain id: {}", err);
+            return;
+        }
+    };
     let mut tx = crate::core::transaction::Transaction::stake(
-        &resolve_chain_id(data_dir, rpc_addr)
-            .await
-            .unwrap_or_else(|_| "curs3d-devnet".to_string()),
+        &chain_id,
         w.keypair.public_key.clone(),
         stake_micro,
         fee,
@@ -1020,9 +1033,13 @@ async fn unstake_tokens(
         return;
     }
 
-    let chain_id = resolve_chain_id(data_dir, rpc_addr)
-        .await
-        .unwrap_or_else(|_| "curs3d-devnet".to_string());
+    let chain_id = match resolve_chain_id(data_dir, rpc_addr).await {
+        Ok(chain_id) => chain_id,
+        Err(err) => {
+            eprintln!("Failed to resolve live chain id: {}", err);
+            return;
+        }
+    };
     let mut tx = crate::core::transaction::Transaction::unstake(
         &chain_id,
         w.keypair.public_key.clone(),
@@ -1095,9 +1112,13 @@ async fn deploy_token(
     };
     let data = serde_json::to_vec(&params).expect("failed to serialize token params");
 
-    let chain_id = resolve_chain_id(data_dir, rpc_addr)
-        .await
-        .unwrap_or_else(|_| "curs3d-devnet".to_string());
+    let chain_id = match resolve_chain_id(data_dir, rpc_addr).await {
+        Ok(chain_id) => chain_id,
+        Err(err) => {
+            eprintln!("Failed to resolve live chain id: {}", err);
+            return;
+        }
+    };
 
     let mut tx = crate::core::transaction::Transaction {
         chain_id,
@@ -1193,9 +1214,13 @@ async fn transfer_token(
     };
     let data = serde_json::to_vec(&params).expect("failed to serialize token transfer params");
 
-    let chain_id = resolve_chain_id(data_dir, rpc_addr)
-        .await
-        .unwrap_or_else(|_| "curs3d-devnet".to_string());
+    let chain_id = match resolve_chain_id(data_dir, rpc_addr).await {
+        Ok(chain_id) => chain_id,
+        Err(err) => {
+            eprintln!("Failed to resolve live chain id: {}", err);
+            return;
+        }
+    };
 
     let mut tx = crate::core::transaction::Transaction {
         chain_id,
@@ -1232,9 +1257,30 @@ async fn transfer_token(
 
 async fn fetch_account_state(
     address: Vec<u8>,
-    data_dir: &str,
+    _data_dir: &str,
     rpc_addr: &str,
 ) -> Result<AccountState, String> {
+    let http_base = resolve_cli_http_base(rpc_addr)?;
+    match http_get_json(
+        &http_base,
+        &format!("/api/account/{}", hex::encode(&address)),
+    )
+    .await
+    {
+        Ok(value) => {
+            let data = api_data(value)?;
+            return Ok(AccountState {
+                balance: json_u64(&data, "balance")?,
+                nonce: json_u64(&data, "nonce")?,
+                staked_balance: json_u64(&data, "staked_balance")?,
+                ..AccountState::default()
+            });
+        }
+        Err(http_err) => {
+            tracing::warn!(target: "cli", route = "http", error = %http_err, "account fetch failed, trying TCP RPC fallback");
+        }
+    }
+
     match rpc::send_request(
         rpc_addr,
         &RpcRequest::GetAccount {
@@ -1246,18 +1292,42 @@ async fn fetch_account_state(
         Ok(RpcResponse::Account { state }) => Ok(state),
         Ok(RpcResponse::Error { message }) => Err(message),
         Ok(_) => Err("unexpected RPC response".to_string()),
-        Err(_) => {
-            let chain = Blockchain::with_storage(data_dir, None).map_err(|e| e.to_string())?;
-            Ok(chain.get_account(&address))
-        }
+        Err(err) => Err(format!(
+            "HTTP API and TCP RPC are both unavailable; refusing to read local state for a live transaction: {}",
+            err
+        )),
     }
 }
 
 async fn submit_transaction(
     tx: crate::core::transaction::Transaction,
-    data_dir: &str,
+    _data_dir: &str,
     rpc_addr: &str,
 ) -> Result<String, String> {
+    let http_base = resolve_cli_http_base(rpc_addr)?;
+    match http_post_json(
+        &http_base,
+        "/api/tx/submit",
+        serde_json::to_value(&tx).map_err(|e| e.to_string())?,
+    )
+    .await
+    {
+        Ok(value) => {
+            let data = api_data(value)?;
+            let tx_hash = data
+                .get("tx_hash")
+                .and_then(|value| value.as_str())
+                .unwrap_or("");
+            if tx_hash.is_empty() {
+                return Err("HTTP API accepted transaction but did not return tx_hash".to_string());
+            }
+            return Ok(format!("http {}", http_base));
+        }
+        Err(http_err) => {
+            tracing::warn!(target: "cli", route = "http", error = %http_err, "transaction submit failed, trying TCP RPC fallback");
+        }
+    }
+
     match rpc::send_request(
         rpc_addr,
         &RpcRequest::SubmitTransaction {
@@ -1269,11 +1339,10 @@ async fn submit_transaction(
         Ok(RpcResponse::Submitted { .. }) => Ok(format!("rpc {}", rpc_addr)),
         Ok(RpcResponse::Error { message }) => Err(message),
         Ok(_) => Err("unexpected RPC response".to_string()),
-        Err(_) => {
-            let mut chain = Blockchain::with_storage(data_dir, None).map_err(|e| e.to_string())?;
-            chain.add_transaction(tx).map_err(|e| e.to_string())?;
-            Ok(format!("local {}", data_dir))
-        }
+        Err(err) => Err(format!(
+            "HTTP API and TCP RPC are both unavailable; refusing local transaction apply: {}",
+            err
+        )),
     }
 }
 
@@ -1335,9 +1404,13 @@ async fn deploy_contract(
         }
     };
 
-    let chain_id = resolve_chain_id(data_dir, rpc_addr)
-        .await
-        .unwrap_or_else(|_| "curs3d-devnet".to_string());
+    let chain_id = match resolve_chain_id(data_dir, rpc_addr).await {
+        Ok(chain_id) => chain_id,
+        Err(err) => {
+            eprintln!("Failed to resolve live chain id: {}", err);
+            return;
+        }
+    };
 
     let mut tx = core::transaction::Transaction::deploy_contract(
         &chain_id,
@@ -1429,16 +1502,163 @@ async fn light_sync(api: &str, limit: u64) {
     );
 }
 
-async fn resolve_chain_id(data_dir: &str, rpc_addr: &str) -> Result<String, String> {
+async fn resolve_chain_id(_data_dir: &str, rpc_addr: &str) -> Result<String, String> {
+    let http_base = resolve_cli_http_base(rpc_addr)?;
+    match http_get_json(&http_base, "/api/status").await {
+        Ok(value) => {
+            let data = api_data(value)?;
+            if let Some(chain_id) = data.get("chain_id").and_then(|value| value.as_str()) {
+                return Ok(chain_id.to_string());
+            }
+            return Err("HTTP status did not include chain_id".to_string());
+        }
+        Err(http_err) => {
+            tracing::warn!(target: "cli", route = "http", error = %http_err, "chain_id fetch failed, trying TCP RPC fallback");
+        }
+    }
+
     match rpc::send_request(rpc_addr, &RpcRequest::GetStatus).await {
         Ok(RpcResponse::Status { status }) => Ok(status.chain_id),
         Ok(RpcResponse::Error { message }) => Err(message),
         Ok(_) => Err("unexpected RPC response".to_string()),
-        Err(_) => {
-            let chain = Blockchain::with_storage(data_dir, None).map_err(|e| e.to_string())?;
-            Ok(chain.chain_id().to_string())
-        }
+        Err(err) => Err(format!(
+            "HTTP API and TCP RPC unavailable while resolving chain_id; refusing to use local storage fallback ({})",
+            err
+        )),
     }
+}
+
+fn resolve_cli_http_base(rpc_addr: &str) -> Result<String, String> {
+    if let Ok(value) = std::env::var("CURS3D_HTTP_ADDR")
+        && !value.trim().is_empty()
+    {
+        return normalize_http_base(value.trim());
+    }
+    let http_addr = resolve_http_addr(rpc_addr, None)?;
+    normalize_http_base(&http_addr)
+}
+
+fn normalize_http_base(value: &str) -> Result<String, String> {
+    let trimmed = value.trim().trim_end_matches('/');
+    if trimmed.starts_with("https://") {
+        return Err(
+            "CLI native transaction route supports local HTTP only; set CURS3D_HTTP_ADDR=http://host:port"
+                .to_string(),
+        );
+    }
+    if trimmed.starts_with("http://") {
+        return Ok(trimmed.to_string());
+    }
+    Ok(format!("http://{}", trimmed))
+}
+
+async fn http_get_json(base: &str, path: &str) -> Result<serde_json::Value, String> {
+    http_json_request("GET", base, path, None).await
+}
+
+async fn http_post_json(
+    base: &str,
+    path: &str,
+    body: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    http_json_request("POST", base, path, Some(body)).await
+}
+
+async fn http_json_request(
+    method: &str,
+    base: &str,
+    path: &str,
+    body: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let authority = base
+        .strip_prefix("http://")
+        .ok_or_else(|| format!("unsupported HTTP base '{}'", base))?;
+    if authority.contains('/') {
+        return Err("CURS3D_HTTP_ADDR must be host:port, without a path".to_string());
+    }
+    let target = if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("/{}", path)
+    };
+    let body_bytes = match body {
+        Some(body) => serde_json::to_vec(&body).map_err(|e| e.to_string())?,
+        None => Vec::new(),
+    };
+
+    let mut request = format!(
+        "{method} {target} HTTP/1.1\r\nHost: {authority}\r\nAccept: application/json\r\nConnection: close\r\n"
+    );
+    if let Ok(token) = std::env::var("CURS3D_API_TOKEN")
+        && !token.is_empty()
+    {
+        request.push_str(&format!("Authorization: Bearer {}\r\n", token));
+    }
+    if method == "POST" {
+        request.push_str("Content-Type: application/json\r\n");
+        request.push_str(&format!("Content-Length: {}\r\n", body_bytes.len()));
+    }
+    request.push_str("\r\n");
+
+    let mut stream = tokio::net::TcpStream::connect(authority)
+        .await
+        .map_err(|e| format!("connect {} failed: {}", authority, e))?;
+    stream
+        .write_all(request.as_bytes())
+        .await
+        .map_err(|e| e.to_string())?;
+    if !body_bytes.is_empty() {
+        stream
+            .write_all(&body_bytes)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    let mut response = Vec::new();
+    stream
+        .read_to_end(&mut response)
+        .await
+        .map_err(|e| e.to_string())?;
+    let raw = String::from_utf8(response).map_err(|e| e.to_string())?;
+    let (head, body) = raw
+        .split_once("\r\n\r\n")
+        .ok_or_else(|| "malformed HTTP response".to_string())?;
+    let status_ok = head
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|code| code.parse::<u16>().ok())
+        .is_some_and(|code| (200..300).contains(&code));
+    let json: serde_json::Value = serde_json::from_str(body).map_err(|e| e.to_string())?;
+    if !status_ok {
+        let err = json
+            .get("error")
+            .and_then(|value| value.as_str())
+            .unwrap_or("HTTP request failed");
+        return Err(err.to_string());
+    }
+    Ok(json)
+}
+
+fn api_data(value: serde_json::Value) -> Result<serde_json::Value, String> {
+    if value.get("ok").and_then(|value| value.as_bool()) == Some(true) {
+        return value
+            .get("data")
+            .cloned()
+            .ok_or_else(|| "API response missing data".to_string());
+    }
+    Err(value
+        .get("error")
+        .and_then(|value| value.as_str())
+        .unwrap_or("API request failed")
+        .to_string())
+}
+
+fn json_u64(value: &serde_json::Value, key: &str) -> Result<u64, String> {
+    value
+        .get(key)
+        .and_then(|value| value.as_u64())
+        .ok_or_else(|| format!("API account response missing {}", key))
 }
 
 #[allow(clippy::too_many_arguments)]

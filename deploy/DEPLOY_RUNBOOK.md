@@ -528,6 +528,33 @@ suivante (cf. `src/consensus/mod.rs::active_validators` ligne 469 et
 `src/core/chain.rs` ligne 2927). **Pas besoin de hardfork** pour ajouter un
 3eme validateur.
 
+### Discovery long terme (plus d'edition manuelle de tous les nodes)
+
+Depuis le patch peerstore/sync-gate, l'ajout d'un validateur suit le modele des
+chains matures : seed/bootnode minimal, peer exchange, peerstore persistant,
+puis state catch-up avant production.
+
+Concretement :
+
+- Un nouveau node doit connaitre **au moins un** bootnode reachable au premier
+  demarrage (`--bootnode /ip4/.../tcp/4337/p2p/...` ou `/dns4/...`).
+- Le nouveau node doit publier son adresse WAN stable avec `--public-addr`; le
+  binaire convertit cette adresse en `/p2p/<PeerId>` et l'annonce dans les
+  `HeightAnnounce` signes.
+- Les peers qui verifient l'annonce (genesis identique, protocol version
+  identique, signature ML-DSA valide) enregistrent ces adresses dans
+  `/var/lib/curs3d/peerstore.json`.
+- Au prochain restart, chaque node relit `peerstore.json` et redial les peers
+  connus automatiquement. Il n'est donc plus necessaire de SSH sur node1/node2
+  pour ajouter manuellement `--bootnode` a chaque nouveau validator.
+- Le sync gate bloque la production tant que le node n'a pas observe un tip
+  verifie stable pendant 3 ticks de production. Un node late-join ou restart ne
+  doit donc plus proposer un bloc sur un tip stale avant d'etre catch-up.
+
+Implication ops : conserver 2-3 bootnodes stables dans les units systemd reste
+utile pour le cold start, mais le mesh vivant s'auto-entretient ensuite via
+`peerstore.json`.
+
 ### Procedure complete (executee le 2026-05-05 pour node3)
 
 #### 1. Provisionner le VPS IONOS

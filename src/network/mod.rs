@@ -7,8 +7,10 @@ use libp2p::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::{Mutex, mpsc};
 use tokio::time::Instant;
 use tracing::{error, info, warn};
@@ -35,6 +37,8 @@ const STARTUP_GRACE_SECS: u64 = 20;
 const PEERLESS_PRODUCTION_AFTER_SECS: u64 = 120;
 const PEER_MESH_SETTLE_SECS: u64 = 15;
 const VERIFIED_TIP_TTL_SECS: u64 = 120;
+const SYNC_STABLE_TICKS_BEFORE_PRODUCTION: u8 = 3;
+const PEERSTORE_MAX_PEERS: usize = 512;
 const REBROADCAST_INTERVAL_SECS: u64 = 5;
 const MAX_PENDING_BROADCASTS: usize = 256;
 /// Maximum size for any deserialized P2P message (16 MB) — prevents OOM from malicious payloads
@@ -319,6 +323,10 @@ pub enum NetworkMessage {
         latest_hash: Vec<u8>,
         genesis_hash: Vec<u8>,
         peer_id: String,
+        /// Dialable public addresses for peer exchange. These are only trusted
+        /// after the announce signature, genesis and protocol version validate.
+        #[serde(default)]
+        public_addrs: Vec<String>,
         /// Optional: public key + signature for verified announces
         public_key: Option<Vec<u8>>,
         signature: Option<Signature>,
@@ -359,6 +367,20 @@ fn default_protocol_version() -> u32 {
     1
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PeerRecord {
+    peer_id: String,
+    addrs: Vec<String>,
+    last_seen_unix: i64,
+    source: String,
+    score: i32,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct PeerStoreFile {
+    peers: Vec<PeerRecord>,
+}
+
 // ─── Behaviour ───────────────────────────────────────────────────────
 
 #[derive(NetworkBehaviour)]
@@ -373,6 +395,9 @@ pub struct NetworkNode {
     pub peer_id: PeerId,
     pub swarm: Swarm<CursBehaviour>,
     pub topic: gossipsub::IdentTopic,
+    advertised_addrs: Vec<Multiaddr>,
+    peerstore_path: Option<PathBuf>,
+    known_peer_addrs: HashMap<String, PeerRecord>,
 }
 
 pub fn topic_name(chain_id: &str, protocol_version: u32) -> String {
@@ -386,6 +411,8 @@ impl NetworkNode {
         topic_name: &str,
         identity_keypair: identity::Keypair,
         public_addrs: &[Multiaddr],
+        advertised_addrs: &[String],
+        peerstore_path: Option<PathBuf>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let topic = gossipsub::IdentTopic::new(topic_name);
 
@@ -427,27 +454,40 @@ impl NetworkNode {
             swarm.add_external_address(addr.clone());
         }
 
-        for bootnode in bootnodes {
-            match bootnode.parse::<Multiaddr>() {
-                Ok(addr) => {
-                    if let Err(err) = swarm.dial(addr.clone()) {
-                        warn!("Failed to dial bootnode {}: {}", addr, err);
-                    } else {
-                        info!("Dialing bootnode {}", addr);
-                    }
-                }
-                Err(err) => warn!("Ignoring invalid bootnode {}: {}", bootnode, err),
-            }
-        }
-
         let peer_id = *swarm.local_peer_id();
         info!("Node started with PeerId: {}", peer_id);
 
-        Ok(NetworkNode {
+        let advertised_addrs = advertised_addrs
+            .iter()
+            .filter_map(|addr| match addr.parse::<Multiaddr>() {
+                Ok(addr) => Some(addr),
+                Err(err) => {
+                    warn!("Ignoring invalid advertised address {}: {}", addr, err);
+                    None
+                }
+            })
+            .collect();
+
+        let mut node = NetworkNode {
             peer_id,
             swarm,
             topic,
-        })
+            advertised_addrs,
+            known_peer_addrs: Self::load_peerstore(peerstore_path.as_deref()),
+            peerstore_path,
+        };
+
+        for bootnode in bootnodes {
+            node.record_peer_addrs_from_strings(
+                &Self::peer_id_from_addr_string(bootnode),
+                std::iter::once(bootnode.clone()),
+                "bootnode",
+            );
+            node.dial_addr_string(bootnode, "bootnode");
+        }
+        node.dial_known_peers("peerstore");
+
+        Ok(node)
     }
 
     pub fn broadcast(
@@ -503,6 +543,175 @@ impl NetworkNode {
             info!("Flushed {} queued network broadcasts", sent);
         }
         *pending = remaining;
+    }
+
+    fn advertised_addr_strings(&self) -> Vec<String> {
+        self.advertised_addrs
+            .iter()
+            .map(ToString::to_string)
+            .collect()
+    }
+
+    fn now_unix() -> i64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64
+    }
+
+    fn peer_id_from_addr_string(addr: &str) -> String {
+        addr.rsplit_once("/p2p/")
+            .map(|(_, peer_id)| peer_id.to_string())
+            .unwrap_or_else(|| addr.to_string())
+    }
+
+    fn load_peerstore(path: Option<&Path>) -> HashMap<String, PeerRecord> {
+        let Some(path) = path else {
+            return HashMap::new();
+        };
+        let contents = match fs::read_to_string(path) {
+            Ok(contents) => contents,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return HashMap::new(),
+            Err(err) => {
+                warn!("Failed to read peerstore {}: {}", path.display(), err);
+                return HashMap::new();
+            }
+        };
+        let store: PeerStoreFile = match serde_json::from_str(&contents) {
+            Ok(store) => store,
+            Err(err) => {
+                warn!("Failed to parse peerstore {}: {}", path.display(), err);
+                return HashMap::new();
+            }
+        };
+
+        store
+            .peers
+            .into_iter()
+            .filter(|record| {
+                !record.peer_id.is_empty()
+                    && record
+                        .addrs
+                        .iter()
+                        .any(|addr| addr.parse::<Multiaddr>().is_ok())
+            })
+            .take(PEERSTORE_MAX_PEERS)
+            .map(|record| (record.peer_id.clone(), record))
+            .collect()
+    }
+
+    fn persist_peerstore(&self) {
+        let Some(path) = &self.peerstore_path else {
+            return;
+        };
+        if let Some(parent) = path.parent()
+            && let Err(err) = fs::create_dir_all(parent)
+        {
+            warn!(
+                "Failed to create peerstore directory {}: {}",
+                parent.display(),
+                err
+            );
+            return;
+        }
+
+        let mut peers: Vec<PeerRecord> = self.known_peer_addrs.values().cloned().collect();
+        peers.sort_by_key(|peer| std::cmp::Reverse(peer.last_seen_unix));
+        peers.truncate(PEERSTORE_MAX_PEERS);
+
+        let store = PeerStoreFile { peers };
+        let contents = match serde_json::to_vec_pretty(&store) {
+            Ok(contents) => contents,
+            Err(err) => {
+                warn!("Failed to serialize peerstore: {}", err);
+                return;
+            }
+        };
+        let tmp_path = path.with_extension("json.tmp");
+        if let Err(err) = fs::write(&tmp_path, contents) {
+            warn!("Failed to write peerstore {}: {}", tmp_path.display(), err);
+            return;
+        }
+        if let Err(err) = fs::rename(&tmp_path, path) {
+            warn!(
+                "Failed to replace peerstore {} with {}: {}",
+                path.display(),
+                tmp_path.display(),
+                err
+            );
+        }
+    }
+
+    fn record_peer_addrs_from_strings<I>(&mut self, peer_id: &str, addrs: I, source: &str)
+    where
+        I: IntoIterator<Item = String>,
+    {
+        if peer_id.is_empty() || peer_id == self.peer_id.to_string() {
+            return;
+        }
+
+        let mut valid_addrs: Vec<String> = addrs
+            .into_iter()
+            .filter(|addr| addr.parse::<Multiaddr>().is_ok())
+            .collect();
+        if valid_addrs.is_empty() {
+            return;
+        }
+        valid_addrs.sort();
+        valid_addrs.dedup();
+
+        let mut changed = false;
+        let record = self
+            .known_peer_addrs
+            .entry(peer_id.to_string())
+            .or_insert_with(|| {
+                changed = true;
+                PeerRecord {
+                    peer_id: peer_id.to_string(),
+                    addrs: Vec::new(),
+                    last_seen_unix: 0,
+                    source: source.to_string(),
+                    score: 0,
+                }
+            });
+        for addr in valid_addrs {
+            if !record.addrs.contains(&addr) {
+                record.addrs.push(addr);
+                changed = true;
+            }
+        }
+        record.addrs.sort();
+        record.addrs.dedup();
+        record.last_seen_unix = Self::now_unix();
+        record.source = source.to_string();
+        if changed {
+            self.persist_peerstore();
+        }
+    }
+
+    fn dial_addr_string(&mut self, addr: &str, context: &str) {
+        match addr.parse::<Multiaddr>() {
+            Ok(addr) => {
+                if let Err(err) = self.swarm.dial(addr.clone()) {
+                    tracing::debug!("Failed to dial {} {}: {}", context, addr, err);
+                } else {
+                    info!("Dialing {} {}", context, addr);
+                }
+            }
+            Err(err) => warn!("Ignoring invalid {} address {}: {}", context, addr, err),
+        }
+    }
+
+    fn dial_known_peers(&mut self, context: &str) {
+        let addrs: Vec<String> = self
+            .known_peer_addrs
+            .values()
+            .filter(|record| record.peer_id != self.peer_id.to_string())
+            .flat_map(|record| record.addrs.iter().cloned())
+            .collect();
+        for addr in addrs {
+            self.dial_addr_string(&addr, context);
+        }
     }
 
     fn switch_topic(&mut self, topic_name: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -614,6 +823,8 @@ impl NetworkNode {
         let mut sync_requested = false;
         let mut sync_deadline: Option<Instant> = None;
         let mut sync_retries: u32 = 0;
+        let mut sync_target_height: Option<u64> = None;
+        let mut sync_stable_ticks: u8 = 0;
 
         // Peer height tracking
         let mut peer_heights: HashMap<String, (u64, Vec<u8>)> = HashMap::new();
@@ -770,6 +981,91 @@ impl NetworkNode {
                         }
 
                         Self::prune_verified_peer_tips(&mut verified_peer_tips, now_instant);
+                        if let Some((peer_height, _, _)) = Self::sync_needed_from_verified_tips(
+                            &verified_peer_tips,
+                            current_height,
+                            &latest_hash,
+                        )
+                            && sync_target_height.is_none_or(|target| peer_height > target)
+                        {
+                            sync_target_height = Some(peer_height);
+                            sync_stable_ticks = 0;
+                        }
+
+                        if let Some(target_height) = sync_target_height {
+                            if current_height < target_height {
+                                let chain_lock = chain.lock().await;
+                                let msg = if target_height.saturating_sub(current_height) > SYNC_BATCH_SIZE {
+                                    NetworkMessage::RequestSnapshot {
+                                        requester_peer_id: self.peer_id.to_string(),
+                                        preferred_height: None,
+                                        start_chunk: 0,
+                                        known_finalized_height: chain_lock.finalized_height(),
+                                        known_finalized_hash: chain_lock
+                                            .finality_tracker
+                                            .finalized_hash
+                                            .clone(),
+                                    }
+                                } else {
+                                    NetworkMessage::RequestBlocks {
+                                        from_height: current_height + 1,
+                                        requester_peer_id: self.peer_id.to_string(),
+                                        expected_prev_hash: chain_lock.latest_hash().to_vec(),
+                                        genesis_hash: chain_lock.genesis_hash().to_vec(),
+                                    }
+                                };
+                                drop(chain_lock);
+                                self.broadcast_or_queue(
+                                    &msg,
+                                    &mut pending_broadcasts,
+                                    "sync-gate catch-up request",
+                                );
+                                sync_requested = true;
+                                sync_deadline = Some(
+                                    Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS),
+                                );
+                                tracing::debug!(
+                                    "Block production paused by sync gate: target_height={}, our_height={}",
+                                    target_height,
+                                    current_height,
+                                );
+                                continue;
+                            }
+
+                            let highest_verified_tip = verified_peer_tips
+                                .values()
+                                .map(|(height, _, _)| *height)
+                                .max()
+                                .unwrap_or(current_height);
+                            if highest_verified_tip > current_height {
+                                sync_target_height = Some(highest_verified_tip);
+                                sync_stable_ticks = 0;
+                                tracing::debug!(
+                                    "Block production paused by sync gate: newer verified tip {} > our height {}",
+                                    highest_verified_tip,
+                                    current_height,
+                                );
+                                continue;
+                            }
+
+                            sync_stable_ticks = sync_stable_ticks.saturating_add(1);
+                            if sync_stable_ticks < SYNC_STABLE_TICKS_BEFORE_PRODUCTION {
+                                tracing::debug!(
+                                    "Block production paused by sync gate: caught up at height {}, waiting stable tick {}/{}",
+                                    current_height,
+                                    sync_stable_ticks,
+                                    SYNC_STABLE_TICKS_BEFORE_PRODUCTION,
+                                );
+                                continue;
+                            }
+                            sync_target_height = None;
+                            sync_stable_ticks = 0;
+                            tracing::info!(
+                                "Sync gate cleared at height {} after stable peer-tip observations",
+                                current_height
+                            );
+                        }
+
                         if let Some((peer_height, _peer_hash, same_height_divergent)) =
                             Self::sync_needed_from_verified_tips(
                                 &verified_peer_tips,
@@ -806,6 +1102,8 @@ impl NetworkNode {
                                 "pre-production sync request",
                             );
                             sync_requested = true;
+                            sync_target_height = Some(peer_height);
+                            sync_stable_ticks = 0;
                             sync_deadline =
                                 Some(Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS));
                             tracing::debug!(
@@ -1009,6 +1307,7 @@ impl NetworkNode {
                         latest_hash,
                         genesis_hash,
                         peer_id: self.peer_id.to_string(),
+                        public_addrs: self.advertised_addr_strings(),
                         public_key,
                         signature,
                         protocol_version,
@@ -1113,6 +1412,7 @@ impl NetworkNode {
                                         latest_hash,
                                         genesis_hash,
                                         peer_id: announce_peer_id,
+                                        public_addrs,
                                         public_key,
                                         signature,
                                         protocol_version: peer_protocol_version,
@@ -1158,6 +1458,12 @@ impl NetworkNode {
                                         }
 
                                         if verified {
+                                            self.record_peer_addrs_from_strings(
+                                                &announce_peer_id,
+                                                public_addrs,
+                                                "verified-height-announce",
+                                            );
+                                            self.dial_known_peers("peer exchange");
                                             verified_peer_tips.insert(
                                                 announce_peer_id.clone(),
                                                 (height, latest_hash.clone(), Instant::now()),
@@ -1484,12 +1790,17 @@ impl NetworkNode {
                         SwarmEvent::Behaviour(CursBehaviourEvent::Mdns(
                             mdns::Event::Discovered(peers)
                         )) => {
-                            for (peer_id, _addr) in peers {
+                            for (peer_id, addr) in peers {
                                 // Skip banned peers
                                 if rate_limiter.is_banned(&peer_id) {
                                     warn!("Ignoring banned peer {}", peer_id);
                                     continue;
                                 }
+                                self.record_peer_addrs_from_strings(
+                                    &peer_id.to_string(),
+                                    std::iter::once(addr.to_string()),
+                                    "mdns",
+                                );
                                 if discovered_peers.insert(peer_id) {
                                     info!("Discovered peer: {}", peer_id);
                                     self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
@@ -2170,6 +2481,7 @@ mod tests {
                     latest_hash: vec![i as u8],
                     genesis_hash: vec![0],
                     peer_id: format!("peer-{i}"),
+                    public_addrs: Vec::new(),
                     public_key: None,
                     signature: None,
                     protocol_version: 5,
@@ -2183,6 +2495,54 @@ mod tests {
             }
             _ => panic!("unexpected queued message"),
         }
+    }
+
+    #[test]
+    fn test_height_announce_legacy_json_defaults_public_addrs() {
+        let message = serde_json::json!({
+            "HeightAnnounce": {
+                "height": 42,
+                "latest_hash": [1, 2, 3],
+                "genesis_hash": [4, 5, 6],
+                "peer_id": "peer-a",
+                "public_key": null,
+                "signature": null,
+                "protocol_version": 5
+            }
+        });
+
+        match serde_json::from_value::<NetworkMessage>(message).expect("legacy announce parses") {
+            NetworkMessage::HeightAnnounce { public_addrs, .. } => {
+                assert!(public_addrs.is_empty());
+            }
+            other => panic!("unexpected message: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_peerstore_reloads_public_peer_addrs() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("peerstore.json");
+        let other_peer_id = identity::Keypair::generate_ed25519()
+            .public()
+            .to_peer_id()
+            .to_string();
+        let addr = format!("/ip4/127.0.0.1/tcp/4337/p2p/{}", other_peer_id);
+        let store = PeerStoreFile {
+            peers: vec![PeerRecord {
+                peer_id: other_peer_id.clone(),
+                addrs: vec![addr.clone()],
+                last_seen_unix: 123,
+                source: "test".to_string(),
+                score: 0,
+            }],
+        };
+        fs::write(&path, serde_json::to_vec(&store).expect("json")).expect("write peerstore");
+
+        let loaded = NetworkNode::load_peerstore(Some(&path));
+        let record = loaded.get(&other_peer_id).expect("peer reloaded");
+        assert_eq!(record.addrs, vec![addr]);
+        assert_eq!(record.source, "test");
     }
 
     #[test]
@@ -2236,7 +2596,7 @@ mod tests {
     async fn build_node(bootnodes: Vec<String>, topic: &str) -> (NetworkNode, Vec<Multiaddr>) {
         let identity = identity::Keypair::generate_ed25519();
         // port 0 -> let the OS pick a free port
-        let mut node = NetworkNode::new(0, &bootnodes, topic, identity, &[])
+        let mut node = NetworkNode::new(0, &bootnodes, topic, identity, &[], &[], None)
             .await
             .expect("node init");
         // Drain swarm until we've observed our bound listen address.
