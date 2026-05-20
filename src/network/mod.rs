@@ -3032,6 +3032,185 @@ mod tests {
         );
     }
 
+    /// Network partition simulation: A is at height N, B starts at 0,
+    /// the FIRST BlockResponse from A to B is dropped (simulating
+    /// per-packet message loss), B's retry loop must re-issue the
+    /// RequestBlocks and eventually catch up via the second response.
+    ///
+    /// This is the path that snapshot sync depends on too: if the first
+    /// response is lost, the receiver MUST be able to recover via
+    /// re-request without operator intervention. The snapshot chunk-
+    /// delivery bug fixed in commit a0cb94d had a similar shape (chunks
+    /// arriving before manifest were silently dropped), and a related
+    /// test confidence in this retry path catches future regressions
+    /// in either flow.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_two_node_sync_recovers_from_dropped_first_response() {
+        let validator = KeyPair::generate();
+        let target_height: u64 = 25;
+        let chain_a = build_chain_with_blocks(&validator, target_height);
+        let chain_b = Blockchain::new();
+        let chain_id = chain_a.chain_id().to_string();
+        let proto_a = chain_a.protocol_version_at_height(chain_a.height());
+        let topic = topic_name(&chain_id, proto_a);
+
+        let expected_hashes: Vec<Vec<u8>> = chain_a.blocks.iter().map(|b| b.hash.clone()).collect();
+        let chain_a = Arc::new(Mutex::new(chain_a));
+        let chain_b = Arc::new(Mutex::new(chain_b));
+
+        let (mut node_a, a_dial_addrs) = build_node(vec![], &topic).await;
+        let bootnodes: Vec<String> = a_dial_addrs
+            .iter()
+            .map(|m| format!("{}/p2p/{}", m, node_a.peer_id))
+            .collect();
+        let (mut node_b, _b_dial) = build_node(bootnodes, &topic).await;
+
+        let b_peer_id = node_b.peer_id;
+        let a_peer_id = node_a.peer_id;
+
+        // Wait for gossipsub mesh to form.
+        let mesh_deadline = tokio::time::Instant::now() + Duration::from_secs(8);
+        let mut a_sees_b = false;
+        let mut b_sees_a = false;
+        while (!a_sees_b || !b_sees_a) && tokio::time::Instant::now() < mesh_deadline {
+            tokio::select! {
+                ev = node_a.swarm.select_next_some() => {
+                    if let SwarmEvent::Behaviour(CursBehaviourEvent::Gossipsub(
+                        gossipsub::Event::Subscribed { peer_id, .. }
+                    )) = ev
+                        && peer_id == b_peer_id
+                    {
+                        a_sees_b = true;
+                    }
+                }
+                ev = node_b.swarm.select_next_some() => {
+                    if let SwarmEvent::Behaviour(CursBehaviourEvent::Gossipsub(
+                        gossipsub::Event::Subscribed { peer_id, .. }
+                    )) = ev
+                        && peer_id == a_peer_id
+                    {
+                        b_sees_a = true;
+                    }
+                }
+                _ = tokio::time::sleep(Duration::from_millis(20)) => {}
+            }
+        }
+        assert!(a_sees_b && b_sees_a, "mesh failed to form");
+
+        // First request from B.
+        let req = {
+            let chain_lock = chain_b.lock().await;
+            NetworkMessage::RequestBlocks {
+                from_height: chain_lock.height() + 1,
+                requester_peer_id: b_peer_id.to_string(),
+                expected_prev_hash: chain_lock.latest_hash().to_vec(),
+                genesis_hash: chain_lock.genesis_hash().to_vec(),
+            }
+        };
+        node_b.broadcast(&req).expect("broadcast first request");
+
+        // We drop A's FIRST response. Subsequent ones flow normally.
+        let mut requests_seen_by_a: u32 = 0;
+        let test_deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+        let mut last_request_at = tokio::time::Instant::now();
+        let retry_interval = Duration::from_millis(500);
+
+        while tokio::time::Instant::now() < test_deadline {
+            let height_b = chain_b.lock().await.height();
+            if height_b >= target_height {
+                break;
+            }
+
+            tokio::select! {
+                ev = node_a.swarm.select_next_some() => {
+                    if let SwarmEvent::Behaviour(CursBehaviourEvent::Gossipsub(
+                        gossipsub::Event::Message { message, .. }
+                    )) = ev
+                        && let Ok(NetworkMessage::RequestBlocks {
+                            from_height, requester_peer_id, expected_prev_hash, genesis_hash
+                        }) = serde_json::from_slice::<NetworkMessage>(&message.data)
+                    {
+                        requests_seen_by_a += 1;
+                        if requests_seen_by_a == 1 {
+                            // Drop the first response — simulate packet loss.
+                            eprintln!("partition test: dropping first BlockResponse from A");
+                            continue;
+                        }
+                        node_a.handle_block_request(
+                            &chain_a,
+                            from_height,
+                            &requester_peer_id,
+                            &expected_prev_hash,
+                            &genesis_hash,
+                            &mut VecDeque::new(),
+                        ).await;
+                    }
+                }
+                ev = node_b.swarm.select_next_some() => {
+                    if let SwarmEvent::Behaviour(CursBehaviourEvent::Gossipsub(
+                        gossipsub::Event::Message { message, .. }
+                    )) = ev
+                        && let Ok(NetworkMessage::BlockResponse {
+                            from_height, target_peer_id, responder_peer_id: _,
+                            genesis_hash, blocks,
+                        }) = serde_json::from_slice::<NetworkMessage>(&message.data)
+                        && target_peer_id == b_peer_id.to_string()
+                    {
+                        let mut sync_requested = true;
+                        let mut sync_deadline: Option<Instant> = None;
+                        let mut sync_retries: u32 = 0;
+                        NetworkNode::handle_block_response(
+                            &chain_b,
+                            from_height,
+                            &genesis_hash,
+                            &blocks,
+                            &mut sync_requested,
+                            &mut sync_deadline,
+                            &mut sync_retries,
+                        ).await;
+                    }
+                }
+                _ = tokio::time::sleep(retry_interval) => {
+                    // Retry the request periodically — mimics what the real
+                    // run_with_chain does after SYNC_TIMEOUT_SECS but on a
+                    // shorter test-friendly interval.
+                    if tokio::time::Instant::now().duration_since(last_request_at) >= retry_interval {
+                        let chain_lock = chain_b.lock().await;
+                        let req = NetworkMessage::RequestBlocks {
+                            from_height: chain_lock.height() + 1,
+                            requester_peer_id: b_peer_id.to_string(),
+                            expected_prev_hash: chain_lock.latest_hash().to_vec(),
+                            genesis_hash: chain_lock.genesis_hash().to_vec(),
+                        };
+                        drop(chain_lock);
+                        let _ = node_b.broadcast(&req);
+                        last_request_at = tokio::time::Instant::now();
+                    }
+                }
+            }
+        }
+
+        assert!(
+            requests_seen_by_a >= 2,
+            "expected ≥2 RequestBlocks from B (one dropped, one retry), got {}",
+            requests_seen_by_a
+        );
+        let final_height = chain_b.lock().await.height();
+        assert_eq!(
+            final_height, target_height,
+            "B failed to recover; final height {} (expected {})",
+            final_height, target_height
+        );
+        let chain_b_lock = chain_b.lock().await;
+        for (i, expected) in expected_hashes.iter().enumerate() {
+            assert_eq!(
+                &chain_b_lock.blocks[i].hash, expected,
+                "hash mismatch at height {} after recovery",
+                i
+            );
+        }
+    }
+
     /// Regression: a `BlockResponse` whose `from_height` is older than
     /// our current tip used to be silently dropped — the strict
     /// `from_height != chain.height() + 1` matcher couldn't tell the
