@@ -668,12 +668,15 @@ Depuis le Mac operateur (qui a l'access node1) :
 
 ```bash
 NODE3_ADDR="<address renvoyee a l'etape 5>"
+# IMPORTANT: --amount est en CUR (entier), PAS en microtokens.
+# Le runbook avait passé des microtokens pendant des mois (bug doc), corrige
+# en 2026-05-20.
 ssh curs3d-node1 "sudo /usr/local/bin/curs3d send \
   --wallet /etc/curs3d/faucet.json \
   --password-file /etc/curs3d/faucet.password \
   --to ${NODE3_ADDR} \
-  --amount 2000000000 \
-  --rpc-addr 127.0.0.1:9545"  # 2000 CUR en microtokens
+  --amount 2000 \
+  --rpc-addr 127.0.0.1:9545"  # 2000 CUR
 ```
 
 Sur node3, lancer la transaction Stake (signee par le wallet validateur) :
@@ -682,8 +685,8 @@ Sur node3, lancer la transaction Stake (signee par le wallet validateur) :
 ssh curs3d-node3 "/usr/local/bin/curs3d stake \
   --wallet /etc/curs3d/validator.json \
   --password-file /etc/curs3d/validator.password \
-  --amount 1500000000 \
-  --rpc-addr 127.0.0.1:9545"  # 1500 CUR de stake
+  --amount 1500 \
+  --rpc-addr 127.0.0.1:9545"  # 1500 CUR de stake (--amount en CUR, pas microtokens)
 ```
 
 #### 9. Attendre l'epoch boundary

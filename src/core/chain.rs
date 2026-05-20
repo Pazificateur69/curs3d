@@ -13,6 +13,7 @@ use crate::consensus::{
 };
 use crate::core::block::{Block, EMPTY_STATE_ROOT_SEED};
 use crate::core::blocktree::{BlockTree, BlockTreeError};
+use crate::core::checkpoints;
 use crate::core::receipt::{IndexedLogEntry, IndexedReceipt, LogFilter, Receipt, ReceiptLocation};
 use crate::core::state_proof::{AccountProof, StorageProof};
 use crate::core::transaction::{Transaction, TransactionKind};
@@ -229,6 +230,15 @@ pub enum ChainError {
     GasOverflow,
     #[error("snapshot error: {0}")]
     SnapshotError(String),
+    #[error(
+        "{kind} at height {height} disagrees with hardcoded checkpoint: expected {expected}, got {got}"
+    )]
+    CheckpointMismatch {
+        height: u64,
+        expected: String,
+        got: String,
+        kind: &'static str,
+    },
     #[error("vm error: {0}")]
     VmError(#[from] VmError),
     #[error("contract not found: {0}")]
@@ -1260,6 +1270,10 @@ impl Blockchain {
                 "snapshot chain_id mismatch".to_string(),
             ));
         }
+        // Hardcoded-checkpoint enforcement on the snapshot. Catches the
+        // case where a malicious peer offers us a fully self-consistent
+        // alternative history that just happens to share our genesis.
+        checkpoints::verify_snapshot_against_known(&self.chain_id(), manifest)?;
         if self.finality_tracker.finalized_height >= manifest.height
             && !self.finality_tracker.finalized_hash.is_empty()
             && self.finality_tracker.finalized_height == manifest.finalized_height
@@ -1922,6 +1936,17 @@ impl Blockchain {
             &self.contracts,
             &self.token_registry,
             &self.governance,
+        )?;
+
+        // Hardcoded-checkpoint enforcement. Runs AFTER state validation
+        // (so we don't waste cycles diffing an invalid block) but BEFORE
+        // any state mutation (so a rejected block leaves no trace). The
+        // checkpoint list is empty for most chains; this is the safety
+        // net for `curs3d-public-testnet` and future mainnet anchors.
+        checkpoints::verify_block_against_known(
+            &self.chain_id(),
+            block.header.height,
+            &block.hash,
         )?;
 
         // Insert into block tree for fork tracking
