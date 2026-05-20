@@ -54,6 +54,23 @@ enum Commands {
         /// change the node's PeerId — bootstrap peers will need the new id.
         #[arg(long, default_value_t = false)]
         reset_p2p_identity: bool,
+        /// Archival mode: never prune any historical blocks. Equivalent to
+        /// `--prune-keep-blocks` set to infinity. Default for now — runtime
+        /// pruning is still gated behind the in-memory `Blockchain::blocks`
+        /// base-offset refactor (`Storage::prune_blocks_below` ships ahead of
+        /// integration so the primitive can be exercised by ops tooling and
+        /// unit tests). Once the chain-side refactor lands, this flag and
+        /// `--prune-keep-blocks` will gate the per-finality prune step.
+        #[arg(long, default_value_t = true)]
+        archival: bool,
+        /// Number of blocks to retain below the finalised height when
+        /// pruning is enabled. Ignored while `--archival` is true (the
+        /// current default). A modest window (10_000 blocks ≈ 28 hours at
+        /// 10 s/block) lets a node still serve recent blocks to peers
+        /// that are behind, without forcing an immediate snapshot
+        /// escalation for the common late-joiner case.
+        #[arg(long, default_value_t = 10_000)]
+        prune_keep_blocks: u64,
     },
     Wallet {
         #[arg(short, long, default_value = "wallet.json")]
@@ -236,7 +253,23 @@ async fn main() {
             http_addr,
             genesis_config,
             reset_p2p_identity,
+            archival,
+            prune_keep_blocks,
         } => {
+            // archival / prune_keep_blocks are parsed but currently
+            // unused at runtime — see the doc comment on those CLI
+            // fields and the SAFETY note on Storage::prune_blocks_below.
+            // Log the effective mode so operators see what their flags
+            // are doing (even if "nothing yet" is the answer right
+            // now).
+            if !archival {
+                eprintln!(
+                    "warn: --archival=false requested with prune-keep-blocks={prune_keep_blocks}; \
+                     runtime pruning is not yet wired (Storage::prune_blocks_below is callable \
+                     from tooling but not from the live chain loop). The node will behave as if \
+                     --archival=true until the chain-side base-offset refactor lands."
+                );
+            }
             run_node(
                 port,
                 &data_dir,

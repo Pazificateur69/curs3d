@@ -299,6 +299,57 @@ impl Storage {
         }
     }
 
+    /// Delete every block stored at height strictly below `retain_from`.
+    /// Returns the count of blocks removed.
+    ///
+    /// SAFETY: caller MUST ensure all heights below `retain_from` are
+    /// already finalised (and the in-memory chain reflects that), since
+    /// pruned blocks can no longer be served to peers or replayed on
+    /// boot. The intended caller passes
+    /// `finalized_height.saturating_sub(retention_window)` so we never
+    /// prune anything that could still be reorg-eligible.
+    ///
+    /// Runtime integration (calling this from inside the live chain
+    /// loop after every finality advance) is deferred — the in-memory
+    /// `Blockchain::blocks: Vec<Block>` is indexed by height and would
+    /// need a base-offset refactor before holes are safe. This method
+    /// ships now so the storage primitive is ready, callable from
+    /// startup-time tooling and from unit tests, and so the live node
+    /// can opt in once the chain-side refactor lands.
+    pub fn prune_blocks_below(&self, retain_from: u64) -> Result<usize, StorageError> {
+        if retain_from == 0 {
+            return Ok(0);
+        }
+        let write = self.db.begin_write().map_err(StorageError::redb)?;
+        let removed;
+        {
+            let mut blocks = write.open_table(BLOCKS_TABLE).map_err(StorageError::redb)?;
+            // Collect keys to remove first so we don't iterate while
+            // mutating. The BLOCKS_TABLE is keyed by u64 big-endian
+            // height bytes, so a lexicographic range [0, retain_from)
+            // is exactly the heights we want.
+            let upper = retain_from.to_be_bytes();
+            let keys_to_remove: Vec<[u8; 8]> = blocks
+                .range::<&[u8]>(..upper.as_slice())
+                .map_err(StorageError::redb)?
+                .filter_map(|entry| entry.ok())
+                .map(|(k, _)| {
+                    let mut buf = [0u8; 8];
+                    buf.copy_from_slice(k.value());
+                    buf
+                })
+                .collect();
+            removed = keys_to_remove.len();
+            for key in keys_to_remove {
+                blocks
+                    .remove(key.as_slice())
+                    .map_err(StorageError::redb)?;
+            }
+        }
+        write.commit().map_err(StorageError::redb)?;
+        Ok(removed)
+    }
+
     pub fn get_height(&self) -> Result<Option<u64>, StorageError> {
         let read = self.db.begin_read().map_err(StorageError::redb)?;
         let meta = read.open_table(META_TABLE).map_err(StorageError::redb)?;
@@ -905,6 +956,79 @@ mod tests {
         let loaded = storage.get_block(0).unwrap().unwrap();
         assert_eq!(loaded.header.height, 0);
         assert_eq!(loaded.hash, genesis.hash);
+    }
+
+    /// Synthesize a Block at a given height for storage-only tests.
+    /// The block is NOT validated by the chain (the header is mutated
+    /// post-construction, so the hash is stale) — these tests exercise
+    /// the storage byte-shuffling layer, not consensus validation.
+    fn synthetic_block_at_height(height: u64) -> Block {
+        let mut b = Block::genesis();
+        b.header.height = height;
+        b
+    }
+
+    #[test]
+    fn prune_blocks_below_removes_only_lower_heights() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = Storage::open(dir.path().join("test_db")).unwrap();
+        for height in 0..20u64 {
+            storage.put_block(&synthetic_block_at_height(height)).unwrap();
+        }
+
+        let removed = storage.prune_blocks_below(10).unwrap();
+        assert_eq!(removed, 10, "should prune heights 0..10 (10 entries)");
+
+        // Heights 0..10 gone.
+        for h in 0..10u64 {
+            assert!(
+                storage.get_block(h).unwrap().is_none(),
+                "block at height {} should be pruned",
+                h
+            );
+        }
+        // Heights 10..20 intact.
+        for h in 10..20u64 {
+            assert!(
+                storage.get_block(h).unwrap().is_some(),
+                "block at height {} must NOT be pruned (retain_from=10)",
+                h
+            );
+        }
+    }
+
+    #[test]
+    fn prune_blocks_below_zero_is_noop() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = Storage::open(dir.path().join("test_db")).unwrap();
+        for height in 0..5u64 {
+            storage.put_block(&synthetic_block_at_height(height)).unwrap();
+        }
+        let removed = storage.prune_blocks_below(0).unwrap();
+        assert_eq!(removed, 0);
+        for h in 0..5u64 {
+            assert!(storage.get_block(h).unwrap().is_some());
+        }
+    }
+
+    #[test]
+    fn prune_blocks_below_handles_empty_table() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = Storage::open(dir.path().join("test_db")).unwrap();
+        let removed = storage.prune_blocks_below(100).unwrap();
+        assert_eq!(removed, 0);
+    }
+
+    #[test]
+    fn prune_blocks_below_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = Storage::open(dir.path().join("test_db")).unwrap();
+        for height in 0..10u64 {
+            storage.put_block(&synthetic_block_at_height(height)).unwrap();
+        }
+        assert_eq!(storage.prune_blocks_below(5).unwrap(), 5);
+        // Second call removes nothing — the heights are already gone.
+        assert_eq!(storage.prune_blocks_below(5).unwrap(), 0);
     }
 
     #[test]
