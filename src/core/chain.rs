@@ -70,6 +70,25 @@ const PERSISTENCE_QUEUE_CAPACITY: usize = 8;
 const PERSISTENCE_SHUTDOWN_SIGNAL_TIMEOUT: Duration = Duration::from_secs(1);
 const PERSISTENCE_JOIN_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Protocol version that activates the `SparseMerkleTrie` state-root
+/// (replaces the linear-Merkle commitment used through v5). Bumping the
+/// state-root scheme is a consensus-affecting change so it ships under
+/// a hardfork. The dispatcher at `compute_state_root_at_protocol`
+/// selects between v5 and v6 based on the protocol version returned by
+/// `protocol_version_at_height(height)`.
+pub const V6_PROTOCOL_VERSION: u32 = 6;
+
+/// Block height at which the v6 hardfork activates on the public
+/// testnet. Currently set to `u64::MAX` — the hardfork is DORMANT.
+/// The full v5↔v6 dispatch is wired into every state-root call site
+/// in this commit; switching the live network to v6 is a one-line
+/// change to this constant + a coordinated rollout. Production
+/// activation requires (1) the audit cycle to verify the SMT root
+/// implementation, (2) a soak test on a localnet at v6, and (3) the
+/// 3-validator testnet to coordinate a binary rollout at the same
+/// pre-announced height.
+pub const V6_HARDFORK_HEIGHT_TESTNET: u64 = u64::MAX;
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GenesisAllocation {
     pub public_key: String,
@@ -1041,20 +1060,30 @@ impl Blockchain {
     /// the baseline at their specified heights, in declaration order, for
     /// chains that need to model historical version transitions.
     pub fn protocol_version_at_height(&self, height: u64) -> u32 {
-        if self.genesis_config.upgrades.is_empty() {
-            // Default: ML-DSA-87 + slot-leader + EVM dispatch apply uniformly.
-            // We return v5 even at height 0 so the gossipsub topic name
-            // (which is derived from protocol_version) is identical across
-            // freshly-started nodes and nodes that have already synced a
-            // few blocks.
-            return 5;
-        }
-        let mut version = 1u32;
-        for upgrade in &self.genesis_config.upgrades {
-            if upgrade.height <= height {
-                version = upgrade.version;
+        // Honour explicit upgrades from genesis_config first. A bare
+        // chain (no explicit upgrades) gets the v5 baseline; chains
+        // with explicit upgrades replay them in order.
+        let mut version = if self.genesis_config.upgrades.is_empty() {
+            5u32
+        } else {
+            let mut v = 1u32;
+            for upgrade in &self.genesis_config.upgrades {
+                if upgrade.height <= height {
+                    v = upgrade.version;
+                }
             }
+            v
+        };
+
+        // v6 SMT state-root hardfork: triggered by the
+        // `V6_HARDFORK_HEIGHT_TESTNET` constant if it's set to a
+        // reachable height. Currently `u64::MAX` (= dormant), so the
+        // check below only fires after the constant is bumped and a
+        // coordinated rollout reaches the chosen height.
+        if height >= V6_HARDFORK_HEIGHT_TESTNET && version < V6_PROTOCOL_VERSION {
+            version = V6_PROTOCOL_VERSION;
         }
+
         version
     }
 
@@ -1931,11 +1960,21 @@ impl Blockchain {
         let mut transactions = vec![coinbase];
         transactions.extend(block_txs);
 
+        // State root must use the protocol version corresponding to
+        // the height of the block being produced. At v5 baseline this
+        // is identical to the prior `compute_state_root_full` call.
+        // After the v6 hardfork (gated by `V6_HARDFORK_HEIGHT_TESTNET`)
+        // becomes active, this is the SMT root.
+        let state_root = Self::compute_state_root_at_protocol(
+            &projected_accounts,
+            &projected_contracts,
+            protocol_version,
+        );
         Ok(Block::new(
             protocol_version,
             height,
             prev_hash,
-            Self::compute_state_root_full(&projected_accounts, &projected_contracts),
+            state_root,
             total_gas_used,
             base_fee_per_gas,
             transactions,
@@ -2336,7 +2375,39 @@ impl Blockchain {
         Self::compute_state_root_full(accounts, &HashMap::new())
     }
 
+    /// State root for the current protocol baseline (v5). Equivalent to
+    /// `compute_state_root_at_protocol(.., 5)` — kept as the default
+    /// entry point so existing call sites work unchanged. After the v6
+    /// `SparseMerkleTrie` hardfork (gated by `V6_HARDFORK_HEIGHT`)
+    /// activates, call sites that know the height should switch to
+    /// `compute_state_root_at_protocol` and pass the protocol version
+    /// derived from that height. See `compute_state_root_v6_smt`.
     pub fn compute_state_root_full(
+        accounts: &HashMap<Vec<u8>, AccountState>,
+        contracts: &HashMap<Vec<u8>, ContractState>,
+    ) -> Vec<u8> {
+        Self::compute_state_root_v5_merkle(accounts, contracts)
+    }
+
+    /// Dispatch state-root computation by protocol version. Versions
+    /// `<= 5` use the v5 linear-Merkle root (sorted leaves, one big
+    /// `merkle_root`); versions `>= 6` use the `SparseMerkleTrie` root
+    /// which gives O(log N) inclusion proofs of fixed depth and a
+    /// commitment that is stable under set permutations (so a snapshot
+    /// applied in any leaf order yields the same root).
+    pub fn compute_state_root_at_protocol(
+        accounts: &HashMap<Vec<u8>, AccountState>,
+        contracts: &HashMap<Vec<u8>, ContractState>,
+        protocol_version: u32,
+    ) -> Vec<u8> {
+        if protocol_version >= V6_PROTOCOL_VERSION {
+            Self::compute_state_root_v6_smt(accounts, contracts)
+        } else {
+            Self::compute_state_root_v5_merkle(accounts, contracts)
+        }
+    }
+
+    fn compute_state_root_v5_merkle(
         accounts: &HashMap<Vec<u8>, AccountState>,
         contracts: &HashMap<Vec<u8>, ContractState>,
     ) -> Vec<u8> {
@@ -2346,6 +2417,46 @@ impl Blockchain {
 
         let leaves = Self::state_leaf_hashes(accounts, contracts);
         hash::merkle_root(&leaves)
+    }
+
+    /// v6 state root: insert every account + contract into a
+    /// `SparseMerkleTrie` keyed by `SHA3(addr_with_kind_prefix)`, then
+    /// return the 32-byte trie root. The kind prefix (`0x00` for
+    /// accounts, `0x01` for contracts) prevents a collision where a
+    /// contract and an account share the same address-hash slot.
+    ///
+    /// The empty-state root matches `SparseMerkleTrie::root()` on an
+    /// empty trie, which is its own well-defined constant (not the
+    /// same as v5's `sha3(EMPTY_STATE_ROOT_SEED)`).
+    fn compute_state_root_v6_smt(
+        accounts: &HashMap<Vec<u8>, AccountState>,
+        contracts: &HashMap<Vec<u8>, ContractState>,
+    ) -> Vec<u8> {
+        let mut trie = crate::trie::SparseMerkleTrie::new();
+
+        let mut account_entries: Vec<(&Vec<u8>, &AccountState)> = accounts.iter().collect();
+        account_entries.sort_by_key(|(a, _)| *a);
+        for (address, state) in account_entries {
+            let mut prefixed = Vec::with_capacity(address.len() + 1);
+            prefixed.push(0x00);
+            prefixed.extend_from_slice(address);
+            let key = hash::sha3_hash(&prefixed);
+            let value = Self::account_leaf_hash(address, state);
+            trie.insert(key, value);
+        }
+
+        let mut contract_entries: Vec<(&Vec<u8>, &ContractState)> = contracts.iter().collect();
+        contract_entries.sort_by_key(|(a, _)| *a);
+        for (address, state) in contract_entries {
+            let mut prefixed = Vec::with_capacity(address.len() + 1);
+            prefixed.push(0x01);
+            prefixed.extend_from_slice(address);
+            let key = hash::sha3_hash(&prefixed);
+            let value = Self::contract_leaf_hash(address, state);
+            trie.insert(key, value);
+        }
+
+        trie.root()
     }
 
     fn account_leaf_hash(address: &[u8], state: &AccountState) -> Vec<u8> {
@@ -2929,8 +3040,16 @@ impl Blockchain {
         }
         Self::apply_coinbase_transaction(&mut projected_accounts, coinbase)?;
 
-        let computed_state_root =
-            Self::compute_state_root_full(&projected_accounts, &projected_contracts);
+        // Dispatch via protocol version derived from the block's
+        // height so we validate v6 SMT roots once that hardfork is
+        // active. At the v5 baseline this dispatcher returns the same
+        // bytes as the prior `compute_state_root_full` call.
+        let block_protocol_version = self.protocol_version_at_height(block.header.height);
+        let computed_state_root = Self::compute_state_root_at_protocol(
+            &projected_accounts,
+            &projected_contracts,
+            block_protocol_version,
+        );
         if block.header.state_root != computed_state_root {
             // Diagnostic dump: when this fires on restart it crash-loops the
             // node, and historically we couldn't tell *what* part of the
@@ -6594,6 +6713,100 @@ mod tests {
             chain.pending_transactions[idx_system].mempool_class(),
             MempoolClass::System
         );
+    }
+
+    // ───────── v6 SparseMerkleTrie state root ─────────
+
+    fn account_with_balance(balance: u64) -> AccountState {
+        AccountState {
+            balance,
+            nonce: 0,
+            staked_balance: 0,
+            pending_unstakes: Vec::new(),
+            validator_active_from_height: 0,
+            jailed_until_height: 0,
+            public_key: None,
+        }
+    }
+
+    #[test]
+    fn v6_smt_root_is_deterministic_under_insertion_order() {
+        let addr_a = vec![0x01; 20];
+        let addr_b = vec![0x02; 20];
+        let addr_c = vec![0x03; 20];
+
+        let mut accounts_1 = HashMap::new();
+        accounts_1.insert(addr_a.clone(), account_with_balance(100));
+        accounts_1.insert(addr_b.clone(), account_with_balance(200));
+        accounts_1.insert(addr_c.clone(), account_with_balance(300));
+
+        let mut accounts_2 = HashMap::new();
+        accounts_2.insert(addr_c, account_with_balance(300));
+        accounts_2.insert(addr_a, account_with_balance(100));
+        accounts_2.insert(addr_b, account_with_balance(200));
+
+        let root_1 =
+            Blockchain::compute_state_root_at_protocol(&accounts_1, &HashMap::new(), 6);
+        let root_2 =
+            Blockchain::compute_state_root_at_protocol(&accounts_2, &HashMap::new(), 6);
+        assert_eq!(
+            root_1, root_2,
+            "v6 SMT root must be independent of HashMap iteration order"
+        );
+    }
+
+    #[test]
+    fn v6_smt_root_differs_from_v5_merkle_root() {
+        // Different commitment schemes → different bytes for non-empty
+        // state. (The empty-state case is intentionally allowed to
+        // differ — see the documentation on `compute_state_root_v6_smt`.)
+        let mut accounts = HashMap::new();
+        accounts.insert(vec![0x42; 20], account_with_balance(1_000_000));
+
+        let v5 = Blockchain::compute_state_root_at_protocol(&accounts, &HashMap::new(), 5);
+        let v6 = Blockchain::compute_state_root_at_protocol(&accounts, &HashMap::new(), 6);
+        assert_ne!(v5, v6, "v5 and v6 commitments must produce different bytes");
+        assert_eq!(v6.len(), 32, "v6 SMT root must be 32 bytes");
+    }
+
+    #[test]
+    fn dispatch_below_v6_uses_legacy_merkle() {
+        // For any protocol version < 6 the dispatcher must produce the
+        // EXACT same bytes as the legacy compute_state_root_full.
+        // Without this guarantee, switching call sites to the dispatcher
+        // would silently change the bytes that go on-chain — a hardfork
+        // in disguise.
+        let mut accounts = HashMap::new();
+        accounts.insert(vec![0x05; 20], account_with_balance(500));
+        accounts.insert(vec![0x06; 20], account_with_balance(600));
+
+        let legacy = Blockchain::compute_state_root_full(&accounts, &HashMap::new());
+        let dispatched_v1 =
+            Blockchain::compute_state_root_at_protocol(&accounts, &HashMap::new(), 1);
+        let dispatched_v3 =
+            Blockchain::compute_state_root_at_protocol(&accounts, &HashMap::new(), 3);
+        let dispatched_v5 =
+            Blockchain::compute_state_root_at_protocol(&accounts, &HashMap::new(), 5);
+        assert_eq!(dispatched_v1, legacy);
+        assert_eq!(dispatched_v3, legacy);
+        assert_eq!(dispatched_v5, legacy);
+    }
+
+    #[test]
+    fn v6_hardfork_height_is_dormant_at_baseline() {
+        // The hardfork constant ships as `u64::MAX`. Make sure
+        // protocol_version_at_height never returns v6 unless the
+        // constant is explicitly lowered or a genesis upgrade asks for
+        // it. Regression guard against an accidental constant bump.
+        assert_eq!(V6_HARDFORK_HEIGHT_TESTNET, u64::MAX);
+        let chain = Blockchain::new();
+        assert_eq!(chain.protocol_version_at_height(0), 5);
+        assert_eq!(chain.protocol_version_at_height(1), 5);
+        assert_eq!(chain.protocol_version_at_height(1_000_000), 5);
+        assert_eq!(chain.protocol_version_at_height(u64::MAX - 1), 5);
+        // Only the absolute top, which is intentionally unreachable in
+        // a real chain, would trigger v6 with the current constant.
+        assert_eq!(chain.protocol_version_at_height(u64::MAX), V6_PROTOCOL_VERSION);
     }
 
     #[test]
