@@ -1593,6 +1593,16 @@ impl NetworkNode {
                                         known_finalized_hash,
                                     } => {
                                         let chain_lock = chain.lock().await;
+                                        // Don't serve a snapshot if our own state is at
+                                        // genesis — we'd just send an empty h=0 manifest
+                                        // that the requester would (rightly) discard now
+                                        // that the receiver-side height-monotonicity check
+                                        // is in place. Avoids the freshly-wiped
+                                        // mutual-loop that consumed all chunk-send budget
+                                        // on the live testnet 2026-05-20.
+                                        if chain_lock.height() == 0 {
+                                            continue;
+                                        }
                                         if known_finalized_height > 0 {
                                             let checkpoint_ok = chain_lock
                                                 .blocks
@@ -1657,6 +1667,19 @@ impl NetworkNode {
                                                         start_chunk,
                                                         total_chunks
                                                     );
+                                                    // Throttle chunk publish to avoid drowning
+                                                    // gossipsub's per-peer outbound queue. A
+                                                    // 200+-chunk snapshot publishes ~316 MB of
+                                                    // JSON-encoded gossip in a tight loop; in
+                                                    // production this overflowed the receiver's
+                                                    // mesh-input buffer and dropped every chunk
+                                                    // silently (live testnet 2026-05-20). 50 ms
+                                                    // spacing makes a 243-chunk snapshot take
+                                                    // ~12 s, still well under the receiver's
+                                                    // sync timeout (30 s), and gives libp2p time
+                                                    // to drain between chunks.
+                                                    let chunk_pace =
+                                                        Duration::from_millis(50);
                                                     for chunk in to_send {
                                                         match bincode::serialize(&chunk) {
                                                             Ok(data) => {
@@ -1679,6 +1702,7 @@ impl NetworkNode {
                                                                 chunk.index, err
                                                             ),
                                                         }
+                                                        tokio::time::sleep(chunk_pace).await;
                                                     }
                                                 }
                                                 (Err(err), _) => warn!(
@@ -1705,12 +1729,34 @@ impl NetworkNode {
                                                 let chain_lock = chain.lock().await;
                                                 let our_chain_id = chain_lock.chain_id().to_string();
                                                 let our_genesis = chain_lock.genesis_hash().to_vec();
+                                                let our_height = chain_lock.height();
                                                 let our_finalized_height = chain_lock.finalized_height();
                                                 let our_finalized_hash = chain_lock
                                                     .finality_tracker
                                                     .finalized_hash
                                                     .clone();
                                                 drop(chain_lock);
+
+                                                // Don't accept a snapshot that goes backwards
+                                                // or sideways. Without this guard, two
+                                                // freshly-wiped nodes that boot together
+                                                // mutually apply each other's h=0 snapshots in
+                                                // a tight loop, never reaching the canonical
+                                                // peer that has the actual chain head.
+                                                // Observed live 2026-05-20 between node2 and
+                                                // node3 post-wipe. The `<=` check covers both
+                                                // the strict "going backwards" case and the
+                                                // "h=0 mutual" case (both peers see each
+                                                // other's height as 0 and would otherwise
+                                                // apply a useless empty-state snapshot).
+                                                if manifest.height <= our_height {
+                                                    tracing::debug!(
+                                                        "Ignoring snapshot manifest at height {} (we're already at {})",
+                                                        manifest.height,
+                                                        our_height
+                                                    );
+                                                    continue;
+                                                }
 
                                                 if manifest.chain_id != our_chain_id {
                                                     warn!(
