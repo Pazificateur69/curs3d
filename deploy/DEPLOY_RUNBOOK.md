@@ -673,7 +673,7 @@ ssh curs3d-node1 "sudo /usr/local/bin/curs3d send \
   --password-file /etc/curs3d/faucet.password \
   --to ${NODE3_ADDR} \
   --amount 2000000000 \
-  --rpc 127.0.0.1:9545"  # 2000 CUR en microtokens
+  --rpc-addr 127.0.0.1:9545"  # 2000 CUR en microtokens
 ```
 
 Sur node3, lancer la transaction Stake (signee par le wallet validateur) :
@@ -683,7 +683,7 @@ ssh curs3d-node3 "/usr/local/bin/curs3d stake \
   --wallet /etc/curs3d/validator.json \
   --password-file /etc/curs3d/validator.password \
   --amount 1500000000 \
-  --rpc 127.0.0.1:9545"  # 1500 CUR de stake
+  --rpc-addr 127.0.0.1:9545"  # 1500 CUR de stake
 ```
 
 #### 9. Attendre l'epoch boundary
