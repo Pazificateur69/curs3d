@@ -1,24 +1,24 @@
 [build.env]
 passthrough = ["RUSTUP_TOOLCHAIN"]
 
-# Cross's default images ship with stable Rust pre-installed via rustup.
-# Our project requires nightly (multiaddr 0.18.2 type-inference issues on
-# stable). Install nightly side-by-side and let RUSTUP_TOOLCHAIN=nightly
-# (passed through from the host) select it at compile time. Using
-# `rustup install nightly` (not `rustup-init`) avoids the rust-std-host
-# conflict that `rustup-init --target X` introduces by trying to overwrite
-# pre-existing files.
+# Newer cross images (>= 0.2.5) ship without rustup pre-installed. Install
+# rustup first via the official rustup-init script, then add nightly. Using
+# the rustup-init.sh stable URL (idempotent: if rustup is already there it
+# just no-ops). The `-y` flag accepts defaults non-interactively.
+#
+# We need nightly: multiaddr 0.18.2 has type-inference issues on stable
+# >= 1.94 that we have not patched out.
 
 [target.aarch64-unknown-linux-gnu]
 pre-build = [
-    "rustup toolchain install nightly --profile minimal --component rust-std",
-    "rustup update nightly",
-    "rustup target add --toolchain nightly aarch64-unknown-linux-gnu",
+    "command -v rustup >/dev/null || (curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none --profile minimal -t aarch64-unknown-linux-gnu)",
+    "export PATH=$HOME/.cargo/bin:$PATH && rustup toolchain install nightly --profile minimal --component rust-src",
+    "export PATH=$HOME/.cargo/bin:$PATH && rustup target add --toolchain nightly aarch64-unknown-linux-gnu",
 ]
 
 [target.x86_64-unknown-linux-gnu]
 pre-build = [
-    "rustup toolchain install nightly --profile minimal --component rust-std",
-    "rustup update nightly",
-    "rustup target add --toolchain nightly x86_64-unknown-linux-gnu",
+    "command -v rustup >/dev/null || (curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none --profile minimal -t x86_64-unknown-linux-gnu)",
+    "export PATH=$HOME/.cargo/bin:$PATH && rustup toolchain install nightly --profile minimal --component rust-src",
+    "export PATH=$HOME/.cargo/bin:$PATH && rustup target add --toolchain nightly x86_64-unknown-linux-gnu",
 ]

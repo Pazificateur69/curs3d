@@ -1,6 +1,10 @@
 target/
 *.exe
 *.pdb
+
+# Local cross-compile linker config (machine-specific gcc cross binaries).
+# The Docker-based `cross` path uses Cross.toml — committed.
+.cargo/config.toml
 wallet.json
 *.password
 *.log
