@@ -40,6 +40,14 @@ const VERIFIED_TIP_TTL_SECS: u64 = 120;
 const SYNC_STABLE_TICKS_BEFORE_PRODUCTION: u8 = 3;
 const PEERSTORE_MAX_PEERS: usize = 512;
 const REBROADCAST_INTERVAL_SECS: u64 = 5;
+/// Hard cap on chunks held in the pre-manifest buffer to absorb chunks
+/// that race ahead of their `SnapshotManifest`. Without this buffer,
+/// out-of-order chunks were silently dropped at the receiver, and
+/// snapshot sync would never converge even though manifests arrived
+/// normally. 2048 × ~256 KB = ~500 MB worst case before we start
+/// dropping; in practice the buffer drains within a few hundred ms when
+/// the manifest catches up.
+const MAX_BUFFERED_PRE_MANIFEST_CHUNKS: usize = 2048;
 const MAX_PENDING_BROADCASTS: usize = 256;
 /// Maximum size for any deserialized P2P message (16 MB) — prevents OOM from malicious payloads
 const MAX_DESERIALIZE_SIZE: u64 = 16 * 1024 * 1024;
@@ -831,6 +839,14 @@ impl NetworkNode {
         let mut verified_peer_tips: HashMap<String, (u64, Vec<u8>, Instant)> = HashMap::new();
         let mut pending_snapshot_manifest: Option<SnapshotManifest> = None;
         let mut pending_snapshot_chunks: HashMap<usize, StateChunk> = HashMap::new();
+        // Chunks that arrived BEFORE their matching `SnapshotManifest`.
+        // Gossipsub does not strictly order messages between distinct
+        // publishes, so a chunk can land in the receiver before the
+        // manifest that announces it. Keyed by (height, chunk_index) so
+        // the buffer can hold chunks for any pending snapshot height.
+        // Drained on matching manifest arrival; entries for heights
+        // below the active manifest are evicted at the same time.
+        let mut pre_manifest_chunk_buffer: HashMap<(u64, usize), StateChunk> = HashMap::new();
         let mut pending_broadcasts: VecDeque<NetworkMessage> = VecDeque::new();
 
         // Block deduplication cache
@@ -1592,44 +1608,87 @@ impl NetworkNode {
                                                 continue;
                                             }
                                         }
-                                        let manifest = chain_lock
-                                            .create_snapshot()
-                                            .ok()
-                                            .filter(|manifest| {
-                                                preferred_height
-                                                    .is_none_or(|height| manifest.height == height)
-                                            })
-                                            .or_else(|| chain_lock.create_snapshot().ok());
+                                        let manifest_result = chain_lock.create_snapshot();
+                                        let manifest = match manifest_result {
+                                            Ok(m)
+                                                if preferred_height
+                                                    .is_none_or(|h| m.height == h) =>
+                                            {
+                                                Some(m)
+                                            }
+                                            Ok(_) => chain_lock.create_snapshot().ok(),
+                                            Err(err) => {
+                                                warn!(
+                                                    "create_snapshot failed for peer {}: {}",
+                                                    requester_peer_id, err
+                                                );
+                                                None
+                                            }
+                                        };
                                         if let Some(manifest) = manifest {
                                             let snapshot_height = manifest.height;
-                                            if let (Ok(data), Ok(chunks)) = (
-                                                bincode::serialize(&manifest),
-                                                chain_lock.get_snapshot_chunks(snapshot_height),
-                                            ) {
-                                                drop(chain_lock);
-                                                let msg = NetworkMessage::SnapshotManifest {
-                                                    target_peer_id: requester_peer_id.clone(),
-                                                    data,
-                                                };
-                                                self.broadcast_or_queue(
-                                                    &msg,
-                                                    &mut pending_broadcasts,
-                                                    "snapshot manifest",
-                                                );
-                                                for chunk in chunks.into_iter().skip(start_chunk) {
-                                                    if let Ok(data) = bincode::serialize(&chunk) {
-                                                        let msg = NetworkMessage::SnapshotChunk {
-                                                            target_peer_id: requester_peer_id.clone(),
-                                                            height: snapshot_height,
+                                            let serialized = bincode::serialize(&manifest);
+                                            let chunks_result =
+                                                chain_lock.get_snapshot_chunks(snapshot_height);
+                                            match (serialized, chunks_result) {
+                                                (Ok(data), Ok(chunks)) => {
+                                                    drop(chain_lock);
+                                                    let manifest_msg =
+                                                        NetworkMessage::SnapshotManifest {
+                                                            target_peer_id: requester_peer_id
+                                                                .clone(),
                                                             data,
                                                         };
-                                                        self.broadcast_or_queue(
-                                                            &msg,
-                                                            &mut pending_broadcasts,
-                                                            "snapshot chunk",
-                                                        );
+                                                    self.broadcast_or_queue(
+                                                        &manifest_msg,
+                                                        &mut pending_broadcasts,
+                                                        "snapshot manifest",
+                                                    );
+                                                    let total_chunks = chunks.len();
+                                                    let to_send: Vec<_> = chunks
+                                                        .into_iter()
+                                                        .skip(start_chunk)
+                                                        .collect();
+                                                    info!(
+                                                        "Sending snapshot at height {} to {}: {} chunks (start_chunk={}, total_persisted={})",
+                                                        snapshot_height,
+                                                        requester_peer_id,
+                                                        to_send.len(),
+                                                        start_chunk,
+                                                        total_chunks
+                                                    );
+                                                    for chunk in to_send {
+                                                        match bincode::serialize(&chunk) {
+                                                            Ok(data) => {
+                                                                let msg =
+                                                                    NetworkMessage::SnapshotChunk {
+                                                                        target_peer_id:
+                                                                            requester_peer_id
+                                                                                .clone(),
+                                                                        height: snapshot_height,
+                                                                        data,
+                                                                    };
+                                                                self.broadcast_or_queue(
+                                                                    &msg,
+                                                                    &mut pending_broadcasts,
+                                                                    "snapshot chunk",
+                                                                );
+                                                            }
+                                                            Err(err) => warn!(
+                                                                "Failed to serialize snapshot chunk index {}: {}",
+                                                                chunk.index, err
+                                                            ),
+                                                        }
                                                     }
                                                 }
+                                                (Err(err), _) => warn!(
+                                                    "Failed to serialize snapshot manifest at height {}: {}",
+                                                    snapshot_height, err
+                                                ),
+                                                (_, Err(err)) => warn!(
+                                                    "Failed to fetch snapshot chunks at height {} for peer {}: {}",
+                                                    snapshot_height, requester_peer_id, err
+                                                ),
                                             }
                                         }
                                     }
@@ -1710,29 +1769,42 @@ impl NetworkNode {
                                                 if !same_session {
                                                     pending_snapshot_chunks.clear();
                                                 }
+                                                let manifest_height = manifest.height;
+                                                let manifest_chunk_count = manifest.chunk_count;
                                                 pending_snapshot_manifest = Some(manifest);
-                                            }
-                                            Err(err) => warn!("Failed to deserialize snapshot manifest: {}", err),
-                                        }
-                                    }
-                                    NetworkMessage::SnapshotChunk { target_peer_id, height, data } => {
-                                        if target_peer_id != self.peer_id.to_string() {
-                                            continue;
-                                        }
-                                        let Some(manifest) = pending_snapshot_manifest.clone() else {
-                                            continue;
-                                        };
-                                        if manifest.height != height {
-                                            continue;
-                                        }
-                                        match bounded_deserialize::<StateChunk>(&data) {
-                                            Ok(chunk) => {
-                                                pending_snapshot_chunks.insert(chunk.index, chunk);
-                                                if pending_snapshot_chunks.len() == manifest.chunk_count {
-                                                    let mut ordered = Vec::with_capacity(manifest.chunk_count);
+
+                                                // Drain any pre-manifest chunks that match this
+                                                // manifest's height (chunks that won the race
+                                                // against gossipsub's not-strictly-ordered
+                                                // delivery). Stale chunks at lower heights are
+                                                // discarded.
+                                                let drained: Vec<((u64, usize), StateChunk)> =
+                                                    pre_manifest_chunk_buffer
+                                                        .iter()
+                                                        .filter(|((h, _), _)| *h == manifest_height)
+                                                        .map(|(k, v)| (*k, v.clone()))
+                                                        .collect();
+                                                for (key, chunk) in drained {
+                                                    pre_manifest_chunk_buffer.remove(&key);
+                                                    pending_snapshot_chunks.insert(chunk.index, chunk);
+                                                }
+                                                pre_manifest_chunk_buffer
+                                                    .retain(|(h, _), _| *h > manifest_height);
+
+                                                // If buffered chunks already complete the
+                                                // snapshot, fire the apply path immediately.
+                                                if pending_snapshot_chunks.len()
+                                                    == manifest_chunk_count
+                                                    && let Some(manifest) =
+                                                        pending_snapshot_manifest.clone()
+                                                {
+                                                    let mut ordered =
+                                                        Vec::with_capacity(manifest_chunk_count);
                                                     let mut complete = true;
-                                                    for index in 0..manifest.chunk_count {
-                                                        if let Some(chunk) = pending_snapshot_chunks.remove(&index) {
+                                                    for index in 0..manifest_chunk_count {
+                                                        if let Some(chunk) =
+                                                            pending_snapshot_chunks.remove(&index)
+                                                        {
                                                             ordered.push(chunk);
                                                         } else {
                                                             complete = false;
@@ -1741,9 +1813,14 @@ impl NetworkNode {
                                                     }
                                                     if complete {
                                                         let mut chain_lock = chain.lock().await;
-                                                        match chain_lock.apply_snapshot(&manifest, &ordered) {
+                                                        match chain_lock
+                                                            .apply_snapshot(&manifest, &ordered)
+                                                        {
                                                             Ok(()) => {
-                                                                info!("Applied snapshot at height {}", manifest.height);
+                                                                info!(
+                                                                    "Applied snapshot at height {} (from buffered chunks)",
+                                                                    manifest.height
+                                                                );
                                                                 tracing::info!(
                                                                     target: "audit",
                                                                     event = "snapshot_sync_applied",
@@ -1751,12 +1828,23 @@ impl NetworkNode {
                                                                     chunk_count = manifest.chunk_count,
                                                                 );
                                                                 if manifest.tip_height > manifest.height {
-                                                                    let request = NetworkMessage::RequestBlocks {
-                                                                        from_height: manifest.height.saturating_add(1),
-                                                                        requester_peer_id: self.peer_id.to_string(),
-                                                                        expected_prev_hash: chain_lock.latest_hash().to_vec(),
-                                                                        genesis_hash: chain_lock.genesis_hash().to_vec(),
-                                                                    };
+                                                                    let request =
+                                                                        NetworkMessage::RequestBlocks {
+                                                                            from_height: manifest
+                                                                                .height
+                                                                                .saturating_add(1),
+                                                                            requester_peer_id: self
+                                                                                .peer_id
+                                                                                .to_string(),
+                                                                            expected_prev_hash:
+                                                                                chain_lock
+                                                                                    .latest_hash()
+                                                                                    .to_vec(),
+                                                                            genesis_hash: chain_lock
+                                                                                .genesis_hash()
+                                                                                .to_vec(),
+                                                                        };
+                                                                    drop(chain_lock);
                                                                     self.broadcast_or_queue(
                                                                         &request,
                                                                         &mut pending_broadcasts,
@@ -1764,7 +1852,10 @@ impl NetworkNode {
                                                                     );
                                                                     sync_requested = true;
                                                                     sync_deadline = Some(
-                                                                        Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS),
+                                                                        Instant::now()
+                                                                            + Duration::from_secs(
+                                                                                SYNC_TIMEOUT_SECS,
+                                                                            ),
                                                                     );
                                                                 } else {
                                                                     sync_requested = false;
@@ -1773,7 +1864,10 @@ impl NetworkNode {
                                                                 }
                                                             }
                                                             Err(err) => {
-                                                                warn!("Failed to apply snapshot: {}", err);
+                                                                warn!(
+                                                                    "Failed to apply snapshot (buffered path): {}",
+                                                                    err
+                                                                );
                                                                 pending_snapshot_chunks.clear();
                                                             }
                                                         }
@@ -1781,7 +1875,94 @@ impl NetworkNode {
                                                     }
                                                 }
                                             }
-                                            Err(err) => warn!("Failed to deserialize snapshot chunk: {}", err),
+                                            Err(err) => warn!("Failed to deserialize snapshot manifest: {}", err),
+                                        }
+                                    }
+                                    NetworkMessage::SnapshotChunk { target_peer_id, height, data } => {
+                                        if target_peer_id != self.peer_id.to_string() {
+                                            continue;
+                                        }
+                                        // Always attempt to decode and route. Even without an
+                                        // active manifest, the chunk goes into the per-height
+                                        // pre-manifest buffer so a late manifest can still
+                                        // assemble the snapshot.
+                                        let chunk = match bounded_deserialize::<StateChunk>(&data) {
+                                            Ok(c) => c,
+                                            Err(err) => {
+                                                warn!("Failed to deserialize snapshot chunk: {}", err);
+                                                continue;
+                                            }
+                                        };
+
+                                        let routed_to_active = pending_snapshot_manifest
+                                            .as_ref()
+                                            .is_some_and(|m| m.height == height);
+                                        if !routed_to_active {
+                                            // No matching manifest yet. Stash in the
+                                            // pre-manifest buffer, capped to prevent
+                                            // unbounded growth under attack.
+                                            if pre_manifest_chunk_buffer.len()
+                                                < MAX_BUFFERED_PRE_MANIFEST_CHUNKS
+                                            {
+                                                pre_manifest_chunk_buffer
+                                                    .insert((height, chunk.index), chunk);
+                                            }
+                                            continue;
+                                        }
+                                        let manifest = pending_snapshot_manifest.clone().unwrap();
+                                        pending_snapshot_chunks.insert(chunk.index, chunk);
+                                        if pending_snapshot_chunks.len() == manifest.chunk_count {
+                                            let mut ordered = Vec::with_capacity(manifest.chunk_count);
+                                            let mut complete = true;
+                                            for index in 0..manifest.chunk_count {
+                                                if let Some(chunk) = pending_snapshot_chunks.remove(&index) {
+                                                    ordered.push(chunk);
+                                                } else {
+                                                    complete = false;
+                                                    break;
+                                                }
+                                            }
+                                            if complete {
+                                                let mut chain_lock = chain.lock().await;
+                                                match chain_lock.apply_snapshot(&manifest, &ordered) {
+                                                    Ok(()) => {
+                                                        info!("Applied snapshot at height {}", manifest.height);
+                                                        tracing::info!(
+                                                            target: "audit",
+                                                            event = "snapshot_sync_applied",
+                                                            height = manifest.height,
+                                                            chunk_count = manifest.chunk_count,
+                                                        );
+                                                        if manifest.tip_height > manifest.height {
+                                                            let request = NetworkMessage::RequestBlocks {
+                                                                from_height: manifest.height.saturating_add(1),
+                                                                requester_peer_id: self.peer_id.to_string(),
+                                                                expected_prev_hash: chain_lock.latest_hash().to_vec(),
+                                                                genesis_hash: chain_lock.genesis_hash().to_vec(),
+                                                            };
+                                                            drop(chain_lock);
+                                                            self.broadcast_or_queue(
+                                                                &request,
+                                                                &mut pending_broadcasts,
+                                                                "post-snapshot block request",
+                                                            );
+                                                            sync_requested = true;
+                                                            sync_deadline = Some(
+                                                                Instant::now() + Duration::from_secs(SYNC_TIMEOUT_SECS),
+                                                            );
+                                                        } else {
+                                                            sync_requested = false;
+                                                            sync_deadline = None;
+                                                            sync_retries = 0;
+                                                        }
+                                                    }
+                                                    Err(err) => {
+                                                        warn!("Failed to apply snapshot: {}", err);
+                                                        pending_snapshot_chunks.clear();
+                                                    }
+                                                }
+                                                pending_snapshot_manifest = None;
+                                            }
                                         }
                                     }
                                 }

@@ -1176,12 +1176,31 @@ impl Blockchain {
             chunk_hashes,
         };
 
-        // Persist chunks to storage
+        // Persist chunks to storage. Failures here are visible (the
+        // previous `let _ =` swallowed them, which produced a
+        // half-committed snapshot where the manifest claimed N chunks
+        // but the chunk table had fewer or none — the live testnet hit
+        // this on 2026-05-20 with the symptom of manifests arriving at
+        // node3 but never the chunks). Returning Err here is preferable
+        // to silently shipping a broken snapshot.
         if let Some(ref storage) = self.storage {
             for chunk in &chunks {
-                let _ = storage.put_snapshot_chunk(snapshot_height, chunk, Some(chunks.len()));
+                storage
+                    .put_snapshot_chunk(snapshot_height, chunk, Some(chunks.len()))
+                    .map_err(|e| {
+                        ChainError::SnapshotError(format!(
+                            "put_snapshot_chunk(height={snapshot_height}, index={}) failed: {e}",
+                            chunk.index
+                        ))
+                    })?;
             }
-            let _ = storage.put_snapshot_manifest(snapshot_height, &manifest);
+            storage
+                .put_snapshot_manifest(snapshot_height, &manifest)
+                .map_err(|e| {
+                    ChainError::SnapshotError(format!(
+                        "put_snapshot_manifest(height={snapshot_height}) failed: {e}"
+                    ))
+                })?;
         }
 
         Ok(manifest)
