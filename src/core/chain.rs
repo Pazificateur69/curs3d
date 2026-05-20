@@ -16,7 +16,7 @@ use crate::core::blocktree::{BlockTree, BlockTreeError};
 use crate::core::checkpoints;
 use crate::core::receipt::{IndexedLogEntry, IndexedReceipt, LogFilter, Receipt, ReceiptLocation};
 use crate::core::state_proof::{AccountProof, StorageProof};
-use crate::core::transaction::{Transaction, TransactionKind};
+use crate::core::transaction::{MempoolClass, Transaction, TransactionKind};
 use crate::crypto::dilithium::KeyPair;
 use crate::crypto::hash;
 use crate::governance::GovernanceState;
@@ -38,6 +38,18 @@ const MAX_FUTURE_BLOCK_TIME_SECS: i64 = 30;
 const MAX_FUTURE_TX_TIME_SECS: i64 = 30;
 const MAX_PENDING_TX_AGE_SECS: i64 = 15 * 60;
 const MAX_PENDING_TRANSACTIONS: usize = 10_000;
+/// Slots reserved for `MempoolClass::System` transactions (stake / unstake
+/// / governance). User-class transactions cannot consume these. Sum of
+/// `RESERVED_SYSTEM_SLOTS + MAX_PENDING_TRANSACTIONS_USER` equals
+/// `MAX_PENDING_TRANSACTIONS`. Sized small because system traffic is rare
+/// in a healthy network — the goal is starvation resistance, not
+/// throughput.
+const RESERVED_SYSTEM_SLOTS: usize = 500;
+/// Cap on User-class mempool entries. `system_count` and `user_count` are
+/// tracked independently against their respective caps in
+/// `add_transaction`.
+const MAX_PENDING_TRANSACTIONS_USER: usize =
+    MAX_PENDING_TRANSACTIONS - RESERVED_SYSTEM_SLOTS;
 const MAX_PENDING_TRANSACTIONS_PER_ACCOUNT: usize = 64;
 const MAX_PENDING_GAS_BUDGET_MULTIPLIER: u64 = 8;
 const MAX_PENDING_GAS_PER_ACCOUNT_MULTIPLIER: u64 = 2;
@@ -1643,10 +1655,21 @@ impl Blockchain {
             .iter()
             .position(|pending| pending.from == tx.from && pending.nonce == tx.nonce);
 
-        if self.pending_transactions.len() >= MAX_PENDING_TRANSACTIONS
-            && replacement_index.is_none()
-        {
-            return Err(ChainError::MempoolFull);
+        // Per-class capacity. System (Stake/Unstake/SubmitProposal/
+        // GovernanceVote) gets `RESERVED_SYSTEM_SLOTS` exclusive slots so
+        // a flood of user transfers cannot starve consensus-adjacent
+        // traffic. User has the remaining budget. Replacements (same
+        // sender + same nonce, fee-bumped) bypass the cap check.
+        if replacement_index.is_none() {
+            let incoming_class = tx.mempool_class();
+            let (system_count, user_count) = self.count_pending_by_class();
+            let class_full = match incoming_class {
+                MempoolClass::System => system_count >= RESERVED_SYSTEM_SLOTS,
+                MempoolClass::User => user_count >= MAX_PENDING_TRANSACTIONS_USER,
+            };
+            if class_full {
+                return Err(ChainError::MempoolFull);
+            }
         }
 
         let sender_pending = self
@@ -3873,11 +3896,30 @@ impl Blockchain {
         let base_fee_per_gas = self.next_base_fee_per_gas(self.latest_block());
         self.pending_transactions.sort_by(|a, b| {
             if a.from == b.from {
+                // Same sender: nonce order is mandatory regardless of
+                // class — a Stake at nonce N+1 cannot be applied before
+                // the Transfer at nonce N. Class-based reordering would
+                // break nonce sequencing.
                 a.nonce
                     .cmp(&b.nonce)
                     .then_with(|| b.max_fee_per_gas().cmp(&a.max_fee_per_gas()))
             } else {
-                Self::compare_fee_priority(a, b, base_fee_per_gas)
+                // Different senders: System class sorts strictly ahead
+                // of User class. Block production includes from the
+                // front, so system txs land in blocks first when the
+                // block has capacity. Within a class, the existing
+                // fee-priority + timestamp tiebreak applies.
+                let class_order = match (a.mempool_class(), b.mempool_class()) {
+                    (MempoolClass::System, MempoolClass::User) => {
+                        return std::cmp::Ordering::Less;
+                    }
+                    (MempoolClass::User, MempoolClass::System) => {
+                        return std::cmp::Ordering::Greater;
+                    }
+                    _ => std::cmp::Ordering::Equal,
+                };
+                class_order
+                    .then_with(|| Self::compare_fee_priority(a, b, base_fee_per_gas))
                     .then_with(|| a.timestamp.cmp(&b.timestamp))
                     .then_with(|| b.max_fee_per_gas().cmp(&a.max_fee_per_gas()))
             }
@@ -3977,11 +4019,21 @@ impl Blockchain {
         congestion_floor.saturating_mul(gas_units.max(1))
     }
 
-    fn worst_pending_transaction_index(&self) -> Option<usize> {
+    /// Lowest-fee eviction candidate restricted to a class. Used by
+    /// `enforce_mempool_limits` so user pressure never evicts a system
+    /// transaction. With no class filtering, the original
+    /// `worst_pending_transaction_index` was the same algorithm with
+    /// `filter = |_| true`; that path is no longer reachable because
+    /// every caller is class-aware now.
+    fn worst_pending_transaction_index_in_class(
+        &self,
+        class: MempoolClass,
+    ) -> Option<usize> {
         let base_fee_per_gas = self.next_base_fee_per_gas(self.latest_block());
         self.pending_transactions
             .iter()
             .enumerate()
+            .filter(|(_, tx)| tx.mempool_class() == class)
             .min_by(|(_, a), (_, b)| {
                 if a.from == b.from {
                     b.nonce
@@ -3992,6 +4044,18 @@ impl Blockchain {
                 }
             })
             .map(|(index, _)| index)
+    }
+
+    fn count_pending_by_class(&self) -> (usize, usize) {
+        let mut system = 0usize;
+        let mut user = 0usize;
+        for tx in &self.pending_transactions {
+            match tx.mempool_class() {
+                MempoolClass::System => system += 1,
+                MempoolClass::User => user += 1,
+            }
+        }
+        (system, user)
     }
 
     fn evict_transaction_and_dependents(&mut self, index: usize) {
@@ -4005,15 +4069,29 @@ impl Blockchain {
 
     fn enforce_mempool_limits(&mut self, protected_hash: &[u8]) -> Result<(), ChainError> {
         loop {
-            let over_count = self.pending_transactions.len() > MAX_PENDING_TRANSACTIONS;
+            let (system_count, user_count) = self.count_pending_by_class();
+            let over_user_count = user_count > MAX_PENDING_TRANSACTIONS_USER;
+            let over_system_count = system_count > RESERVED_SYSTEM_SLOTS;
             let over_gas = self.pending_gas_usage() > self.pending_gas_budget();
-            if !over_count && !over_gas {
+            if !over_user_count && !over_system_count && !over_gas {
                 break;
             }
 
-            let Some(index) = self.worst_pending_transaction_index() else {
-                break;
-            };
+            // Eviction policy: System class is fully protected from user
+            // pressure. Always prefer to evict the worst User-class
+            // transaction first, regardless of which bound was exceeded.
+            // The only path that touches System is when the User pool is
+            // empty and we're still over a bound — that means the System
+            // pool itself is the source of the overage (a
+            // pathological stake/governance flood is its own protocol
+            // bug, but we still evict its worst entry rather than
+            // leaving the node wedged).
+            let index = self
+                .worst_pending_transaction_index_in_class(MempoolClass::User)
+                .or_else(|| {
+                    self.worst_pending_transaction_index_in_class(MempoolClass::System)
+                });
+            let Some(index) = index else { break };
             let is_protected = self.pending_transactions[index].hash() == protected_hash;
             if is_protected {
                 if over_gas {
@@ -6257,5 +6335,280 @@ mod tests {
         drop(restarted);
         let restarted_again = Blockchain::with_storage(data_dir_str, Some(&genesis)).unwrap();
         assert_eq!(restarted_again.height(), expected_height);
+    }
+
+    // ───────── Mempool priority classes ─────────
+
+    #[test]
+    fn mempool_class_assignment_per_kind() {
+        // System: validator-set or governance-affecting.
+        assert_eq!(TransactionKind::Stake.mempool_class(), MempoolClass::System);
+        assert_eq!(TransactionKind::Unstake.mempool_class(), MempoolClass::System);
+        assert_eq!(
+            TransactionKind::SubmitProposal.mempool_class(),
+            MempoolClass::System
+        );
+        assert_eq!(
+            TransactionKind::GovernanceVote.mempool_class(),
+            MempoolClass::System
+        );
+
+        // User: everything else, including EVM.
+        assert_eq!(TransactionKind::Transfer.mempool_class(), MempoolClass::User);
+        assert_eq!(
+            TransactionKind::DeployContract.mempool_class(),
+            MempoolClass::User
+        );
+        assert_eq!(
+            TransactionKind::CallContract.mempool_class(),
+            MempoolClass::User
+        );
+        assert_eq!(
+            TransactionKind::DeployToken.mempool_class(),
+            MempoolClass::User
+        );
+        assert_eq!(
+            TransactionKind::TokenTransfer.mempool_class(),
+            MempoolClass::User
+        );
+        assert_eq!(
+            TransactionKind::TokenApprove.mempool_class(),
+            MempoolClass::User
+        );
+        assert_eq!(
+            TransactionKind::TokenTransferFrom.mempool_class(),
+            MempoolClass::User
+        );
+        assert_eq!(
+            TransactionKind::DeployEvmContract.mempool_class(),
+            MempoolClass::User
+        );
+        assert_eq!(
+            TransactionKind::CallEvmContract.mempool_class(),
+            MempoolClass::User
+        );
+    }
+
+    /// Build a chain whose first allocation is a producer (so we can mine
+    /// blocks) and the rest are funded users with enough liquid to
+    /// transfer + enough staked-or-liquid to stake.
+    fn priority_class_chain(extra_funders: usize) -> (Blockchain, KeyPair, Vec<KeyPair>) {
+        let producer = KeyPair::generate();
+        let funders: Vec<KeyPair> = (0..extra_funders).map(|_| KeyPair::generate()).collect();
+        let mut allocations = vec![GenesisAllocation {
+            public_key: hex::encode(&producer.public_key),
+            balance: 1_000_000_000_000,
+            staked_balance: 100_000_000_000,
+        }];
+        for kp in &funders {
+            allocations.push(GenesisAllocation {
+                public_key: hex::encode(&kp.public_key),
+                balance: 1_000_000_000_000,
+                staked_balance: 0,
+            });
+        }
+        let chain = Blockchain::from_genesis(GenesisConfig {
+            chain_id: "mempool-class-test".to_string(),
+            chain_name: "mempool-class-test".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            unstake_delay_blocks: DEFAULT_UNSTAKE_DELAY_BLOCKS,
+            epoch_length: DEFAULT_EPOCH_LENGTH,
+            jail_duration_blocks: DEFAULT_JAIL_DURATION_BLOCKS,
+            block_gas_limit: 100_000,
+            allocations,
+            ..Default::default()
+        })
+        .unwrap();
+        (chain, producer, funders)
+    }
+
+    #[test]
+    fn count_pending_by_class_tracks_both_pools() {
+        let (mut chain, producer, funders) = priority_class_chain(2);
+        // Mine block 1 so producer can submit (nonce machinery).
+        let block = chain.create_block(&producer).unwrap();
+        chain.add_block(block).unwrap();
+
+        // 2 user txs (Transfer) + 1 system tx (Stake).
+        let recipient = hash::address_bytes_from_public_key(&KeyPair::generate().public_key);
+        for (i, kp) in funders.iter().enumerate() {
+            let mut tx = Transaction::new(
+                chain.chain_id(),
+                kp.public_key.clone(),
+                recipient.clone(),
+                10_000,
+                10,
+                0,
+            );
+            tx.sign(kp);
+            chain.add_transaction(tx).unwrap();
+            assert_eq!(chain.pending_transactions.len(), i + 1);
+        }
+        let mut stake_tx =
+            Transaction::stake(chain.chain_id(), funders[0].public_key.clone(), 2_000, 10, 1);
+        stake_tx.sign(&funders[0]);
+        chain.add_transaction(stake_tx).unwrap();
+
+        let (system, user) = chain.count_pending_by_class();
+        assert_eq!(system, 1, "1 Stake = 1 system");
+        assert_eq!(user, 2, "2 Transfer = 2 user");
+    }
+
+    #[test]
+    fn sort_pending_puts_system_class_first() {
+        let (mut chain, producer, funders) = priority_class_chain(3);
+        let block = chain.create_block(&producer).unwrap();
+        chain.add_block(block).unwrap();
+
+        // Add in the order [Transfer, Stake, Transfer] — different
+        // senders so the sort can freely reorder by class.
+        let recipient = hash::address_bytes_from_public_key(&KeyPair::generate().public_key);
+
+        let mut tx_user_a = Transaction::new(
+            chain.chain_id(),
+            funders[0].public_key.clone(),
+            recipient.clone(),
+            10_000,
+            50,
+            0,
+        );
+        tx_user_a.sign(&funders[0]);
+        chain.add_transaction(tx_user_a).unwrap();
+
+        // System tx with intentionally LOWER fee — class ordering must
+        // override fee priority for inter-class comparisons.
+        let mut tx_system =
+            Transaction::stake(chain.chain_id(), funders[1].public_key.clone(), 2_000, 10, 0);
+        tx_system.sign(&funders[1]);
+        let system_tx_hash = tx_system.hash();
+        chain.add_transaction(tx_system).unwrap();
+
+        let mut tx_user_b = Transaction::new(
+            chain.chain_id(),
+            funders[2].public_key.clone(),
+            recipient,
+            10_000,
+            50,
+            0,
+        );
+        tx_user_b.sign(&funders[2]);
+        chain.add_transaction(tx_user_b).unwrap();
+
+        // After sort, the system tx must be at position 0 even though
+        // its fee is lower than the user txs.
+        assert_eq!(
+            chain.pending_transactions[0].hash(),
+            system_tx_hash,
+            "system tx must sort to the front of the pending vec, regardless of fee"
+        );
+        assert_eq!(
+            chain.pending_transactions[0].mempool_class(),
+            MempoolClass::System
+        );
+        assert_eq!(
+            chain.pending_transactions[1].mempool_class(),
+            MempoolClass::User
+        );
+        assert_eq!(
+            chain.pending_transactions[2].mempool_class(),
+            MempoolClass::User
+        );
+    }
+
+    #[test]
+    fn worst_pending_in_class_only_returns_that_class() {
+        // The class-restricted eviction helper is the lynchpin of the
+        // "System class never evicted by user pressure" invariant. This
+        // unit test pins its behaviour: it must only return indices
+        // matching the requested class, regardless of relative fees.
+        let (mut chain, producer, funders) = priority_class_chain(3);
+        let block = chain.create_block(&producer).unwrap();
+        chain.add_block(block).unwrap();
+
+        let recipient = hash::address_bytes_from_public_key(&KeyPair::generate().public_key);
+
+        // System tx with a LOW fee — would be the worst candidate
+        // overall if class wasn't filtered.
+        let mut stake_tx = Transaction::stake(
+            chain.chain_id(),
+            funders[0].public_key.clone(),
+            2_000,
+            5,
+            0,
+        );
+        stake_tx.sign(&funders[0]);
+        let stake_hash = stake_tx.hash();
+        chain.add_transaction(stake_tx).unwrap();
+
+        // User tx with a HIGHER fee than the system tx.
+        let mut tx_user = Transaction::new(
+            chain.chain_id(),
+            funders[1].public_key.clone(),
+            recipient,
+            1_000,
+            50,
+            0,
+        );
+        tx_user.sign(&funders[1]);
+        let user_hash = tx_user.hash();
+        chain.add_transaction(tx_user).unwrap();
+
+        // worst-in-User returns the user tx (only user-class entry).
+        let idx_user = chain
+            .worst_pending_transaction_index_in_class(MempoolClass::User)
+            .expect("user-class worst must exist");
+        assert_eq!(chain.pending_transactions[idx_user].hash(), user_hash);
+        assert_eq!(
+            chain.pending_transactions[idx_user].mempool_class(),
+            MempoolClass::User
+        );
+
+        // worst-in-System returns the stake tx (only system-class
+        // entry) — never the user tx, even though the user has a
+        // higher fee that would normally lose the "worst" race.
+        let idx_system = chain
+            .worst_pending_transaction_index_in_class(MempoolClass::System)
+            .expect("system-class worst must exist");
+        assert_eq!(chain.pending_transactions[idx_system].hash(), stake_hash);
+        assert_eq!(
+            chain.pending_transactions[idx_system].mempool_class(),
+            MempoolClass::System
+        );
+    }
+
+    #[test]
+    fn worst_pending_in_empty_class_returns_none() {
+        // If a class is empty, the helper returns None and the eviction
+        // loop falls through to the other class (via the .or_else chain
+        // in enforce_mempool_limits).
+        let (mut chain, producer, funders) = priority_class_chain(1);
+        let block = chain.create_block(&producer).unwrap();
+        chain.add_block(block).unwrap();
+
+        let recipient = hash::address_bytes_from_public_key(&KeyPair::generate().public_key);
+        let mut tx_user = Transaction::new(
+            chain.chain_id(),
+            funders[0].public_key.clone(),
+            recipient,
+            1_000,
+            10,
+            0,
+        );
+        tx_user.sign(&funders[0]);
+        chain.add_transaction(tx_user).unwrap();
+
+        // No system txs in pool.
+        assert!(
+            chain
+                .worst_pending_transaction_index_in_class(MempoolClass::System)
+                .is_none()
+        );
+        // User-class lookup finds the lone transfer.
+        assert!(
+            chain
+                .worst_pending_transaction_index_in_class(MempoolClass::User)
+                .is_some()
+        );
     }
 }

@@ -26,6 +26,57 @@ pub enum TransactionKind {
     CallEvmContract,
 }
 
+/// Mempool priority class. Reserves a small pool of slots for
+/// consensus-adjacent transactions (stake/unstake/governance) so a flood
+/// of user transfers cannot starve them. Compared to a single FIFO+fee
+/// mempool, this only changes admission/eviction bookkeeping — block
+/// production already picks by fee priority and naturally co-orders System
+/// txs first when they are sorted to the front of the pending vector.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MempoolClass {
+    /// Validator-set or governance-affecting transactions. Reserved
+    /// capacity; never evicted by user-class pressure.
+    System,
+    /// All regular signed user transactions, including EVM. Subject to
+    /// fee-based eviction when the user pool is full.
+    User,
+}
+
+impl TransactionKind {
+    /// Map a transaction kind to its mempool priority class.
+    ///
+    /// `Coinbase` is unreachable here because the mempool admission path
+    /// (`Blockchain::add_transaction`) rejects coinbase transactions
+    /// outright — coinbase is synthesised by the block producer, never
+    /// gossiped. We still return `System` for it to keep the function
+    /// total without panicking.
+    pub fn mempool_class(&self) -> MempoolClass {
+        match self {
+            TransactionKind::Stake
+            | TransactionKind::Unstake
+            | TransactionKind::SubmitProposal
+            | TransactionKind::GovernanceVote
+            | TransactionKind::Coinbase => MempoolClass::System,
+            TransactionKind::Transfer
+            | TransactionKind::DeployContract
+            | TransactionKind::CallContract
+            | TransactionKind::DeployToken
+            | TransactionKind::TokenTransfer
+            | TransactionKind::TokenApprove
+            | TransactionKind::TokenTransferFrom
+            | TransactionKind::DeployEvmContract
+            | TransactionKind::CallEvmContract => MempoolClass::User,
+        }
+    }
+}
+
+impl Transaction {
+    /// Convenience accessor for the mempool class of this transaction.
+    pub fn mempool_class(&self) -> MempoolClass {
+        self.kind.mempool_class()
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Transaction {
     pub chain_id: String,
