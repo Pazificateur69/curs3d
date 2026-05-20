@@ -42,10 +42,10 @@ pub enum RpcRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct RpcEnvelope {
+pub struct RpcEnvelope {
     #[serde(default)]
-    token: Option<String>,
-    request: RpcRequest,
+    pub token: Option<String>,
+    pub request: RpcRequest,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

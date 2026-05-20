@@ -1,0 +1,135 @@
+name: Fuzz
+
+# Nightly fuzzing of every target in fuzz/. Also runnable on demand via
+# the Actions tab. The repo ships 5 libfuzzer-sys targets, listed below;
+# each runs in parallel under its own job and uploads crash artifacts +
+# the new corpus entries it found.
+#
+# Local equivalent for any single target:
+#   cargo +nightly install cargo-fuzz   # one time
+#   cargo +nightly fuzz run fuzz_transaction_deser -- -max_total_time=300
+
+on:
+  schedule:
+    # 03:30 UTC every day (off-peak for the GitHub Actions queue,
+    # gives the maintainers a fresh report each morning).
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+    inputs:
+      max_total_time:
+        description: 'Per-target time budget in seconds'
+        required: false
+        default: '300'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: nightly
+  # Default budget when triggered by the cron (workflow_dispatch can
+  # override). 300 s per target × 5 targets ≈ 25 min total wall-clock,
+  # well within the 6h job limit and small enough that crashes surface
+  # within one nightly cycle.
+  FUZZ_MAX_TOTAL_TIME: 300
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      # Don't cancel other targets when one finds a crash — we want all
+      # of tonight's crashes in the same run so we can triage together.
+      fail-fast: false
+      matrix:
+        target:
+          - fuzz_transaction_deser
+          - fuzz_block_deser
+          - fuzz_rpc_parsing
+          - fuzz_network_message
+          - fuzz_merkle_proof
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Each target gets its own cache key so they don't clobber
+          # each other when running in parallel.
+          key: fuzz-${{ matrix.target }}
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Restore corpus
+        # The corpus is the accumulated set of inputs that exercised
+        # new code paths in past runs. We restore the most recent
+        # successful one so we don't start from scratch every night.
+        uses: actions/cache@v4
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: |
+            fuzz-corpus-${{ matrix.target }}-
+
+      - name: Provide missing probestack symbol
+        # Same pattern as the main CI test job: nightly Rust on this
+        # GH Actions runner is missing __rust_probestack at link time
+        # for some downstream crates (wasmer, cranelift). Provide a
+        # tiny stub so the libfuzzer harness links cleanly.
+        run: |
+          echo '.global __rust_probestack; .type __rust_probestack, @function; __rust_probestack: ret' > /tmp/probestack.s
+          gcc -c /tmp/probestack.s -o /tmp/probestack.o
+          ar rcs /tmp/libprobestack.a /tmp/probestack.o
+
+      - name: Run ${{ matrix.target }}
+        # Time budget comes from the workflow_dispatch input when
+        # manually triggered, otherwise from the schedule default.
+        # `-max_total_time=N` is the libFuzzer flag; cargo-fuzz passes
+        # remaining args after `--` directly to it.
+        run: |
+          BUDGET="${{ github.event.inputs.max_total_time || env.FUZZ_MAX_TOTAL_TIME }}"
+          echo "::notice::Fuzzing ${{ matrix.target }} for ${BUDGET}s"
+          RUSTFLAGS="-L /tmp -l static=probestack" \
+            cargo +${{ env.RUST_TOOLCHAIN }} fuzz run ${{ matrix.target }} -- \
+              -max_total_time=${BUDGET} \
+              -print_final_stats=1
+        # Don't fail the job on crashes — we want the artifact upload
+        # step to run so the operator can inspect the input. A
+        # subsequent job (`triage`) gates merge on the absence of
+        # crash files.
+        continue-on-error: true
+
+      - name: Collect crash artifacts
+        if: always()
+        run: |
+          mkdir -p crashes
+          if [ -d "fuzz/artifacts/${{ matrix.target }}" ]; then
+            cp -r fuzz/artifacts/${{ matrix.target }}/* crashes/ 2>/dev/null || true
+          fi
+          ls -la crashes/ || true
+
+      - name: Upload crashes (if any)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crashes-${{ matrix.target }}
+          path: crashes/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Fail if crashes found
+        run: |
+          if [ -d "fuzz/artifacts/${{ matrix.target }}" ] && \
+             [ -n "$(ls -A fuzz/artifacts/${{ matrix.target }} 2>/dev/null)" ]; then
+            echo "::error::Fuzzer found crashing inputs in ${{ matrix.target }}. See artifact crashes-${{ matrix.target }}."
+            ls -la fuzz/artifacts/${{ matrix.target }}/
+            exit 1
+          fi
+          echo "No crashes."
