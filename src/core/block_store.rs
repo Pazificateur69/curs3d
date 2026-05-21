@@ -14,7 +14,7 @@
 //!   below this have been pruned and `block_at` returns `Ok(None)`.
 
 use crate::core::block::Block;
-use crate::storage::{Storage, StorageError};
+use crate::storage::{BlockBackend, StorageError};
 use lru::LruCache;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -37,7 +37,7 @@ pub enum BlockStoreError {
 }
 
 pub struct BlockStoreCursor {
-    storage: Arc<Storage>,
+    storage: Arc<dyn BlockBackend>,
     /// Genesis block, pinned in memory.
     genesis: Block,
     /// LRU cache of non-genesis blocks.
@@ -50,10 +50,10 @@ pub struct BlockStoreCursor {
 }
 
 impl BlockStoreCursor {
-    /// Construct a cursor over an open `Storage`. Loads genesis eagerly.
+    /// Construct a cursor over any `BlockBackend`. Loads genesis eagerly.
     /// Returns `MissingGenesis` if storage has not been initialized with
     /// at least one block (height 0).
-    pub fn new(storage: Arc<Storage>, cache_size: usize) -> Result<Self, BlockStoreError> {
+    pub fn new(storage: Arc<dyn BlockBackend>, cache_size: usize) -> Result<Self, BlockStoreError> {
         let genesis = storage
             .get_block(0)?
             .ok_or(BlockStoreError::MissingGenesis)?;
@@ -220,16 +220,18 @@ impl BlockStoreCursor {
 mod tests {
     use super::*;
     use crate::core::block::Block;
-    use crate::storage::Storage;
+    use crate::storage::InMemoryBlockBackend;
 
-    fn open_test_storage() -> (Arc<Storage>, tempfile::TempDir) {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let storage =
-            Arc::new(Storage::open(dir.path().join("blockstore_test")).expect("open storage"));
-        (storage, dir)
+    /// Test fixture: an `InMemoryBlockBackend` boxed as `Arc<dyn BlockBackend>`.
+    /// Bypasses redb tmpdir + fsync — tests run ~10x faster than with the
+    /// concrete `Storage`. The TempDir slot is kept (returned `()`) so test
+    /// signatures match the pre-refactor shape for diff readability.
+    fn open_test_storage() -> (Arc<dyn BlockBackend>, ()) {
+        let storage: Arc<dyn BlockBackend> = Arc::new(InMemoryBlockBackend::new());
+        (storage, ())
     }
 
-    fn seed_genesis(storage: &Storage) -> Block {
+    fn seed_genesis(storage: &dyn BlockBackend) -> Block {
         let genesis = Block::genesis();
         storage.put_block(&genesis).expect("put genesis");
         genesis
@@ -246,7 +248,7 @@ mod tests {
     #[test]
     fn cursor_loads_genesis_on_open() {
         let (storage, _dir) = open_test_storage();
-        let g = seed_genesis(&storage);
+        let g = seed_genesis(storage.as_ref());
 
         let cursor = BlockStoreCursor::new(storage, 8).expect("cursor");
         assert_eq!(cursor.len(), 1);
@@ -258,7 +260,7 @@ mod tests {
     #[test]
     fn cursor_append_persists_and_caches() {
         let (storage, _dir) = open_test_storage();
-        let g = seed_genesis(&storage);
+        let g = seed_genesis(storage.as_ref());
 
         let mut cursor = BlockStoreCursor::new(storage, 8).expect("cursor");
         let b1 = synthetic_block(&g);
@@ -273,7 +275,7 @@ mod tests {
     #[test]
     fn cursor_rejects_non_contiguous_append() {
         let (storage, _dir) = open_test_storage();
-        let g = seed_genesis(&storage);
+        let g = seed_genesis(storage.as_ref());
         let mut cursor = BlockStoreCursor::new(storage, 8).expect("cursor");
         let b1 = synthetic_block(&g);
         let b2 = synthetic_block(&b1);
@@ -290,7 +292,7 @@ mod tests {
     #[test]
     fn cursor_block_at_genesis_always_returns() {
         let (storage, _dir) = open_test_storage();
-        seed_genesis(&storage);
+        seed_genesis(storage.as_ref());
         let mut cursor = BlockStoreCursor::new(storage, 8).expect("cursor");
         let g = cursor.block_at(0).expect("ok").expect("genesis present");
         assert_eq!(g.header.height, 0);
@@ -299,7 +301,7 @@ mod tests {
     #[test]
     fn cursor_block_at_above_head_returns_none() {
         let (storage, _dir) = open_test_storage();
-        seed_genesis(&storage);
+        seed_genesis(storage.as_ref());
         let mut cursor = BlockStoreCursor::new(storage, 8).expect("cursor");
         assert!(cursor.block_at(1).expect("ok").is_none());
         assert!(cursor.block_at(99).expect("ok").is_none());
@@ -308,7 +310,7 @@ mod tests {
     #[test]
     fn cursor_lru_evicts_oldest_when_full() {
         let (storage, _dir) = open_test_storage();
-        let g = seed_genesis(&storage);
+        let g = seed_genesis(storage.as_ref());
         let mut cursor = BlockStoreCursor::new(storage, 2).expect("cursor");
 
         let mut parent = g;
@@ -328,7 +330,7 @@ mod tests {
     #[test]
     fn cursor_prune_below_drops_blocks() {
         let (storage, _dir) = open_test_storage();
-        let g = seed_genesis(&storage);
+        let g = seed_genesis(storage.as_ref());
         let mut cursor = BlockStoreCursor::new(storage, 64).expect("cursor");
 
         let mut parent = g;
@@ -354,7 +356,7 @@ mod tests {
     #[test]
     fn cursor_invalidate_from_truncates_height_and_cache() {
         let (storage, _dir) = open_test_storage();
-        let g = seed_genesis(&storage);
+        let g = seed_genesis(storage.as_ref());
         let mut cursor = BlockStoreCursor::new(storage, 16).expect("cursor");
 
         let mut parent = g;
@@ -389,7 +391,7 @@ mod tests {
             count in 1u8..40,
         ) {
             let (storage, _dir) = open_test_storage();
-            let g = seed_genesis(&storage);
+            let g = seed_genesis(storage.as_ref());
             let mut cursor = BlockStoreCursor::new(storage, cache_size).expect("cursor");
 
             let mut parent = g.clone();
@@ -415,7 +417,7 @@ mod tests {
             keep_from in 1u64..15,
         ) {
             let (storage, _dir) = open_test_storage();
-            let g = seed_genesis(&storage);
+            let g = seed_genesis(storage.as_ref());
             let mut cursor = BlockStoreCursor::new(storage, 64).expect("cursor");
 
             let mut parent = g;
@@ -441,7 +443,7 @@ mod tests {
         #[test]
         fn prop_non_contiguous_append_errors(skip in 2u64..10) {
             let (storage, _dir) = open_test_storage();
-            let g = seed_genesis(&storage);
+            let g = seed_genesis(storage.as_ref());
             let mut cursor = BlockStoreCursor::new(storage, 8).expect("cursor");
 
             let mut bad = synthetic_block(&g);

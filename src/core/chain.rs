@@ -2027,11 +2027,7 @@ impl Blockchain {
         // any state mutation (so a rejected block leaves no trace). The
         // checkpoint list is empty for most chains; this is the safety
         // net for `curs3d-public-testnet` and future mainnet anchors.
-        checkpoints::verify_block_against_known(
-            self.chain_id(),
-            block.header.height,
-            &block.hash,
-        )?;
+        checkpoints::verify_block_against_known(self.chain_id(), block.header.height, &block.hash)?;
 
         // Insert into block tree for fork tracking
         let proposer_address =

@@ -1,3 +1,6 @@
+pub mod backend;
+pub use backend::{BlockBackend, InMemoryBlockBackend};
+
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Serialize, de::DeserializeOwned};
 use std::collections::HashMap;
