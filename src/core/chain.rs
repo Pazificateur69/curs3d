@@ -912,6 +912,17 @@ impl Blockchain {
             chain.storage = Some(storage.clone());
             chain.persist_full_state()?;
 
+            // Wire the BlockStoreCursor here too — without this, a freshly
+            // bootstrapped chain (no prior height in storage) would have
+            // cursor=None and the dual-write in push_block_internal would
+            // be a no-op. The cursor sits on the same redb backing as
+            // self.storage so the two views read the same persisted blocks.
+            chain.cursor = crate::core::block_store::BlockStoreCursor::new(
+                std::sync::Arc::new(storage.clone()),
+                crate::core::block_store::DEFAULT_BLOCK_CACHE_SIZE,
+            )
+            .ok();
+
             if async_persistence {
                 chain.persistence = PersistenceMode::Async(PersistenceHandle::spawn(storage));
             }
@@ -6963,5 +6974,71 @@ mod tests {
                 .worst_pending_transaction_index_in_class(MempoolClass::User)
                 .is_some()
         );
+    }
+
+    /// Coherence safety net for #28 Phase B: as long as `self.blocks` and
+    /// `self.cursor` co-exist (dual-write transition), they MUST report
+    /// the same block at every height. Catches any drift introduced by a
+    /// future code path that updates one and forgets the other.
+    #[test]
+    fn cursor_stays_coherent_with_blocks_across_add_block() {
+        let dir = tempfile::tempdir().unwrap();
+        let validator = KeyPair::generate();
+        let genesis = GenesisConfig {
+            chain_id: "curs3d-cursor-coherence-test".to_string(),
+            chain_name: "curs3d-cursor-coherence-test".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            epoch_length: 8,
+            allocations: vec![GenesisAllocation {
+                public_key: hex::encode(&validator.public_key),
+                balance: 1_000_000_000,
+                staked_balance: 5_000,
+            }],
+            ..Default::default()
+        };
+        let data_dir = dir.path().to_str().unwrap();
+        let mut chain = Blockchain::with_storage(data_dir, Some(&genesis)).unwrap();
+
+        // Cursor must be wired when storage is present.
+        assert!(
+            chain.cursor.is_some(),
+            "Blockchain::with_storage must init the BlockStoreCursor"
+        );
+
+        // Add 10 blocks; after each one, assert cursor and self.blocks
+        // agree on every height up to the head.
+        for _ in 0..10 {
+            let block = chain.create_block(&validator).unwrap();
+            chain.add_block(block).unwrap();
+
+            let head = chain.height();
+            let cursor = chain.cursor.as_ref().expect("cursor present");
+            assert_eq!(
+                cursor.len().unwrap(),
+                chain.block_count(),
+                "cursor.len() must equal self.block_count()"
+            );
+
+            for h in 0..=head {
+                let from_blocks = &chain.blocks[h as usize];
+                let from_cursor = cursor
+                    .block_at(h)
+                    .expect("cursor ok")
+                    .unwrap_or_else(|| panic!("cursor missing block at height {h}"));
+                assert_eq!(
+                    from_cursor.hash, from_blocks.hash,
+                    "cursor/blocks hash mismatch at height {h}",
+                );
+                assert_eq!(
+                    from_cursor.header.height, from_blocks.header.height,
+                    "cursor/blocks height mismatch at height {h}",
+                );
+                assert_eq!(
+                    from_cursor.header.state_root, from_blocks.header.state_root,
+                    "cursor/blocks state_root mismatch at height {h}",
+                );
+            }
+        }
     }
 }

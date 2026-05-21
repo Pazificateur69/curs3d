@@ -166,26 +166,18 @@ impl BlockStoreCursor {
         Ok(from_storage)
     }
 
-    /// Append a new block. The block's `header.height` MUST equal
-    /// `self.len()` (i.e. one above the current head). Persists to redb
-    /// and inserts into cache.
+    /// Append a new block to the cursor's view. The block's `header.height`
+    /// MUST equal `self.len()` (i.e. one above the current head). Updates
+    /// the in-memory cache + counter only — **does NOT touch storage**.
+    ///
+    /// Storage persistence is the caller's responsibility (chain.rs already
+    /// has its own sync/async persistence pipeline via `persist_added_block`).
+    /// Routing storage through the cursor would force a sync write that
+    /// breaks the async-persistence invariant tested by
+    /// `test_async_persistence_does_not_write_on_each_block`.
     pub fn append(&self, block: Block) -> Result<(), BlockStoreError> {
         let h = block.header.height;
-        // Bounds + storage call under no lock; we re-validate post-lock.
-        // Pre-validate cheaply so a non-contiguous append doesn't even
-        // touch storage.
-        {
-            let state = lock_state!(self);
-            if h != state.height_count {
-                return Err(BlockStoreError::NonContiguousAppend {
-                    expected: state.height_count,
-                    actual: h,
-                });
-            }
-        }
-        self.storage.put_block(&block)?;
         let mut state = lock_state!(self);
-        // Recheck after storage write in case a concurrent caller raced.
         if h != state.height_count {
             return Err(BlockStoreError::NonContiguousAppend {
                 expected: state.height_count,
@@ -348,11 +340,16 @@ mod tests {
     fn cursor_lru_evicts_oldest_when_full() {
         let (storage, _dir) = open_test_storage();
         let g = seed_genesis(storage.as_ref());
-        let cursor = BlockStoreCursor::new(storage, 2).expect("cursor");
+        let cursor = BlockStoreCursor::new(Arc::clone(&storage), 2).expect("cursor");
 
         let mut parent = g;
         for _ in 0..5 {
             let b = synthetic_block(&parent);
+            // `cursor.append` only updates the in-memory cache; persistence is
+            // the chain layer's job. For these standalone cursor tests we
+            // also `put_block` so an evicted height can be reloaded from
+            // storage on the next `block_at`.
+            storage.put_block(&b).expect("persist");
             cursor.append(b.clone()).expect("append");
             parent = b;
         }
@@ -419,13 +416,15 @@ mod tests {
         ) {
             let (storage, _dir) = open_test_storage();
             let g = seed_genesis(storage.as_ref());
-            let cursor = BlockStoreCursor::new(storage, cache_size).expect("cursor");
+            let cursor = BlockStoreCursor::new(Arc::clone(&storage), cache_size).expect("cursor");
 
             let mut parent = g.clone();
             let mut appended_hashes = vec![g.hash.clone()];
             for _ in 0..count {
                 let b = synthetic_block(&parent);
                 appended_hashes.push(b.hash.clone());
+                // Persist + cursor update (mirrors chain's dual-write pattern).
+                storage.put_block(&b).expect("persist");
                 cursor.append(b.clone()).expect("append");
                 parent = b;
             }
@@ -443,13 +442,14 @@ mod tests {
         ) {
             let (storage, _dir) = open_test_storage();
             let g = seed_genesis(storage.as_ref());
-            let cursor = BlockStoreCursor::new(storage, 64).expect("cursor");
+            let cursor = BlockStoreCursor::new(Arc::clone(&storage), 64).expect("cursor");
 
             let mut parent = g;
             let mut hashes = vec![parent.hash.clone()];
             for _ in 0..count {
                 let b = synthetic_block(&parent);
                 hashes.push(b.hash.clone());
+                storage.put_block(&b).expect("persist");
                 cursor.append(b.clone()).expect("append");
                 parent = b;
             }
