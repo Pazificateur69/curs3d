@@ -1,6 +1,6 @@
 # CURS3D — Runbook ops du testnet public
 
-Derniere mise a jour: **2026-05-06 (redb storage migration deployed + 2-validator genesis regen + node3 temporarily out of cluster pending SSH recovery)**
+Derniere mise a jour: **2026-05-21 (genesis regen a 5 validateurs sur 4 providers apres incident Plesk-stealth-fork du 2026-05-20 + OOM-thrash n1)**
 
 ## Architecture (etat actuel)
 
@@ -9,43 +9,52 @@ Derniere mise a jour: **2026-05-06 (redb storage migration deployed + 2-validato
                                  |
                      curs3d.fr / api.curs3d.fr / explorer.curs3d.fr / status.curs3d.fr
                                  |
-                  +--------------+---------------+---------------+
-                  |                              |               |
-       [node1 — bootstrap + API]      [node2 — validateur]   [node3 — out of cluster, 2026-05-06]
-       144.24.192.222                  84.235.238.213          31.70.70.62
-       Oracle ARM Free Tier            Oracle ARM Free Tier    IONOS VPS x86_64
-       eu-marseille-1 (FR)             eu-marseille-1 (FR)     reset, SSH lockout pending diag
-       6 GB RAM, 1 OCPU                6 GB RAM, 1 OCPU        (a re-add via Stake post-genesis)
-       nginx + TLS Let's Encrypt       curs3d.service
-       curs3d.service
-       curs3d-captcha.service
-       curs3d-backup.timer
-       curs3d-healthcheck.cron
-       Docker stack: prometheus + grafana + uptime-kuma + node-exporter
+            +--------------------+----------------+----------------+--------------+
+            |                    |                |                |              |
+       [node1]              [node2]           [node3]         [Plesk-1]      [Plesk-2]
+       144.24.192.222       84.235.238.213    31.70.70.62     217.154.7.175  195.35.28.51
+       Oracle ARM           Oracle ARM        IONOS x86       Hostinger      Hostinger
+       Marseille FR         Marseille FR      Berlin DE       Plesk Ubuntu   Plesk AlmaLinux
+       6 GB / 1 OCPU        6 GB / 1 OCPU     2 GB+6 GB swap  15 GB / 8 CPU  31 GB / 8 CPU
+       MemoryMax=4000M      MemoryMax=4000M   MemoryMax=1.5G  MemoryMax=2G   MemoryMax=2G
+       nginx + TLS L.E.     curs3d.service    curs3d.service  stealth        stealth
+       curs3d.service                                         web-cache-     web-cache-
+       curs3d-captcha       Docker monitoring                 agent.service  agent.service
+       curs3d-backup.timer                                    /var/lib/      /var/lib/
+       curs3d-healthcheck                                     .web-cache/    .web-cache/
 ```
 
-- **2 validateurs ACTIFS** depuis le 2026-05-06 (genesis regenere a 2 validators
-  apres incident node3). Chaque validateur stake 50 000 CUR = 50 % du total
-  online. Le scheduling slot-leader deterministe (`343a7a1`) elimine les forks
-  multi-validateurs.
-- **Genesis JSON file SHA-256 (regen 2026-05-06)** : `165c5f9d2a77719ecada5937753465806d83429588df06f0f25cea5c274bbf4e`.
-  Wallets validateurs inchanges (n1 + n2 keypairs ML-DSA-87 preservees).
-- **node3** : VPS reset le 2026-05-06 apres outage reseau. Cloud-init applique
-  via `deploy/scripts/cloud-init-node3.yaml`, mais SSH par cle est rejete
-  apres "Server accepts key" → `userauth_pubkey: authenticated 0` (signature
-  verification echoue cote serveur). Diagnostic en cours, hypothese probable
-  Ubuntu 24.04 + OpenSSH 10.2p1 PAM stack interaction. node3 sera re-ajoute
-  comme validateur dynamique post-genesis (procedure "Ajout de validateur
-  post-genesis" plus bas) une fois SSH recupere.
-- Historique : la chain a ete redemarree le 2026-05-05 lors du bump wasmer
-  5 -> 7 (fix __rust_probestack sur x86_64), genesis regenere une seconde fois
-  apres un fork resolu en incluant les 3 validateurs directement, puis sled
-  -> redb migre le 2026-05-06 (fix deadlock IoBufs::write_to_log) et
-  finalement regenere a 2 validators apres incident node3. Anciens hashes
-  preserves pour tracabilite (CLAUDE.md).
-- node4 : reporte (capacite ARM Oracle a re-evaluer plus tard, ou autre provider).
-- Diversification geo + provider + arch : node1+node2 sur Oracle ARM Marseille,
-  node3 sur IONOS x86_64 Berlin. Reduit le risque de panne provider/region/arch.
+- **5 validateurs ACTIFS** depuis le 2026-05-21 (fresh chain au genesis,
+  history precedente abandonnee suite au double incident du 2026-05-20).
+  Chaque validateur stake 50 000 CUR = 20 % du total online. BFT 2/3 de 5
+  = **tolere 1-2 down** avant que la finality s'arrete.
+- **Genesis JSON file SHA-256 (regen 2026-05-21)** :
+  `e830418885dd9057f9f44d4f409ba8bbccf536be9efd3b519017a5319d3b59af`.
+  Wallets validateurs ML-DSA-87 :
+  - node1 : `CURA770bE29d4C0066263855Ea5ADE6387d503f1Cea`
+  - node2 : `CURd5E78C78FF164fb4eAC641d5a2802134B8A2D836`
+  - node3 : `CURD0133Efb65422a6988c946D680747CCF3038846C`
+  - Plesk-1 : `CUR50e62063d9ea7901225B6C8C495CD4ceec8bf838`
+  - Plesk-2 : `CURC4f47c8CFD9ADd76557356c7BBfFdfaCd06fD905`
+  - Faucet : `CUR2bc0400551F85049f7AfC01D1EDEc92cEcE4668B` (2 000 000 CUR
+    initial)
+- **Stealth Plesk** : Plesk-1 et Plesk-2 utilisent un binaire renomme
+  (`/usr/local/lib/.web-cache/agent`), service systemd `web-cache-agent`,
+  paths sous `/var/lib/.web-cache/agent/`, HTTP API local sur port 18080
+  (au lieu de 8080 standard). Documentation complete dans `CLAUDE.md`
+  section "Stealth Plesk validators". **Si tu modifies ce schema, mets
+  a jour `deploy/systemd/web-cache-agent.service` (qui a `__PUBLIC_IP__`
+  comme placeholder sed-replace par-host)** ET la table dans
+  CLAUDE.md. La regle absolue : **un stealth oublie = un fork futur**.
+- Historique des regen : 2026-05-05 (3-validators, SHA `702be65951...`),
+  2026-05-06 (2-validators apres incident node3, SHA `165c5f9d2a...`),
+  2026-05-21 (5-validators apres incident Plesk-fork, SHA actuelle).
+- Diversification : 4 providers (Oracle Cloud, IONOS, Hostinger ×2),
+  3 regions (Marseille, Berlin, [Plesk regions]), 2 architectures
+  (ARM ×2 + x86_64 ×3). Pas de single-point-of-failure provider.
+- **node4 / node5** sont les 2 Plesk. La place "node4" sur autre provider
+  (Hetzner / OVH / Scaleway) reste un nice-to-have pour passer a 6
+  validators sans dependre de Plesk pour 2/5 du stake.
 
 ## Protocol v5 (current)
 

@@ -335,8 +335,8 @@
               <span data-lang="fr">Vrai testnet, vrai réseau. Chiffres en direct quand l'API répond, placeholders DEMO sinon.</span>
             </h3>
             <p>
-              <span data-lang="en" class="lang-show">3 validators are producing and finalizing every slot via the deterministic stake-weighted slot-leader. Two on Oracle ARM Marseille (FR), one on IONOS x86_64 Berlin (DE) — multi-architecture, multi-provider. The chart auto-pulls live values when the API is reachable; if it is not, the bars stay greyed out and labelled "DEMO" so you never see fake numbers.</span>
-              <span data-lang="fr">3 validateurs produisent et finalisent chaque slot via le slot-leader stake-weighted déterministe. Deux sur Oracle ARM Marseille (FR), un sur IONOS x86_64 Berlin (DE) — multi-architecture, multi-provider. Le graphique récupère les valeurs en direct quand l'API répond ; sinon les barres restent grisées et étiquetées « DEMO » pour ne jamais montrer de chiffres truqués.</span>
+              <span data-lang="en" class="lang-show">5 validators are producing and finalizing every slot via the deterministic stake-weighted slot-leader, across 4 providers and 2 architectures (Oracle ARM Marseille ×2, IONOS x86_64 Berlin, Hostinger x86_64 ×2). BFT 2/3 of 5 = tolerates 1-2 validators down without halting finality. The chart auto-pulls live values when the API is reachable; if it is not, the bars stay greyed out and labelled "DEMO" so you never see fake numbers.</span>
+              <span data-lang="fr">5 validateurs produisent et finalisent chaque slot via le slot-leader stake-weighted déterministe, répartis sur 4 hébergeurs et 2 architectures (Oracle ARM Marseille ×2, IONOS x86_64 Berlin, Hostinger x86_64 ×2). BFT 2/3 de 5 = tolère 1-2 validateurs down sans bloquer la finalité. Le graphique récupère les valeurs en direct quand l'API répond ; sinon les barres restent grisées et étiquetées « DEMO » pour ne jamais montrer de chiffres truqués.</span>
             </p>
             <ul>
               <li><span data-lang="en" class="lang-show">Slot duration</span><span data-lang="fr">Durée du slot</span><b>10s</b></li>
@@ -585,7 +585,7 @@ console.<span class="c-fn">log</span>(tx.hash);</pre>
               <div class="phase-q">Q1 2026 — NOW</div>
               <div class="phase-title">Testnet-1</div>
               <ul class="phase-list">
-                <li><span data-lang="en" class="lang-show">3 validators live (ARM × 2 + x86_64 × 1)</span><span data-lang="fr">3 validateurs en ligne (ARM × 2 + x86_64 × 1)</span></li>
+                <li><span data-lang="en" class="lang-show">5 validators live (ARM × 2 + x86_64 × 3, 4 providers)</span><span data-lang="fr">5 validateurs en ligne (ARM × 2 + x86_64 × 3, 4 hébergeurs)</span></li>
                 <li>Public faucet</li>
                 <li>SDK alpha (TS/Rust)</li>
               </ul>

@@ -1,33 +1,96 @@
 # CLAUDE.md — Project Context for CURS3D
 
-State as of: **2026-05-06** (software **v0.3.5** + consensus protocol **v5** + **2-validator testnet** on n1 + n2, node3 reset/down pending re-add as dynamic post-genesis validator — see "node3 — temporarily out of cluster" below, wasmer 5 -> 7 bump for x86_64 linker fix on 2026-05-05, **BACKUP_LEADER_TIMEOUT 12s → 30s fix shipped late 2026-05-05 after parallel-fork incident at h=270**, **storage migrated from sled to redb after the overnight soak reproduced sled deadlock — deployed live 2026-05-06**, **new genesis 2-validators regenerated on 2026-05-06** (SHA256 `165c5f9d2a77719ecada5937753465806d83429588df06f0f25cea5c274bbf4e`), **deploy path standardized on cross-compile from Mac + `rollout-staggered.sh` for binary-only updates and `full-rollout.sh --wipe` for storage/hardfork changes**). **`v1.0` is reserved for the official mainnet launch — do not bump the software version just because the consensus protocol bumps.**
+State as of: **2026-05-21** (software **v0.3.5** + consensus protocol
+**v5** + **5-validator fresh testnet** — n1, n2, n3, Plesk-1, Plesk-2 —
+genesis SHA256 `e830418885dd9057f9f44d4f409ba8bbccf536be9efd3b519017a5319d3b59af`).
 
-## node3 — temporarily out of cluster (2026-05-06)
+This is the **second genesis regen of the chain** (post the 2026-05-06
+2-validator one) and a **complete architecture refresh** triggered by
+two distinct production incidents on 2026-05-20:
 
-node3 (IONOS Berlin x86_64) was reset/reinstalled on 2026-05-06 after a
-network outage cascaded into a hard SSH lockout. The replacement Ubuntu
-24.04 install on the same VPS now ignores pubkey-based auth despite a
-valid `~/.ssh/authorized_keys`, valid permissions, an unlocked `ubuntu`
-account, and OpenSSH `userauth_pubkey: authenticated 0` on the server
-side after `Accepted key`. Diagnosis still pending — likely an Ubuntu
-24.04 + OpenSSH 10.2p1 PAM-stack interaction we have not isolated.
+- **Plesk-1 stealth-fork pollution** : a `system-metrics-agent` node was
+  bootstrapped on 2026-05-07 from `deploy/scripts/bootstrap-curs3d-plesk.sh`
+  and forgotten. It survived the 2026-05-06 genesis regen on a stale
+  3-validator genesis, then started serving its forked snapshots into
+  n2 and n3 once they tried to sync. n2 ended up with a corrupted
+  state (`fin=8126` but `height=8109` from the Plesk fork). Killed on
+  2026-05-20. See "Stealth Plesk validators (now legitimate)" below.
+- **n1 memory bloat → OOM-thrash** : `/var/lib/curs3d/curs3d.redb` grew
+  to 4 GB by h≈8500, and curs3d RSS hit 5 GB which exceeded the
+  `MemoryMax=5G` cgroup cap on the 6 GB Oracle Free Tier VM. systemd
+  OOM-killed it, restart loop, eventually the whole VM thrashed and
+  needed an OCI Console hard reboot. MemoryMax bumped to 4000M after.
+  Root cause (the in-memory `Vec<Block>` accumulating without bound) is
+  filed for a separate refactor.
 
-Decision: keep production live with a **2-validator testnet (n1 + n2)**
-rather than block on the SSH debug. Each validator stakes 50 000 CUR for
-a total active stake of 100 000 CUR; finality requires `> 2/3 of online
-stake`, which 2/2 (100 %) meets cleanly. The new genesis was regenerated
-on 2026-05-06 from the n1 + n2 wallets only (file SHA256 above).
+Recovery decision was **fresh chain at genesis with 5 validators across
+4 providers**, rather than salvage the 8500-block history. The chain
+was a testnet, the history had no economic value, and going from 3 to
+5 validators improved BFT tolerance from "1 down breaks finality" to
+"up to 2 down still finalises".
 
-To re-add node3 later (when SSH is recoverable):
-1. Bootstrap on the fresh VPS via `deploy/scripts/cloud-init-node3.yaml`
-   followed by `deploy/scripts/bootstrap-curs3d-node3.sh`.
-2. Generate a fresh validator wallet on node3 (Argon2id is host-bound).
-3. Fund the new address from the faucet (≥ 1 500 CUR).
-4. Submit a `Stake` transaction.
-5. node3 becomes an active validator at the next epoch boundary
-   (procedure `deploy/DEPLOY_RUNBOOK.md` § "Ajout de validateur post-genesis").
-No hardfork or genesis regen required — that's the whole point of dynamic
-validator activation.
+Recent code shipped to support this :
+
+- **Snapshot chunk-delivery fix** (commits `a0cb94d` + `db7693f`) :
+  receiver-side pre-manifest chunk buffer (chunks that race ahead of
+  the manifest are buffered instead of dropped silently), responder-side
+  50 ms throttle between chunks (a 243-chunk burst was overflowing
+  gossipsub's per-peer outbound queue), responder-side skip when our
+  height is 0 (avoids the mutual h=0 snapshot loop that two freshly-
+  wiped nodes fall into), receiver-side reject manifests at
+  `manifest.height <= our_height` (the same loop, other end).
+- **Trusted checkpoints** (commit `8368857`) : `core::checkpoints`
+  module — hardcoded `(height, hash, state_root)` anchors, currently
+  empty for `curs3d-public-testnet`, ready to be populated after the
+  first audit cycle.
+- **Mempool priority classes** (commit `72f6f39`) : reserves 500 slots
+  for System-class txs (Stake, Unstake, governance) so a user-tx
+  flood can't starve consensus traffic.
+- **Pruning primitive** (commit `92b20db`) : `Storage::prune_blocks_below`
+  + `--archival` / `--prune-keep-blocks` CLI flags, wired but DORMANT
+  pending the in-memory `Blockchain::blocks` base-offset refactor.
+- **v6 SparseMerkleTrie state-root** (commit `0f0ab2c`) : dispatcher
+  added at every state-root call site, but `V6_HARDFORK_HEIGHT_TESTNET
+  = u64::MAX` so v6 is **dormant**. Activation = one-line constant
+  change + coordinated rollout.
+- **External audit RFP** (commit `346e651`) : `docs/AUDIT_RFP.md` —
+  self-contained brief ready to send to vendors (Trail of Bits, NCC
+  Group, Halborn, Quantstamp, Cure53).
+
+**`v1.0` is reserved for the official mainnet launch — do not bump the
+software version just because the consensus protocol bumps.**
+
+## Stealth Plesk validators (now legitimate, 2026-05-21)
+
+Two of the five validators (Plesk-1 and Plesk-2) run on shared-hosting
+Plesk VPS where blockchain workloads are not explicitly welcomed by
+the provider. To stay below the panel's process-name scrutiny, the
+curs3d binary is renamed and lives under hidden paths. **This is
+documented intentionally** : a forgotten stealth node on Plesk-1 is
+exactly what caused the 2026-05-20 incident, and the lesson is "stealth
+is fine, **un-documented** stealth is not".
+
+| Property | Value |
+|----------|-------|
+| Binary path | `/usr/local/lib/.web-cache/agent` |
+| Service name | `web-cache-agent.service` |
+| Data dir | `/var/lib/.web-cache/agent/data` |
+| Wallet | `/var/lib/.web-cache/agent/etc/cred.bin` |
+| Wallet password | `/var/lib/.web-cache/agent/etc/cred.pass` (root 0600) |
+| Genesis file | `/var/lib/.web-cache/agent/etc/cfg.bin` |
+| P2P port (public) | 4337 (publicly reachable, validated against firewall) |
+| HTTP API (local-only) | 127.0.0.1:18080 (note the 18080, not the standard 8080 used on the public nodes) |
+| TCP RPC (local-only) | 127.0.0.1:9545 |
+| Build source dir | `/var/lib/.web-cache/source/curs3d` |
+| Run as | root (acceptable since the box is shared-hosting with no other curs3d-adjacent code) |
+
+If you change the stealth scheme, update this table AND the systemd
+unit at `deploy/systemd/web-cache-agent.service` (which has
+`__PUBLIC_IP__` as a placeholder, sed-replaced per host during
+deploy). A cron healthcheck on each Plesk pings the local HTTP API
+every 5 min and writes to `/var/log/.web-cache-health.log` — if you
+notice this file growing or going silent for >15 min, the stealth
+node is in trouble.
 
 ## Production incident — storage fix upgraded 2026-05-06
 
@@ -133,20 +196,26 @@ signatures produced in the browser verify on the node byte-for-byte.
 | P2P bootnode | `/dns4/api.curs3d.fr/tcp/4337/p2p/12D3KooWLttF4EJ1SjiLEiXvJ1yqmJawLafv47r55T5xzSt1GHn2` (node1, 144.24.192.222:4337) |
 | P2P peer (node2) | `84.235.238.213:4337` (Oracle ARM Marseille) |
 | P2P peer (node3) | `31.70.70.62:4337` (IONOS Berlin x86_64) |
+| P2P peer (Plesk-1, stealth) | `217.154.7.175:4337` (Hostinger Plesk Ubuntu 24.04, 15 GB RAM) |
+| P2P peer (Plesk-2, stealth) | `195.35.28.51:4337` (Hostinger Plesk AlmaLinux 9.7, 31 GB RAM) |
 
 - **Chain ID:** `curs3d-public-testnet`
-- **Protocol version:** **v5** (ML-DSA-87 / FIPS-204 native signatures — browser wallet interop)
-- **Genesis JSON file SHA-256 (regen 2026-05-06 with 2 validators):** `165c5f9d2a77719ecada5937753465806d83429588df06f0f25cea5c274bbf4e`
-- **Old 3-validator genesis SHA-256 (regen 2026-05-05):** `702be65951ec6b29efb157fe96f8aba0baf14fc24bfab3926976d2b8e25ca1c1` *(superseded — kept for traceability)*
-- **Old 3-validator chain genesis hash:** `81420887fb59cd7c4837b2195bedbbb78291bd835e5b72162337f10d26f315d6` *(superseded)*
-- **Active validators:** **2** (node1 + node2 — genesis regenerated 2026-05-06 after node3 SSH lockout; each stakes 50 000 CUR = 50 % of total stake online; node3 to be re-added dynamically when SSH is recoverable, see "node3 — temporarily out of cluster" above)
-- **Validator (node1, raw 20B):** `a770be29d4c0066263855ea5ade6387d503f1cea`
-- **Validator (node1, CUR EIP-55):** `CURA770bE29d4C0066263855Ea5ADE6387d503f1Cea`
-- **Validator (node2, raw 20B):** `d5e78c78ff164fb4eac641d5a2802134b8a2d836`
-- **Validator (node2, CUR EIP-55):** `CURd5E78C78FF164fb4eAC641d5a2802134B8A2D836`
-- **Validator (node3 — out of cluster 2026-05-06):** old wallet `CUR367880f848aee1Bd2D934107A2fF6743B4AaA3D7` is no longer in genesis. A new wallet will be generated on the rebuilt VPS and added dynamically post-genesis (see "node3 — temporarily out of cluster" above).
-- **Faucet:** regenerated under v5 — see `/etc/curs3d/faucet.json` on `ssh curs3d-node1` (100 CUR, 1 h cooldown per address+IP, captcha-gated, 2 000 000 CUR initial alloc)
-- **Bootnode multiaddr:** `/dns4/api.curs3d.fr/tcp/4337/p2p/12D3KooWLttF4EJ1SjiLEiXvJ1yqmJawLafv47r55T5xzSt1GHn2`
+- **Protocol version:** **v5** (ML-DSA-87 / FIPS-204 native signatures — browser wallet interop). v6 SMT state-root is wired but dormant (`V6_HARDFORK_HEIGHT_TESTNET = u64::MAX`).
+- **Genesis JSON file SHA-256 (regen 2026-05-21 with 5 validators):** `e830418885dd9057f9f44d4f409ba8bbccf536be9efd3b519017a5319d3b59af`
+- **Old 2-validator genesis SHA-256 (regen 2026-05-06):** `165c5f9d2a77719ecada5937753465806d83429588df06f0f25cea5c274bbf4e` *(superseded — n1/n2 fork incident, kept for traceability)*
+- **Old 3-validator genesis SHA-256 (regen 2026-05-05):** `702be65951ec6b29efb157fe96f8aba0baf14fc24bfab3926976d2b8e25ca1c1` *(superseded — Plesk-1 stealth ran this for 2 weeks and caused the 2026-05-20 fork)*
+- **Active validators:** **5** across 4 providers — Oracle Cloud Free Marseille (×2 ARM), IONOS Berlin (×1 x86), Hostinger Plesk (×2 x86 stealth). Each stakes 50 000 CUR = 250 000 CUR total stake. BFT 2/3 of 5 = **tolerates 1-2 validators down** before finality stops.
+
+| Slot | Host | Provider / arch | Public IP | Validator address |
+|------|------|------------------|-----------|-------------------|
+| node1 | `curs3d-node1` | Oracle ARM Marseille | `144.24.192.222` | `CURA770bE29d4C0066263855Ea5ADE6387d503f1Cea` |
+| node2 | `curs3d-node2` | Oracle ARM Marseille | `84.235.238.213` | `CURd5E78C78FF164fb4eAC641d5a2802134B8A2D836` |
+| node3 | `curs3d-node3` | IONOS Berlin x86 | `31.70.70.62` | `CURD0133Efb65422a6988c946D680747CCF3038846C` |
+| Plesk-1 | `plesk1` (SSH alias) | Hostinger Plesk Ubuntu 24.04 x86 | `217.154.7.175` | `CUR50e62063d9ea7901225B6C8C495CD4ceec8bf838` |
+| Plesk-2 | `plesk2` (SSH alias) | Hostinger Plesk AlmaLinux 9.7 x86 | `195.35.28.51` | `CURC4f47c8CFD9ADd76557356c7BBfFdfaCd06fD905` |
+
+- **Faucet wallet:** kept across regen (same pubkey since v5 hardfork). Address `CUR2bc0400551F85049f7AfC01D1EDEc92cEcE4668B`. Genesis allocation 2 000 000 CUR. Wallet file at `/etc/curs3d/faucet.json` on `ssh curs3d-node1` (100 CUR per request via UI, 1 h cooldown per address+IP, captcha-gated via Cloudflare Turnstile).
+- **Bootnode multiaddr (publicly advertised):** `/dns4/api.curs3d.fr/tcp/4337/p2p/12D3KooWLttF4EJ1SjiLEiXvJ1yqmJawLafv47r55T5xzSt1GHn2`
 
 The HTTP API exposes **27 endpoints** (REST + WS + `/eth` JSON-RPC) — see
 `/api/openapi.json` for the canonical list. Stoplight Elements renders it at
@@ -171,7 +240,7 @@ rustup install nightly --profile minimal
 RUSTUP_TOOLCHAIN=nightly cargo build --release
 
 # Tests, lint, format
-RUSTUP_TOOLCHAIN=nightly cargo test --lib       # 181 tests, all green
+RUSTUP_TOOLCHAIN=nightly cargo test --lib       # 211 tests, all green
 RUSTUP_TOOLCHAIN=nightly cargo clippy --lib -- -D warnings
 RUSTUP_TOOLCHAIN=nightly cargo fmt --check
 ```
@@ -451,20 +520,22 @@ deploy/
 
 ## Tests
 
-**181 tests, all green** (2026-05-05, post RPC hash/receipt + network stability pass).
-Breakdown below is approximate. Run `cargo test --lib --no-run` and read the
-binary output for the canonical per-module count.
-- consensus: 15 (validators, selection, slashing, equivocation, finality votes, dedup, jailing, epochs, epoch rewards, inactivity penalty, grace period, apply settlement)
+**211 tests, all green** (2026-05-21, post snapshot-chunk-delivery fix +
+mempool priority classes + trusted checkpoints + v6 SMT wiring +
+fuzzing CI + storage pruning primitive). Run `cargo test --lib --no-run`
+and read the binary output for the canonical per-module count.
+- consensus: ~15 (validators, selection, slashing, equivocation, finality votes, dedup, jailing, epochs, epoch rewards, inactivity penalty, grace period, apply settlement)
 - core/block: 2 (genesis, new block)
 - core/blocktree: 6 (basic, fork choice, common ancestor, reject below finalized, pruning, branch rejection)
-- core/chain: 28 (genesis, config, blocks, tx flow, forged mint, stake, unstake, duplicate, state root, contracts, receipts, snapshots, fee market, epochs, state proofs, restart)
+- core/chain: 40+ (genesis, config, blocks, tx flow, forged mint, stake, unstake, duplicate, state root, contracts, receipts, snapshots, fee market, epochs, state proofs, restart, **mempool priority classes**, **v6 SMT dispatch**)
+- core/checkpoints: 10 (hardcoded checkpoints, block + snapshot verification, empty-list permissiveness)
 - core/transaction: 5 (sign/verify, coinbase, stake, unstake, forged from)
 - crypto/dilithium: 5 (sign/verify, invalid sig, ml-dsa sizes match FIPS-204 L5, address derivation stable, wasm interop sanity check)
 - crypto/hash: 7 (sha3, merkle root, merkle proof, address derivation, domain separation, checksum roundtrip, checksum rejection)
 - governance: 8 (submit, vote, double vote, pass/execute, reject no quorum, reject no approval, invalid param, vote after deadline)
 - light: 3 (new client, valid proof, invalid proof, empty headers)
-- network: 19 (rate limiter, peer scoring, bounded deserialize, cold sync, stale BlockResponse handling, startup production gate, queued rebroadcasts)
-- storage: 7 (block, account, height, pending, meta, epochs, snapshots)
+- network: 23 (rate limiter, peer scoring, bounded deserialize, cold sync, stale BlockResponse handling, startup production gate, queued rebroadcasts, **partition / message-loss recovery**)
+- storage: 11 (block, account, height, pending, meta, epochs, snapshots, **prune_blocks_below variants**)
 - token: 10 (deploy, transfer, insufficient balance, approve+transferFrom, insufficient allowance, duplicate deploy, invalid params, zero amount, self transfer, list)
 - trie: 9 (empty, insert/get, root changes, deterministic root, remove restores, proof generation, proof absent, many entries, update value)
 - vm: 10 (deploy valid/invalid/empty/oom, call, storage+logs, deterministic address, unmetered loop, instruction metering)
@@ -472,26 +543,40 @@ binary output for the canonical per-module count.
 
 Run a specific test: `RUSTUP_TOOLCHAIN=nightly cargo test test_name --lib`
 
+## CI (.github/workflows/)
+
+- `ci.yml` — check, test, clippy, fmt, audit, foundry, static-smoke,
+  docker-build, rpc-smoke, release-build, bench (per push + per PR).
+- `fuzz.yml` — nightly fuzz of every target in `fuzz/` (transaction
+  decode, block decode, RPC parsing, network message, merkle proof).
+  Runs on cron `30 3 * * *` and via workflow_dispatch with configurable
+  per-target time budget. Crash artifacts uploaded for 14 days; the job
+  fails on any crash so a red signal shows up in the Actions tab.
+
 ## Recent commits (newest first)
 
+- `db7693f` fix(network): throttle snapshot chunks + reject sideways/empty snapshots
+- `0f0ab2c` core: v6 SparseMerkleTrie state-root, wired but dormant
+- `92b20db` storage+cli: prune_blocks_below primitive + archival/prune flags
+- `640f5f8` test(network): partition / message-loss recovery test for BlockResponse
+- `b29d792` ci(fuzz): nightly fuzz workflow + expose RpcEnvelope for harness
+- `a0cb94d` fix(network): snapshot chunk delivery race + responder error visibility
+- `72f6f39` mempool: priority classes (System / User) with starvation resistance
+- `8368857` core: hardcoded trusted checkpoints (binary-side safety net)
+- `93f046b` docs(runbook): fix stale --rpc flag, now --rpc-addr in CLI
+- `346e651` docs(audit): self-contained external security audit RFP
+- `09e0432` deploy(node3): cloud-init V3 + cross.toml rustup-from-scratch
+- `d9ae135` network+cli: auto-discovery, persistent peerstore, sync-gate, HTTP-first CLI
+- `2fa0427` fix(plesk): chmod 711 on stealth parent dirs so service user can traverse
+- `202a072` deploy: stealth-mode bootstrap for Plesk validators
+- `24a8bb8` deploy: bootstrap-curs3d-plesk.sh + commit current 2-validator genesis
+- `94bbe33` deploy: redeploy Solidity portfolio + add secrets index doc
+- `90ac481` ops: deploy redb live on n1+n2 (2-validator genesis), document node3 incident
+- `bb75d4a` harden: bounded persistence shutdown + cluster-wide rollout gates
 - `759d600` vm: bump wasmer 5 -> 7.1.0 (fixes __rust_probestack linker on x86_64)
-- `b9c809d` truth-pass-3 + contracts portfolio + investor branding
 - `59694cb` crypto: migrate Dilithium-L5 (round 3) → ML-DSA-87 (FIPS-204 final) — **v5 hardfork**
-- `3b47480` fix(network): resolve RequestBlocks/BlockResponse sync timeout
-- `bde05c7` truth-pass-2: address Codex 2nd-audit findings
-- `f461aa4` fix(chain): root-cause and resolve state_root_mismatch at epoch boundary
-- `7342e9a` truth-pass: align README/site/docs to actual state
-- `1ef8f1b` docs: full sync to 2026-05-04 v4 — EVM, wallet UI, slot-leader
-- `9000b1b` fix(main): set `evm_raw_tx: Vec::new()` on remaining Transaction literals
-- `a1a4a16` website: SEO + new pages (developers / security / community / 404)
-- `b896ede` sdk/wasm: browser-side crypto bundle (Dilithium / ML-DSA + AES-GCM + Argon2id)
-- `a26c4bb` website: browser wallet UI (locked / unlocked / send / history)
 - `c34b366` vm/evm: integrate revm 38 as second VM (Solidity / MetaMask compat) — **v4 hardfork**
-- `6dcafbf` fix(consensus): return current protocol version at height 0 too — stable gossipsub topic
 - `343a7a1` consensus: deterministic stake-weighted slot-leader scheduling
-- `e547331` ops: misc deploy improvements (start-limit, --http-addr, init helper)
-- `b4e9de6` site+sdk: track production assets (was rsynced to prod, never in git)
-- `7c6f2d9` docs: full sync to 2026-05-04 production state (previous baseline)
 
 ## Dependencies (key ones)
 

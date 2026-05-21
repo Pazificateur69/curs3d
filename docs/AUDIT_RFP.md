@@ -24,10 +24,11 @@ The chain runs **two VMs side by side**, sharing the same state trie:
 - an EVM (revm 38) with secp256k1-signed RLP transactions for MetaMask /
   Hardhat / Foundry / ethers.js compatibility.
 
-The chain is currently live on a **2-validator public testnet** (genesis
-SHA-256 `165c5f9d2a77719ecada5937753465806d83429588df06f0f25cea5c274bbf4e`,
-regenerated 2026-05-06). The audit is a **prerequisite to mainnet**, not
-to the public testnet.
+The chain is currently live on a **5-validator public testnet** (genesis
+SHA-256 `e830418885dd9057f9f44d4f409ba8bbccf536be9efd3b519017a5319d3b59af`,
+regenerated 2026-05-21 across 4 providers: Oracle Cloud Marseille ×2,
+IONOS Berlin, Hostinger Plesk ×2). The audit is a **prerequisite to
+mainnet**, not to the public testnet.
 
 Repo: <https://github.com/Pazificateur69/curs3d> (will be granted
 read+issue access for the audit window).

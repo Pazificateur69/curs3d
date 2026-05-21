@@ -35,7 +35,7 @@ CURS3D is a **Layer 1 blockchain written from scratch in Rust**, designed to res
 
 > **MetaMask works.** Point your wallet at `https://rpc.curs3d.fr/eth` (or `https://api.curs3d.fr/eth`), chain ID `1800329576`, and you can deploy Solidity, send ETH-style txs, sign with ethers.js / wagmi, and use Hardhat / Foundry against the live testnet. EVM transactions are signed with secp256k1 ECDSA (standard Ethereum) and accepted by design — that's how MetaMask compat works. Native CURS3D transactions (Stake / governance / native deploy) sign with ML-DSA-87 and go through `POST /api/tx/submit`. Both families produce blocks on the same chain.
 
-> **Status (2026-05-06 — software v0.3.5, consensus protocol v5, 2-validator testnet):** the redb storage migration is now live on node1 + node2. node3 (IONOS Berlin) was reset on 2026-05-06 after a network outage and is currently out of cluster pending an SSH-stack issue we haven't yet root-caused; the genesis was regenerated 2-validator-only (file SHA-256 `165c5f9d2a77719ecada5937753465806d83429588df06f0f25cea5c274bbf4e`) so finality keeps progressing. node3 will be re-added as a dynamic post-genesis validator (no hardfork) once SSH is recoverable — see [`CLAUDE.md`](CLAUDE.md) "node3 — temporarily out of cluster" and [`deploy/DEPLOY_RUNBOOK.md`](deploy/DEPLOY_RUNBOOK.md) "Ajout de validateur post-genesis". Browser wallet UI ([curs3d.fr/wallet](https://curs3d.fr/wallet)) signs ML-DSA-87 transactions natively via the WASM bundle.
+> **Status (2026-05-21 — software v0.3.5, consensus protocol v5, 5-validator testnet):** chain regenerated fresh at h=0 on 2026-05-21 with **5 validators across 4 providers** (Oracle Cloud Free Marseille ×2 ARM, IONOS Berlin x86, Hostinger Plesk ×2 x86 — total 250 000 CUR staked). New genesis SHA-256 `e830418885dd9057f9f44d4f409ba8bbccf536be9efd3b519017a5319d3b59af`. The previous 2-validator chain (regen 2026-05-06, SHA `165c5f9d2a77719ecada5937753465806d83429588df06f0f25cea5c274bbf4e`) hit a fork-pollution incident on 2026-05-20 caused by a forgotten Plesk stealth node running an older genesis; rather than salvage the 8500-block history we restarted from a clean genesis with twice the BFT tolerance (5-validator chain tolerates 1-2 validators down before finality stops). Browser wallet UI ([curs3d.fr/wallet](https://curs3d.fr/wallet)) signs ML-DSA-87 transactions natively via the WASM bundle.
 
 ### MetaMask / Hardhat / Foundry network config
 
@@ -141,7 +141,7 @@ The CURS3D public testnet is running and accessible:
 | **Chain ID (EVM, hex)** | `0x6b4ed968` |
 | **Genesis hash (v5, regen 2026-05-05)** | `81420887fb59cd7c4837b2195bedbbb78291bd835e5b72162337f10d26f315d6` |
 | **Protocol version** | `v5` (ML-DSA-87 / FIPS-204 + EVM + slot-leader) |
-| **Active validators** | 3 (node1 ARM Marseille + node2 ARM Marseille + node3 x86_64 Berlin), each 33.3% stake |
+| **Active validators** | 5 across 4 providers (Oracle Cloud ARM Marseille ×2, IONOS Berlin x86_64, Hostinger Plesk x86_64 ×2 stealth), each 20% stake = 50 000 CUR |
 
 ```bash
 # Request testnet tokens
@@ -178,7 +178,7 @@ Use the deployment assets in [`deploy/`](deploy/):
 - [`deploy/nginx/curs3d.conf`](deploy/nginx/curs3d.conf)
 - Operational runbook: [`deploy/DEPLOY_RUNBOOK.md`](deploy/DEPLOY_RUNBOOK.md)
 
-For routine code changes, the default flow is **(1) cross-compile from your Mac with `cross` + Docker/OrbStack → (2) `./deploy/scripts/rollout-staggered.sh`**. The mutual-bootnode mesh keeps 2 of 3 validators producing throughout, so the chain never goes dark during the upgrade.
+For routine code changes, the default flow is **(1) cross-compile from your Mac with `cross` + Docker/OrbStack → (2) `./deploy/scripts/rollout-staggered.sh`**. The mutual-bootnode mesh keeps 4 of 5 validators producing throughout, so the chain never goes dark during the upgrade.
 
 ## What's Built (Current State)
 
@@ -227,7 +227,7 @@ CURS3D is an **advanced L1 prototype** — not yet mainnet-ready, but technicall
 
 ## Known Issues
 
-These are tracked in [`CLAUDE.md`](CLAUDE.md) and reproduced here so anyone running a node, building against the API, or evaluating CURS3D sees them up front. None block the public 2-validator testnet (node3 pending re-add as a dynamic validator), but they do shape what is and isn't safe to rely on today.
+These are tracked in [`CLAUDE.md`](CLAUDE.md) and reproduced here so anyone running a node, building against the API, or evaluating CURS3D sees them up front. None block the public 5-validator testnet, but they do shape what is and isn't safe to rely on today.
 
 - **External security audit not yet performed.** Internal audit cycles (3-AI council 2026-04, Codex passes 2026-05) have closed many findings, but no third-party firm has reviewed the codebase. Treat this testnet accordingly.
 - **State-root divergence at epoch boundaries — fixed in `f461aa4`.** Root cause: epoch settlement applied at block-apply time but skipped at boot replay; identical helper now runs in both paths. Regression test added (`test_restart_across_epoch_boundary`).
