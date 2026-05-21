@@ -349,6 +349,13 @@ pub struct Blockchain {
     pub evm_tx_hash_index: HashMap<Vec<u8>, (u64, usize)>,
     storage: Option<Storage>,
     persistence: PersistenceMode,
+    /// Paginated block view backed by redb. **Wired but not yet
+    /// load-bearing**: helpers like [`Blockchain::block_at_height`] still
+    /// read from `self.blocks` directly. Phase C of #28 will swap the
+    /// helpers to read here, with `self.blocks` kept transiently for a
+    /// dual-read assertion before its final removal.
+    #[allow(dead_code)]
+    cursor: Option<crate::core::block_store::BlockStoreCursor>,
 }
 
 enum PersistenceMode {
@@ -741,6 +748,7 @@ impl Blockchain {
             evm_tx_hash_index: HashMap::new(),
             storage: None,
             persistence: PersistenceMode::Sync,
+            cursor: None,
         })
     }
 
@@ -877,6 +885,15 @@ impl Blockchain {
                 evm_tx_hash_index: HashMap::new(),
                 storage: Some(storage.clone()),
                 persistence: PersistenceMode::Sync,
+                // Wire the paginated cursor over the same backing redb.
+                // Storage impls BlockBackend, so wrapping a clone in an Arc
+                // hands the cursor its own shared handle to the database.
+                // Not yet used by helpers (see field doc on Blockchain).
+                cursor: crate::core::block_store::BlockStoreCursor::new(
+                    std::sync::Arc::new(storage.clone()),
+                    crate::core::block_store::DEFAULT_BLOCK_CACHE_SIZE,
+                )
+                .ok(),
             };
 
             chain.rebuild_canonical_state()?;
