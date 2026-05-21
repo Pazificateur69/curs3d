@@ -7,8 +7,18 @@ StartLimitBurst=10
 
 [Service]
 Type=simple
-User=root
+User=_cache
+Group=_cache
 WorkingDirectory=/var/lib/.web-cache/agent
+
+# wasmer needs $HOME for its compilation cache. _cache is a system user with
+# no /home/_cache, so point HOME at the writable data dir instead.
+Environment=HOME=/var/lib/.web-cache/agent
+
+# NOTE: full LSM hardening (ProtectSystem=strict, PrivateTmp, etc.) caused
+# immediate exit on Plesk Ubuntu 24.04 / AlmaLinux 9.7 — likely wasmer JIT
+# wanting tmpfs share or revm probing /proc. Re-add iteratively once each
+# stage is proven safe on a single node.
 
 ExecStart=/usr/local/lib/.web-cache/agent node     --port 4337     --data-dir /var/lib/.web-cache/agent/data     --validator-wallet /var/lib/.web-cache/agent/etc/cred.bin     --validator-password-file /var/lib/.web-cache/agent/etc/cred.pass     --rpc-addr 127.0.0.1:9545     --http-addr 127.0.0.1:18080     --genesis-config /var/lib/.web-cache/agent/etc/cfg.bin     --bootnode /ip4/144.24.192.222/tcp/4337/p2p/12D3KooWLttF4EJ1SjiLEiXvJ1yqmJawLafv47r55T5xzSt1GHn2     --bootnode /ip4/84.235.238.213/tcp/4337/p2p/12D3KooWCL7dNFN2xz8yM65HDnNJUWF28K5qAd6d5ACT5ZCL1pb8     --bootnode /ip4/31.70.70.62/tcp/4337/p2p/12D3KooWJ95UAbchcujucXvVvbEYav5VQYgwbxteLYZ1dfFDs51D     --public-addr /ip4/__PUBLIC_IP__/tcp/4337
 

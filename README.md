@@ -1,14 +1,14 @@
 <p align="center">
   <br>
   <strong style="font-size: 2rem;">CURS3D</strong><br>
-  <em>Quantum-Resistant Layer 1 Blockchain</em>
+  <em>Post-Quantum Native Layer 1 + Ethereum-Compatible EVM</em>
   <br><br>
   <a href="https://github.com/Pazificateur69/curs3d/actions"><img src="https://github.com/Pazificateur69/curs3d/workflows/CI/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-2024_edition-orange.svg" alt="Rust 2024"></a>
   <img src="https://img.shields.io/badge/tests-cargo%20test-brightgreen.svg" alt="cargo test">
   <img src="https://img.shields.io/badge/clippy-0%20warnings-brightgreen.svg" alt="0 clippy warnings">
-  <img src="https://img.shields.io/badge/quantum-resistant-blueviolet.svg" alt="Quantum Resistant">
+  <img src="https://img.shields.io/badge/quantum--resistant-native%20layer-blueviolet.svg" alt="Quantum-Resistant Native Layer (EVM uses secp256k1)">
   <a href="https://api.curs3d.fr/api/status"><img src="https://img.shields.io/badge/testnet-LIVE-brightgreen.svg" alt="Testnet Live"></a>
   <img src="https://img.shields.io/badge/version-v0.3.5-informational.svg" alt="Software v0.3.5">
   <br>

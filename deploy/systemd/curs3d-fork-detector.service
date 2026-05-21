@@ -1,0 +1,23 @@
+[Unit]
+Description=CURS3D fork detector (cross-validator height spread)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/curs3d-fork-detector.sh
+User=root
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/log/curs3d-fork-detector.log /var/lib/curs3d
+PrivateTmp=yes
+ProtectHome=yes
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=curs3d-fork-detector

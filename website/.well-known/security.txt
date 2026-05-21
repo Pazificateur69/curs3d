@@ -1,8 +1,9 @@
 # RFC 9116 — security disclosure for curs3d.fr
 Contact: mailto:security@curs3d.fr
-Expires: 2027-05-04T00:00:00.000Z
-Encryption: https://curs3d.fr/security
+Expires: 2028-05-21T00:00:00.000Z
+Encryption: https://curs3d.fr/.well-known/security-pgp.asc
 Acknowledgments: https://curs3d.fr/security
 Preferred-Languages: en, fr
 Canonical: https://curs3d.fr/.well-known/security.txt
 Policy: https://curs3d.fr/security
+# PGP fingerprint: 14C7 7953 E130 4F27 DDCF  C6B2 4438 0E95 639E 6F37

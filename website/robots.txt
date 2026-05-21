@@ -1,5 +1,5 @@
 # https://curs3d.fr robots.txt
-# CURS3D — quantum-resistant L1
+# CURS3D — post-quantum native L1 + EVM-compatible
 
 User-agent: *
 Allow: /

@@ -4,7 +4,7 @@
     "title": "CURS3D HTTP API",
     "version": "0.3.5",
     "summary": "Public REST + WebSocket + Ethereum-compatible JSON-RPC for the CURS3D Layer 1 (software v0.3.5, consensus protocol v5).",
-    "description": "CURS3D is a quantum-resistant Layer 1 blockchain. Software version v0.3.5 (testnet — v1.0 reserved for the official mainnet launch). Consensus protocol version v5. Every endpoint returns `{ok: bool, data: any, error: string|null}`. Per-IP rate limits: 60 GET/min, 10 POST/min, 600 JSON-RPC calls/min on `/eth`. Optional bearer auth via `CURS3D_API_TOKEN`.",
+    "description": "CURS3D is a Layer 1 with a post-quantum native layer (ML-DSA-87 / FIPS-204) and an Ethereum-compatible EVM (secp256k1) sharing one state trie. Software version v0.3.5 (testnet — v1.0 reserved for the official mainnet launch). Consensus protocol version v5. Every endpoint returns `{ok: bool, data: any, error: string|null}`. Per-IP rate limits: 60 GET/min, 10 POST/min, 600 JSON-RPC calls/min on `/eth`. Optional bearer auth via `CURS3D_API_TOKEN`.",
     "license": {
       "name": "MIT",
       "url": "https://github.com/Pazificateur69/curs3d/blob/main/LICENSE"

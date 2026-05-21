@@ -13,7 +13,7 @@
 
   <!-- Open Graph -->
   <meta property="og:title" content="CURS3D — Security" />
-  <meta property="og:description" content="Threat model, audit log, and responsible disclosure for the CURS3D post-quantum L1." />
+  <meta property="og:description" content="Threat model, audit log, and responsible disclosure for the CURS3D post-quantum native + EVM L1." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://curs3d.fr/security" />
   <meta property="og:image" content="https://curs3d.fr/og-image.svg" />
@@ -25,7 +25,7 @@
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:site" content="@curs3d" />
   <meta name="twitter:title" content="CURS3D — Security" />
-  <meta name="twitter:description" content="Threat model, audit log, and responsible disclosure for the CURS3D post-quantum L1." />
+  <meta name="twitter:description" content="Threat model, audit log, and responsible disclosure for the CURS3D post-quantum native + EVM L1." />
   <meta name="twitter:image" content="https://curs3d.fr/og-image.svg" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -202,9 +202,15 @@
                 </div>
 
                 <h3>PGP</h3>
-                <!-- TODO publish PGP key before mainnet — currently no public key is in use; reports may be sent in clear or via signed GitHub Security Advisory. -->
-                <p data-lang="en" class="lang-show">A PGP key for end-to-end-encrypted reports will be published before mainnet. Until then, please use either a private GitHub Security Advisory (preferred) or send your report in clear-text to the address above.</p>
-                <p data-lang="fr">Une clé PGP pour les rapports chiffrés bout-à-bout sera publiée avant le mainnet. En attendant, merci d'utiliser un GitHub Security Advisory privé (préféré) ou d'envoyer votre rapport en clair à l'adresse ci-dessus.</p>
+                <p data-lang="en" class="lang-show">For end-to-end-encrypted reports, encrypt to the <strong>CURS3D Security</strong> key:</p>
+                <p data-lang="fr">Pour des rapports chiffrés bout-à-bout, chiffrez avec la clé <strong>CURS3D Security</strong> :</p>
+                <ul>
+                  <li><strong>Fingerprint:</strong> <code>14C7 7953 E130 4F27 DDCF  C6B2 4438 0E95 639E 6F37</code></li>
+                  <li><strong>Download:</strong> <a href="/.well-known/security-pgp.asc">/.well-known/security-pgp.asc</a> (ASCII-armored, ed25519 sign + cv25519 encrypt subkey, expires 2028-05-21)</li>
+                  <li><strong>Identity:</strong> <code>CURS3D Security &lt;security@curs3d.fr&gt;</code></li>
+                </ul>
+                <p data-lang="en" class="lang-show">A private GitHub Security Advisory on <code>Pazificateur69/curs3d</code> is also accepted and equally secret.</p>
+                <p data-lang="fr">Un GitHub Security Advisory privé sur <code>Pazificateur69/curs3d</code> est également accepté et tout aussi confidentiel.</p>
 
                 <h3><span data-lang="en" class="lang-show">Scope</span><span data-lang="fr">Périmètre</span></h3>
                 <p data-lang="en" class="lang-show">In scope: the Rust node binary, the HTTP API, the WebSocket feed, the Ethereum-compatible JSON-RPC subset, the SDKs (Rust / JS / Python), the website (XSS, mixed-content, tokenomics-page math errors).</p>
@@ -250,9 +256,9 @@
                     <span data-lang="fr">BlockResponse tolère maintenant les lots contigus arrivés en retard, la sync escalade vers snapshot après retries, les checkpoints divergents reçoivent une offre snapshot, les broadcasts échoués sont retentés, et les validateurs suspendent la production pendant le démarrage/la sync.</span>
                   </li>
                   <li>
-                    <strong><span data-lang="en" class="lang-show">No PGP key for security disclosures yet.</span><span data-lang="fr">Pas encore de clé PGP pour les divulgations sécurité.</span></strong>
-                    <span data-lang="en" class="lang-show">A signed contact channel is a TODO. Until it is published, please report security issues privately via GitHub security advisories on <code>Pazificateur69/curs3d</code>.</span>
-                    <span data-lang="fr">Un canal signé est en TODO. En attendant sa publication, merci de signaler les problèmes de sécurité de manière privée via les security advisories GitHub sur <code>Pazificateur69/curs3d</code>.</span>
+                    <strong><span data-lang="en" class="lang-show">PGP key published 2026-05-21.</span><span data-lang="fr">Clé PGP publiée le 2026-05-21.</span></strong>
+                    <span data-lang="en" class="lang-show">CURS3D Security key (fingerprint <code>14C7 7953 E130 4F27 DDCF  C6B2 4438 0E95 639E 6F37</code>) is published at <a href="/.well-known/security-pgp.asc">/.well-known/security-pgp.asc</a> and referenced from <a href="/.well-known/security.txt">security.txt</a>. End-to-end encrypted reports are now accepted; GitHub Security Advisories remain equally accepted.</span>
+                    <span data-lang="fr">La clé CURS3D Security (empreinte <code>14C7 7953 E130 4F27 DDCF  C6B2 4438 0E95 639E 6F37</code>) est publiée sur <a href="/.well-known/security-pgp.asc">/.well-known/security-pgp.asc</a> et référencée depuis <a href="/.well-known/security.txt">security.txt</a>. Les rapports chiffrés bout-à-bout sont désormais acceptés ; les GitHub Security Advisories restent acceptés à égalité.</span>
                   </li>
                   <li>
                     <strong><span data-lang="en" class="lang-show">No external audit.</span><span data-lang="fr">Aucun audit externe.</span></strong>
@@ -278,8 +284,8 @@
             <span class="logo-mark" aria-hidden="true"></span>
             <span>CURS3D <small>L1</small></span>
           </a>
-          <p data-lang="en" class="lang-show">A post-quantum Layer 1 blockchain. Conservative cryptography, BFT proof-of-stake, WASM execution. Built in the open.</p>
-          <p data-lang="fr">Une blockchain Layer 1 post-quantique. Cryptographie conservatrice, proof-of-stake BFT, exécution WASM. Construite à découvert.</p>
+          <p data-lang="en" class="lang-show">A Layer 1 with a post-quantum native layer (ML-DSA-87) and an Ethereum-compatible EVM (secp256k1). BFT proof-of-stake, WASM execution. Built in the open.</p>
+          <p data-lang="fr">Une Layer 1 avec couche native post-quantique (ML-DSA-87) et EVM compatible Ethereum (secp256k1). PoS BFT, exécution WASM. Construite à découvert.</p>
         </div>
         <div class="footer-col"><h4>Protocol</h4><ul><li><a href="/stack">Stack</a></li><li><a href="/docs">Documentation</a></li><li><a href="/whitepaper">Whitepaper</a></li><li><a href="/tokenomics">Tokenomics</a></li></ul></div>
         <div class="footer-col"><h4>Network</h4><ul><li><a href="https://explorer.curs3d.fr" target="_blank" rel="noopener noreferrer">Explorer</a></li><li><a href="/run-validator">Run a validator</a></li><li><a href="/faucet">Faucet</a></li><li><a href="/api">API reference</a></li></ul></div>

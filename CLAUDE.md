@@ -240,7 +240,7 @@ rustup install nightly --profile minimal
 RUSTUP_TOOLCHAIN=nightly cargo build --release
 
 # Tests, lint, format
-RUSTUP_TOOLCHAIN=nightly cargo test --lib       # 211 tests, all green
+RUSTUP_TOOLCHAIN=nightly cargo test --lib       # 248 tests, all green (Sprint 1+2+7 of 2026-05-21)
 RUSTUP_TOOLCHAIN=nightly cargo clippy --lib -- -D warnings
 RUSTUP_TOOLCHAIN=nightly cargo fmt --check
 ```
@@ -520,18 +520,20 @@ deploy/
 
 ## Tests
 
-**211 tests, all green** (2026-05-21, post snapshot-chunk-delivery fix +
-mempool priority classes + trusted checkpoints + v6 SMT wiring +
-fuzzing CI + storage pruning primitive). Run `cargo test --lib --no-run`
-and read the binary output for the canonical per-module count.
+**248 tests, all green** (2026-05-21, post Sprint 1+2+7 work — Merkle 2nd-preimage fix,
+block_store cursor scaffolding, newtypes Address/BlockHash/TxHash, proptest harness,
+WebSocket backpressure, mempool/jailed metrics, wallet recovery tests). Run
+`cargo test --lib --no-run` and read the binary output for the canonical per-module count.
 - consensus: ~15 (validators, selection, slashing, equivocation, finality votes, dedup, jailing, epochs, epoch rewards, inactivity penalty, grace period, apply settlement)
-- core/block: 2 (genesis, new block)
+- core/block: 4 (genesis, new block, **proptest: bincode roundtrip, header-mutation sensitivity**)
+- core/block_store: 11 (NEW 2026-05-21 — load genesis, append/persist/cache, non-contiguous reject, LRU eviction, prune_below, invalidate_from, + **3 proptests: append/read roundtrip, prune preservation, non-contiguous detection**)
 - core/blocktree: 6 (basic, fork choice, common ancestor, reject below finalized, pruning, branch rejection)
 - core/chain: 40+ (genesis, config, blocks, tx flow, forged mint, stake, unstake, duplicate, state root, contracts, receipts, snapshots, fee market, epochs, state proofs, restart, **mempool priority classes**, **v6 SMT dispatch**)
 - core/checkpoints: 10 (hardcoded checkpoints, block + snapshot verification, empty-list permissiveness)
-- core/transaction: 5 (sign/verify, coinbase, stake, unstake, forged from)
+- core/transaction: 8 (sign/verify, coinbase, stake, unstake, forged from, + **3 proptests: bincode roundtrip, sign/verify, tampering detection**)
+- core/types: 11 (NEW 2026-05-21 — Address/BlockHash/TxHash roundtrip+display+distinctness, + **5 proptests**)
 - crypto/dilithium: 5 (sign/verify, invalid sig, ml-dsa sizes match FIPS-204 L5, address derivation stable, wasm interop sanity check)
-- crypto/hash: 7 (sha3, merkle root, merkle proof, address derivation, domain separation, checksum roundtrip, checksum rejection)
+- crypto/hash: 14 (sha3, merkle root, merkle proof, address derivation, domain separation, checksum roundtrip, checksum rejection, **+ Merkle 2nd-preimage resistance test, single-leaf domain separation test, + 5 proptests: sha3 determinism, merkle root determinism + order sensitivity, address from pubkey stable, merkle proof verify**)
 - governance: 8 (submit, vote, double vote, pass/execute, reject no quorum, reject no approval, invalid param, vote after deadline)
 - light: 3 (new client, valid proof, invalid proof, empty headers)
 - network: 23 (rate limiter, peer scoring, bounded deserialize, cold sync, stale BlockResponse handling, startup production gate, queued rebroadcasts, **partition / message-loss recovery**)
@@ -539,7 +541,7 @@ and read the binary output for the canonical per-module count.
 - token: 10 (deploy, transfer, insufficient balance, approve+transferFrom, insufficient allowance, duplicate deploy, invalid params, zero amount, self transfer, list)
 - trie: 9 (empty, insert/get, root changes, deterministic root, remove restores, proof generation, proof absent, many entries, update value)
 - vm: 10 (deploy valid/invalid/empty/oom, call, storage+logs, deterministic address, unmetered loop, instruction metering)
-- wallet: 5 (create, deterministic address, encrypted save/load, wrong password, auto-migrate)
+- wallet: 8 (create, deterministic address, encrypted save/load, wrong password, auto-migrate, **NEW 2026-05-21: fresh nonce per save (replay prev), tampering detected (AES-GCM auth), re-encrypt with new password**)
 
 Run a specific test: `RUSTUP_TOOLCHAIN=nightly cargo test test_name --lib`
 
