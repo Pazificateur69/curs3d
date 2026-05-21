@@ -946,6 +946,13 @@ impl Blockchain {
         self.blocks.len() as u64
     }
 
+    /// Iterator over every block in the canonical chain, genesis first.
+    /// Returns the concrete `slice::Iter` so callers can use
+    /// `DoubleEndedIterator` (`.rev()`), `ExactSizeIterator`, etc.
+    pub fn iter_blocks(&self) -> std::slice::Iter<'_, Block> {
+        self.blocks.iter()
+    }
+
     pub fn chain_id(&self) -> &str {
         &self.genesis_config.chain_id
     }
@@ -1413,7 +1420,7 @@ impl Blockchain {
                 .first()
                 .ok_or_else(|| ChainError::SnapshotError("missing genesis block".to_string()))?,
         );
-        for block in self.blocks.iter().skip(1) {
+        for block in self.iter_blocks().skip(1) {
             let proposer_address =
                 hash::address_bytes_from_public_key(&block.header.validator_public_key);
             let proposer_stake = self
@@ -1511,7 +1518,7 @@ impl Blockchain {
     ) -> Vec<(u64, usize, Transaction)> {
         let limit = limit.min(1000);
         let mut out = Vec::new();
-        for block in self.blocks.iter().rev() {
+        for block in self.iter_blocks().rev() {
             if let Some(to) = to_block
                 && block.header.height > to
             {
@@ -1625,6 +1632,11 @@ impl Blockchain {
         self.receipt_locations.clear();
         self.log_index.clear();
 
+        // Split borrow: iterate `self.blocks` directly so the borrow checker
+        // sees only that field is borrowed immutably while we mutate
+        // `self.receipt_locations` / `self.log_index`. Routing through the
+        // `iter_blocks()` helper would tie the iterator lifetime to all of
+        // `self` and block the mutations below.
         for block in &self.blocks {
             for (tx_index, tx) in block.transactions.iter().enumerate() {
                 if tx.is_coinbase() {
@@ -2219,7 +2231,7 @@ impl Blockchain {
             Err(_) => return false,
         };
 
-        for block in self.blocks.iter().skip(1) {
+        for block in self.iter_blocks().skip(1) {
             if replay.add_block(block.clone()).is_err() {
                 return false;
             }
