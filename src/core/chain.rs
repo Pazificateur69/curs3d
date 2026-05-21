@@ -909,7 +909,7 @@ impl Blockchain {
     }
 
     pub fn height(&self) -> u64 {
-        self.blocks.len() as u64 - 1
+        self.block_count().saturating_sub(1)
     }
 
     pub fn latest_block(&self) -> &Block {
@@ -923,7 +923,27 @@ impl Blockchain {
     }
 
     pub fn genesis_hash(&self) -> &[u8] {
-        &self.blocks[0].hash
+        &self.genesis_block().hash
+    }
+
+    /// Genesis block. Always present — every Blockchain is constructed with at
+    /// least one block at height 0. Wraps the `self.blocks[0]` access so the
+    /// rest of the file doesn't need to reach into the storage representation;
+    /// once #28 Phase B is complete this will read from `BlockStoreCursor`.
+    pub fn genesis_block(&self) -> &Block {
+        &self.blocks[0]
+    }
+
+    /// Block at a specific height, if present in the canonical chain.
+    /// Currently a Vec lookup; once #28 Phase B is complete this will go
+    /// through `BlockStoreCursor::block_at` with the redb-backed cache.
+    pub fn block_at_height(&self, height: u64) -> Option<&Block> {
+        self.blocks.get(height as usize)
+    }
+
+    /// Total number of blocks in the canonical chain (= head height + 1).
+    pub fn block_count(&self) -> u64 {
+        self.blocks.len() as u64
     }
 
     pub fn chain_id(&self) -> &str {
@@ -1351,7 +1371,7 @@ impl Blockchain {
             .finalized_height
             .min(manifest.finalized_height);
 
-        if let Some(local_block) = self.blocks.get(manifest.height as usize)
+        if let Some(local_block) = self.block_at_height(manifest.height)
             && local_block.hash != manifest.latest_hash
             && manifest.height <= protected_height
         {
@@ -1367,8 +1387,7 @@ impl Blockchain {
         // a peer could feed us a different chain history that shares the same
         // genesis (#5).
         for snapshot_block in &snapshot_state.blocks {
-            let h = snapshot_block.header.height as usize;
-            if let Some(local_block) = self.blocks.get(h)
+            if let Some(local_block) = self.block_at_height(snapshot_block.header.height)
                 && local_block.hash != snapshot_block.hash
                 && (snapshot_block.header.height == 0
                     || snapshot_block.header.height <= protected_height)
@@ -2294,7 +2313,7 @@ impl Blockchain {
             let new_tip = canonical
                 .last()
                 .map(|b| b.hash.clone())
-                .unwrap_or_else(|| self.blocks[0].hash.clone());
+                .unwrap_or_else(|| self.genesis_hash().to_vec());
             let ancestor = self
                 .block_tree
                 .common_ancestor(&current_tip, &new_tip)
@@ -3155,7 +3174,7 @@ impl Blockchain {
                 .ok_or(BlockTreeError::OrphanBlock)?
                 .clone();
             lineage.push(block);
-            if current == self.blocks[0].hash {
+            if current == self.genesis_hash() {
                 break;
             }
             current = lineage
