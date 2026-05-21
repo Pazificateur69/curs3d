@@ -48,8 +48,7 @@ const RESERVED_SYSTEM_SLOTS: usize = 500;
 /// Cap on User-class mempool entries. `system_count` and `user_count` are
 /// tracked independently against their respective caps in
 /// `add_transaction`.
-const MAX_PENDING_TRANSACTIONS_USER: usize =
-    MAX_PENDING_TRANSACTIONS - RESERVED_SYSTEM_SLOTS;
+const MAX_PENDING_TRANSACTIONS_USER: usize = MAX_PENDING_TRANSACTIONS - RESERVED_SYSTEM_SLOTS;
 const MAX_PENDING_TRANSACTIONS_PER_ACCOUNT: usize = 64;
 const MAX_PENDING_GAS_BUDGET_MULTIPLIER: u64 = 8;
 const MAX_PENDING_GAS_PER_ACCOUNT_MULTIPLIER: u64 = 2;
@@ -1079,7 +1078,11 @@ impl Blockchain {
         // `V6_HARDFORK_HEIGHT_TESTNET` constant if it's set to a
         // reachable height. Currently `u64::MAX` (= dormant), so the
         // check below only fires after the constant is bumped and a
-        // coordinated rollout reaches the chosen height.
+        // coordinated rollout reaches the chosen height. The
+        // `>=` reads as absurd while the constant is u64::MAX, but
+        // becomes meaningful the moment we activate v6 (the constant
+        // will be bumped to a real height during the v6 rollout).
+        #[allow(clippy::absurd_extreme_comparisons)]
         if height >= V6_HARDFORK_HEIGHT_TESTNET && version < V6_PROTOCOL_VERSION {
             version = V6_PROTOCOL_VERSION;
         }
@@ -1333,7 +1336,7 @@ impl Blockchain {
         // Hardcoded-checkpoint enforcement on the snapshot. Catches the
         // case where a malicious peer offers us a fully self-consistent
         // alternative history that just happens to share our genesis.
-        checkpoints::verify_snapshot_against_known(&self.chain_id(), manifest)?;
+        checkpoints::verify_snapshot_against_known(self.chain_id(), manifest)?;
         if self.finality_tracker.finalized_height >= manifest.height
             && !self.finality_tracker.finalized_hash.is_empty()
             && self.finality_tracker.finalized_height == manifest.finalized_height
@@ -2025,7 +2028,7 @@ impl Blockchain {
         // checkpoint list is empty for most chains; this is the safety
         // net for `curs3d-public-testnet` and future mainnet anchors.
         checkpoints::verify_block_against_known(
-            &self.chain_id(),
+            self.chain_id(),
             block.header.height,
             &block.hash,
         )?;
@@ -2156,6 +2159,32 @@ impl Blockchain {
 
     pub fn finalized_height(&self) -> u64 {
         self.finality_tracker.finalized_height
+    }
+
+    /// Aggregated mempool stats for /api/metrics. Returns
+    /// `(system_count, user_count, gas_usage, gas_budget)`. Cheap O(n)
+    /// on pending_transactions; pending is bounded by
+    /// `MAX_PENDING_TRANSACTIONS` so this is fine for the hot poll path.
+    pub fn mempool_stats(&self) -> (usize, usize, u64, u64) {
+        let (system_count, user_count) = self.count_pending_by_class();
+        let gas_usage = self.pending_gas_usage();
+        let gas_budget = self.pending_gas_budget();
+        (system_count, user_count, gas_usage, gas_budget)
+    }
+
+    /// Count of validators that have ever been slashed (equivocation, etc.).
+    /// Used by /api/metrics.
+    pub fn slashed_validator_count(&self) -> usize {
+        self.slashed_validators.len()
+    }
+
+    /// Count of currently-jailed validators at the current head height.
+    pub fn jailed_validator_count(&self) -> usize {
+        let head = self.height();
+        self.accounts
+            .values()
+            .filter(|a| a.jailed_until_height > head)
+            .count()
     }
 
     pub fn active_validator_count(&self) -> usize {
@@ -4163,10 +4192,7 @@ impl Blockchain {
     /// `worst_pending_transaction_index` was the same algorithm with
     /// `filter = |_| true`; that path is no longer reachable because
     /// every caller is class-aware now.
-    fn worst_pending_transaction_index_in_class(
-        &self,
-        class: MempoolClass,
-    ) -> Option<usize> {
+    fn worst_pending_transaction_index_in_class(&self, class: MempoolClass) -> Option<usize> {
         let base_fee_per_gas = self.next_base_fee_per_gas(self.latest_block());
         self.pending_transactions
             .iter()
@@ -4226,9 +4252,7 @@ impl Blockchain {
             // leaving the node wedged).
             let index = self
                 .worst_pending_transaction_index_in_class(MempoolClass::User)
-                .or_else(|| {
-                    self.worst_pending_transaction_index_in_class(MempoolClass::System)
-                });
+                .or_else(|| self.worst_pending_transaction_index_in_class(MempoolClass::System));
             let Some(index) = index else { break };
             let is_protected = self.pending_transactions[index].hash() == protected_hash;
             if is_protected {
@@ -6481,7 +6505,10 @@ mod tests {
     fn mempool_class_assignment_per_kind() {
         // System: validator-set or governance-affecting.
         assert_eq!(TransactionKind::Stake.mempool_class(), MempoolClass::System);
-        assert_eq!(TransactionKind::Unstake.mempool_class(), MempoolClass::System);
+        assert_eq!(
+            TransactionKind::Unstake.mempool_class(),
+            MempoolClass::System
+        );
         assert_eq!(
             TransactionKind::SubmitProposal.mempool_class(),
             MempoolClass::System
@@ -6492,7 +6519,10 @@ mod tests {
         );
 
         // User: everything else, including EVM.
-        assert_eq!(TransactionKind::Transfer.mempool_class(), MempoolClass::User);
+        assert_eq!(
+            TransactionKind::Transfer.mempool_class(),
+            MempoolClass::User
+        );
         assert_eq!(
             TransactionKind::DeployContract.mempool_class(),
             MempoolClass::User
@@ -6583,8 +6613,13 @@ mod tests {
             chain.add_transaction(tx).unwrap();
             assert_eq!(chain.pending_transactions.len(), i + 1);
         }
-        let mut stake_tx =
-            Transaction::stake(chain.chain_id(), funders[0].public_key.clone(), 2_000, 10, 1);
+        let mut stake_tx = Transaction::stake(
+            chain.chain_id(),
+            funders[0].public_key.clone(),
+            2_000,
+            10,
+            1,
+        );
         stake_tx.sign(&funders[0]);
         chain.add_transaction(stake_tx).unwrap();
 
@@ -6616,8 +6651,13 @@ mod tests {
 
         // System tx with intentionally LOWER fee — class ordering must
         // override fee priority for inter-class comparisons.
-        let mut tx_system =
-            Transaction::stake(chain.chain_id(), funders[1].public_key.clone(), 2_000, 10, 0);
+        let mut tx_system = Transaction::stake(
+            chain.chain_id(),
+            funders[1].public_key.clone(),
+            2_000,
+            10,
+            0,
+        );
         tx_system.sign(&funders[1]);
         let system_tx_hash = tx_system.hash();
         chain.add_transaction(tx_system).unwrap();
@@ -6668,13 +6708,8 @@ mod tests {
 
         // System tx with a LOW fee — would be the worst candidate
         // overall if class wasn't filtered.
-        let mut stake_tx = Transaction::stake(
-            chain.chain_id(),
-            funders[0].public_key.clone(),
-            2_000,
-            5,
-            0,
-        );
+        let mut stake_tx =
+            Transaction::stake(chain.chain_id(), funders[0].public_key.clone(), 2_000, 5, 0);
         stake_tx.sign(&funders[0]);
         let stake_hash = stake_tx.hash();
         chain.add_transaction(stake_tx).unwrap();
@@ -6745,10 +6780,8 @@ mod tests {
         accounts_2.insert(addr_a, account_with_balance(100));
         accounts_2.insert(addr_b, account_with_balance(200));
 
-        let root_1 =
-            Blockchain::compute_state_root_at_protocol(&accounts_1, &HashMap::new(), 6);
-        let root_2 =
-            Blockchain::compute_state_root_at_protocol(&accounts_2, &HashMap::new(), 6);
+        let root_1 = Blockchain::compute_state_root_at_protocol(&accounts_1, &HashMap::new(), 6);
+        let root_2 = Blockchain::compute_state_root_at_protocol(&accounts_2, &HashMap::new(), 6);
         assert_eq!(
             root_1, root_2,
             "v6 SMT root must be independent of HashMap iteration order"
@@ -6806,7 +6839,10 @@ mod tests {
         assert_eq!(chain.protocol_version_at_height(u64::MAX - 1), 5);
         // Only the absolute top, which is intentionally unreachable in
         // a real chain, would trigger v6 with the current constant.
-        assert_eq!(chain.protocol_version_at_height(u64::MAX), V6_PROTOCOL_VERSION);
+        assert_eq!(
+            chain.protocol_version_at_height(u64::MAX),
+            V6_PROTOCOL_VERSION
+        );
     }
 
     #[test]

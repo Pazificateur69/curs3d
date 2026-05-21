@@ -81,7 +81,10 @@ pub fn verify_block_against_known(
     height: u64,
     block_hash: &[u8],
 ) -> Result<(), ChainError> {
-    let Some(cp) = checkpoints_for(chain_id).iter().find(|cp| cp.height == height) else {
+    let Some(cp) = checkpoints_for(chain_id)
+        .iter()
+        .find(|cp| cp.height == height)
+    else {
         return Ok(());
     };
     if block_hash == cp.hash.as_slice() {
@@ -141,9 +144,7 @@ pub fn verify_snapshot_against_known(
                 });
             }
         }
-        if cp.height == manifest.finalized_height
-            && manifest.finalized_hash != cp.hash.as_slice()
-        {
+        if cp.height == manifest.finalized_height && manifest.finalized_hash != cp.hash.as_slice() {
             return Err(ChainError::CheckpointMismatch {
                 height: cp.height,
                 expected: hex::encode(cp.hash),
@@ -251,7 +252,12 @@ mod tests {
         assert!(std::ptr::eq(cps, CURS3D_PUBLIC_TESTNET));
     }
 
-    fn snapshot(height: u64, latest_hash: Vec<u8>, fin_height: u64, fin_hash: Vec<u8>) -> SnapshotManifest {
+    fn snapshot(
+        height: u64,
+        latest_hash: Vec<u8>,
+        fin_height: u64,
+        fin_hash: Vec<u8>,
+    ) -> SnapshotManifest {
         SnapshotManifest {
             height,
             epoch: 0,

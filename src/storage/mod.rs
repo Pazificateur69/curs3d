@@ -341,9 +341,7 @@ impl Storage {
                 .collect();
             removed = keys_to_remove.len();
             for key in keys_to_remove {
-                blocks
-                    .remove(key.as_slice())
-                    .map_err(StorageError::redb)?;
+                blocks.remove(key.as_slice()).map_err(StorageError::redb)?;
             }
         }
         write.commit().map_err(StorageError::redb)?;
@@ -973,7 +971,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let storage = Storage::open(dir.path().join("test_db")).unwrap();
         for height in 0..20u64 {
-            storage.put_block(&synthetic_block_at_height(height)).unwrap();
+            storage
+                .put_block(&synthetic_block_at_height(height))
+                .unwrap();
         }
 
         let removed = storage.prune_blocks_below(10).unwrap();
@@ -1002,7 +1002,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let storage = Storage::open(dir.path().join("test_db")).unwrap();
         for height in 0..5u64 {
-            storage.put_block(&synthetic_block_at_height(height)).unwrap();
+            storage
+                .put_block(&synthetic_block_at_height(height))
+                .unwrap();
         }
         let removed = storage.prune_blocks_below(0).unwrap();
         assert_eq!(removed, 0);
@@ -1024,7 +1026,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let storage = Storage::open(dir.path().join("test_db")).unwrap();
         for height in 0..10u64 {
-            storage.put_block(&synthetic_block_at_height(height)).unwrap();
+            storage
+                .put_block(&synthetic_block_at_height(height))
+                .unwrap();
         }
         assert_eq!(storage.prune_blocks_below(5).unwrap(), 5);
         // Second call removes nothing — the heights are already gone.

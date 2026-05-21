@@ -48,6 +48,13 @@ const REBROADCAST_INTERVAL_SECS: u64 = 5;
 /// dropping; in practice the buffer drains within a few hundred ms when
 /// the manifest catches up.
 const MAX_BUFFERED_PRE_MANIFEST_CHUNKS: usize = 2048;
+/// Secondary cap on the pre-manifest buffer measured in bytes, to defend
+/// against a hostile peer that streams large chunks before manifests:
+/// without this, 2048 chunks of (say) 1 MB each would let an attacker burn
+/// 2 GB of RAM per connection. 128 MB is plenty to cover the legitimate
+/// "manifest arrives 200 ms after the first chunk" race that the count cap
+/// targets, while keeping worst-case memory bounded.
+const MAX_BUFFERED_PRE_MANIFEST_BYTES: usize = 128 * 1024 * 1024;
 const MAX_PENDING_BROADCASTS: usize = 256;
 /// Maximum size for any deserialized P2P message (16 MB) — prevents OOM from malicious payloads
 const MAX_DESERIALIZE_SIZE: u64 = 16 * 1024 * 1024;
@@ -1945,17 +1952,29 @@ impl NetworkNode {
                                             .is_some_and(|m| m.height == height);
                                         if !routed_to_active {
                                             // No matching manifest yet. Stash in the
-                                            // pre-manifest buffer, capped to prevent
-                                            // unbounded growth under attack.
+                                            // pre-manifest buffer, capped by both count
+                                            // and total bytes to prevent unbounded growth
+                                            // under attack.
+                                            let chunk_bytes = chunk.data.len();
+                                            let current_bytes: usize = pre_manifest_chunk_buffer
+                                                .values()
+                                                .map(|c| c.data.len())
+                                                .sum();
                                             if pre_manifest_chunk_buffer.len()
                                                 < MAX_BUFFERED_PRE_MANIFEST_CHUNKS
+                                                && current_bytes + chunk_bytes
+                                                    <= MAX_BUFFERED_PRE_MANIFEST_BYTES
                                             {
                                                 pre_manifest_chunk_buffer
                                                     .insert((height, chunk.index), chunk);
                                             }
                                             continue;
                                         }
-                                        let manifest = pending_snapshot_manifest.clone().unwrap();
+                                        // Invariant: `routed_to_active` was just checked to be true,
+                                        // which is_some_and-tested `pending_snapshot_manifest`.
+                                        let manifest = pending_snapshot_manifest
+                                            .clone()
+                                            .expect("invariant: routed_to_active implies Some");
                                         pending_snapshot_chunks.insert(chunk.index, chunk);
                                         if pending_snapshot_chunks.len() == manifest.chunk_count {
                                             let mut ordered = Vec::with_capacity(manifest.chunk_count);

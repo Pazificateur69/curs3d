@@ -196,7 +196,7 @@ impl Wallet {
                 match Self::load(path) {
                     Ok(w) => {
                         // Auto-migrate: re-save as encrypted
-                        eprintln!("Migrating wallet to encrypted format...");
+                        tracing::info!(path = path, "Migrating wallet to encrypted format");
                         w.save_encrypted(path, password)?;
                         Ok(w)
                     }
@@ -288,5 +288,77 @@ mod tests {
         // Should now be encrypted
         let reloaded = Wallet::load_encrypted(path_str, "newpass").unwrap();
         assert_eq!(wallet.address, reloaded.address);
+    }
+
+    #[test]
+    fn test_save_uses_fresh_nonce_each_time() {
+        // Replay prevention: two saves of the same wallet with the same
+        // password must produce different ciphertexts (different AES-GCM
+        // nonces). Otherwise nonce reuse breaks confidentiality.
+        let dir = tempfile::tempdir().unwrap();
+        let p1 = dir.path().join("a.json");
+        let p2 = dir.path().join("b.json");
+        let wallet = Wallet::new();
+        wallet
+            .save_encrypted(p1.to_str().unwrap(), "samepass")
+            .unwrap();
+        wallet
+            .save_encrypted(p2.to_str().unwrap(), "samepass")
+            .unwrap();
+
+        let c1 = std::fs::read(&p1).unwrap();
+        let c2 = std::fs::read(&p2).unwrap();
+        assert_ne!(c1, c2, "two saves must produce different ciphertexts");
+    }
+
+    #[test]
+    fn test_ciphertext_tampering_is_detected() {
+        // AES-GCM authenticates: flipping a single byte in the ciphertext
+        // must cause decryption to fail rather than yield garbage plaintext.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("w.json");
+        let p = path.to_str().unwrap();
+
+        Wallet::new().save_encrypted(p, "mypass").unwrap();
+
+        // The file is JSON {salt, nonce, ciphertext} where each value is hex.
+        let mut raw: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap();
+        let ct_hex = raw["ciphertext"].as_str().unwrap();
+        let mut bytes = hex::decode(ct_hex).expect("hex");
+        let mid = bytes.len() / 2;
+        bytes[mid] ^= 0x80;
+        raw["ciphertext"] = serde_json::Value::String(hex::encode(&bytes));
+        std::fs::write(p, serde_json::to_string(&raw).unwrap()).unwrap();
+
+        let result = Wallet::load_encrypted(p, "mypass");
+        assert!(
+            matches!(result, Err(WalletError::WrongPassword)),
+            "tampered ciphertext must be rejected as WrongPassword (AES-GCM auth tag fails); got {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_re_encrypt_with_new_password() {
+        // A user changing their password should still get back the same
+        // keypair on subsequent loads.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("w.json");
+        let p = path.to_str().unwrap();
+
+        let wallet = Wallet::new();
+        let original_pubkey = wallet.keypair.public_key.clone();
+        wallet.save_encrypted(p, "oldpass").unwrap();
+
+        let loaded = Wallet::load_encrypted(p, "oldpass").unwrap();
+        loaded.save_encrypted(p, "newpass").unwrap();
+
+        let reloaded = Wallet::load_encrypted(p, "newpass").unwrap();
+        assert_eq!(reloaded.keypair.public_key, original_pubkey);
+        assert!(matches!(
+            Wallet::load_encrypted(p, "oldpass"),
+            Err(WalletError::WrongPassword)
+        ));
     }
 }

@@ -5,7 +5,7 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use bytes::Bytes;
 use futures::{SinkExt, StreamExt};
@@ -847,6 +847,10 @@ async fn handle_request(
             let head = chain.height();
             let final_height = chain.finalized_height();
             let finality_lag = head.saturating_sub(final_height);
+            let (mempool_sys, mempool_user, mempool_gas_usage, mempool_gas_budget) =
+                chain.mempool_stats();
+            let slashed = chain.slashed_validator_count();
+            let jailed = chain.jailed_validator_count();
             let body = format!(
                 concat!(
                     "# TYPE curs3d_uptime_seconds counter\n",
@@ -866,8 +870,24 @@ async fn handle_request(
                     "curs3d_protocol_version {}\n",
                     "# TYPE curs3d_pending_transactions gauge\n",
                     "curs3d_pending_transactions {}\n",
+                    "# TYPE curs3d_pending_transactions_system gauge\n",
+                    "# Mempool count in MempoolClass::System (Stake/Unstake/governance).\n",
+                    "curs3d_pending_transactions_system {}\n",
+                    "# TYPE curs3d_pending_transactions_user gauge\n",
+                    "# Mempool count in MempoolClass::User (Transfer/CallContract/...).\n",
+                    "curs3d_pending_transactions_user {}\n",
+                    "# TYPE curs3d_mempool_gas_usage gauge\n",
+                    "curs3d_mempool_gas_usage {}\n",
+                    "# TYPE curs3d_mempool_gas_budget gauge\n",
+                    "curs3d_mempool_gas_budget {}\n",
                     "# TYPE curs3d_active_validators gauge\n",
                     "curs3d_active_validators {}\n",
+                    "# TYPE curs3d_slashed_validators_total gauge\n",
+                    "# Cumulative validators ever slashed (equivocation, etc.).\n",
+                    "curs3d_slashed_validators_total {}\n",
+                    "# TYPE curs3d_jailed_validators gauge\n",
+                    "# Validators currently jailed (jailed_until_height > head).\n",
+                    "curs3d_jailed_validators {}\n",
                     "# TYPE curs3d_peer_count gauge\n",
                     "curs3d_peer_count {}\n",
                     "# TYPE curs3d_accounts_total gauge\n",
@@ -888,7 +908,13 @@ async fn handle_request(
                 block_age,
                 proto_version,
                 chain.pending_transactions.len(),
+                mempool_sys,
+                mempool_user,
+                mempool_gas_usage,
+                mempool_gas_budget,
                 chain.active_validator_count(),
+                slashed,
+                jailed,
                 runtime.peer_count,
                 chain.accounts.len(),
                 chain.contracts.len(),
@@ -1821,6 +1847,37 @@ struct EthSubscription {
     kind: String,
 }
 
+/// Hard cap on time we'll wait for a `ws_tx.send().await` to drain before we
+/// declare the client too slow and drop the connection. Prevents a slow client
+/// from accumulating an unbounded outbound buffer in tokio-tungstenite.
+const WS_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Send a WebSocket message with a write-timeout. Returns Err if the timeout
+/// fires or the underlying socket errors — in both cases the caller should
+/// drop the connection.
+async fn ws_send_bounded(
+    ws_tx: &mut futures::stream::SplitSink<
+        tokio_tungstenite::WebSocketStream<TcpStream>,
+        WsMessage,
+    >,
+    msg: WsMessage,
+) -> Result<(), ()> {
+    match tokio::time::timeout(WS_WRITE_TIMEOUT, ws_tx.send(msg)).await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => {
+            tracing::debug!("WebSocket send error: {}", e);
+            Err(())
+        }
+        Err(_) => {
+            tracing::warn!(
+                "WebSocket client too slow ({}s write timeout) — dropping connection",
+                WS_WRITE_TIMEOUT.as_secs()
+            );
+            Err(())
+        }
+    }
+}
+
 async fn handle_ws_connection(stream: TcpStream, mut event_rx: broadcast::Receiver<String>) {
     let ws = match tokio_tungstenite::accept_async(stream).await {
         Ok(ws) => ws,
@@ -1961,7 +2018,7 @@ async fn handle_ws_connection(stream: TcpStream, mut event_rx: broadcast::Receiv
 
                         // Native CURS3D event stream
                         if (subscribed_events.contains(event_type) || subscribed_events.is_empty())
-                            && ws_tx.send(WsMessage::Text(event_str.clone())).await.is_err()
+                            && ws_send_bounded(&mut ws_tx, WsMessage::Text(event_str.clone())).await.is_err()
                         {
                             break;
                         }
@@ -1985,8 +2042,7 @@ async fn handle_ws_connection(stream: TcpStream, mut event_rx: broadcast::Receiv
                                     "result": payload,
                                 }
                             });
-                            if ws_tx
-                                .send(WsMessage::Text(notif.to_string()))
+                            if ws_send_bounded(&mut ws_tx, WsMessage::Text(notif.to_string()))
                                 .await
                                 .is_err()
                             {

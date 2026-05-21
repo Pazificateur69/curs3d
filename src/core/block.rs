@@ -190,4 +190,67 @@ mod tests {
         assert!(block.verify_merkle_root());
         assert!(block.verify_signature());
     }
+
+    // ─── Property-based tests (task #33) ─────────────────────────────
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(32))]
+
+        /// Bincode roundtrip preserves block byte-identity. This is
+        /// load-bearing for snapshot delivery and network gossip.
+        #[test]
+        fn prop_block_bincode_roundtrip(
+            height in any::<u64>(),
+            gas_used in any::<u64>(),
+            base_fee in any::<u64>(),
+            state_seed in proptest::collection::vec(any::<u8>(), 0..64),
+        ) {
+            let validator = KeyPair::generate();
+            let block = Block::new(
+                1,
+                height,
+                vec![0u8; 32],
+                hash::sha3_hash(&state_seed),
+                gas_used,
+                base_fee,
+                vec![Transaction::coinbase(
+                    "proptest",
+                    vec![2; hash::ADDRESS_LEN],
+                    50,
+                )],
+                &validator,
+            );
+            let ser = bincode::serialize(&block).expect("ser");
+            let de: Block = bincode::deserialize(&ser).expect("de");
+            let re = bincode::serialize(&de).expect("re-ser");
+            prop_assert_eq!(ser, re);
+            prop_assert!(de.verify_hash());
+            prop_assert!(de.verify_merkle_root());
+            prop_assert!(de.verify_signature());
+        }
+
+        /// Mutating any header field after construction breaks the hash.
+        #[test]
+        fn prop_block_hash_sensitive_to_header_mutation(
+            height in any::<u64>(),
+            extra_gas in 1u64..1_000,
+        ) {
+            let validator = KeyPair::generate();
+            let mut block = Block::new(
+                1,
+                height,
+                vec![0u8; 32],
+                hash::sha3_hash(b"state"),
+                21_000,
+                1,
+                vec![Transaction::coinbase("proptest", vec![2; hash::ADDRESS_LEN], 50)],
+                &validator,
+            );
+            prop_assert!(block.verify_hash());
+            block.header.gas_used = block.header.gas_used.wrapping_add(extra_gas);
+            prop_assert!(!block.verify_hash());
+        }
+    }
 }

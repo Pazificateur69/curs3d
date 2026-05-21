@@ -1,0 +1,178 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v0.4.0)'
+        required: true
+        default: 'v0.0.0-test'
+
+# Required for keyless cosign signing via OIDC.
+permissions:
+  contents: write
+  id-token: write
+  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: nightly
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: curs3d-linux-x86_64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: curs3d-linux-aarch64
+            cross: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --locked
+
+      - name: Build (native)
+        if: '!matrix.cross'
+        run: |
+          echo '.global __rust_probestack; .type __rust_probestack, @function; __rust_probestack: ret' > /tmp/probestack.s
+          gcc -c /tmp/probestack.s -o /tmp/probestack.o
+          ar rcs /tmp/libprobestack.a /tmp/probestack.o
+          RUSTFLAGS="-L /tmp -l static=probestack" \
+            cargo build --release --target ${{ matrix.target }} --bin curs3d
+
+      - name: Build (cross)
+        if: matrix.cross
+        run: cross build --release --target ${{ matrix.target }} --bin curs3d
+
+      - name: Stage artifact
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/curs3d dist/${{ matrix.artifact }}
+          (cd dist && sha256sum ${{ matrix.artifact }} > ${{ matrix.artifact }}.sha256)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/
+
+  sbom:
+    name: Generate SBOM (CycloneDX)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx --locked
+      - name: Generate SBOM
+        run: |
+          mkdir -p dist
+          cargo cyclonedx --format json --override-filename curs3d-sbom
+          cp curs3d-sbom.cdx.json dist/curs3d-sbom.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: curs3d-sbom
+          path: dist/
+
+  sign-and-publish:
+    name: Sign + publish release
+    runs-on: ubuntu-latest
+    needs: [build, sbom]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-staging
+
+      - name: Flatten staging tree
+        run: |
+          mkdir -p dist
+          find dist-staging -type f -exec cp {} dist/ \;
+          ls -la dist/
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign artifacts (keyless OIDC)
+        env:
+          COSIGN_EXPERIMENTAL: '1'
+        run: |
+          cd dist
+          for f in curs3d-linux-x86_64 curs3d-linux-aarch64 curs3d-sbom.cdx.json; do
+            if [ -f "$f" ]; then
+              cosign sign-blob --yes \
+                --output-signature "${f}.sig" \
+                --output-certificate "${f}.pem" \
+                "$f"
+              echo "Signed $f"
+            fi
+          done
+
+      - name: Compute checksum bundle
+        run: |
+          cd dist
+          sha256sum * | grep -v '\.sha256$' > SHA256SUMS
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: |
+            dist/curs3d-linux-x86_64
+            dist/curs3d-linux-x86_64.sig
+            dist/curs3d-linux-x86_64.pem
+            dist/curs3d-linux-x86_64.sha256
+            dist/curs3d-linux-aarch64
+            dist/curs3d-linux-aarch64.sig
+            dist/curs3d-linux-aarch64.pem
+            dist/curs3d-linux-aarch64.sha256
+            dist/curs3d-sbom.cdx.json
+            dist/curs3d-sbom.cdx.json.sig
+            dist/curs3d-sbom.cdx.json.pem
+            dist/SHA256SUMS
+          body: |
+            ## CURS3D ${{ github.event.inputs.tag || github.ref_name }}
+
+            ### Verifying the artifacts
+
+            Each binary and the SBOM are signed with [cosign](https://docs.sigstore.dev/cosign/overview/) using GitHub OIDC (no managed keys).
+
+            ```bash
+            cosign verify-blob \
+              --certificate-identity-regexp '^https://github.com/Pazificateur69/curs3d/.github/workflows/release.yml@' \
+              --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+              --certificate curs3d-linux-x86_64.pem \
+              --signature curs3d-linux-x86_64.sig \
+              curs3d-linux-x86_64
+            ```
+
+            Replace `curs3d-linux-x86_64` with `curs3d-linux-aarch64` or `curs3d-sbom.cdx.json` to verify the other artifacts.
+
+            ### SBOM
+
+            The CycloneDX SBOM (`curs3d-sbom.cdx.json`) lists every direct and transitive Rust crate baked into this build. Tools like [`grype`](https://github.com/anchore/grype) can scan it for CVEs.
+
+            ### Checksums
+
+            `SHA256SUMS` contains SHA-256 hashes of every other file in the release.

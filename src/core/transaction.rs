@@ -612,4 +612,87 @@ mod tests {
         tx.sign(&kp);
         assert!(!tx.verify_signature());
     }
+
+    // ─── Property-based tests (task #33) ─────────────────────────────
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        /// Bincode roundtrip preserves the transaction byte-for-byte.
+        /// This is load-bearing for network gossip: a tx produced by one
+        /// node must serialize identically on every other node.
+        #[test]
+        fn prop_transaction_bincode_roundtrip(
+            chain_id in "[a-z0-9-]{1,32}",
+            amount in any::<u64>(),
+            fee in any::<u64>(),
+            nonce in any::<u64>(),
+            data in proptest::collection::vec(any::<u8>(), 0..256),
+            to_byte in any::<u8>(),
+            pk_byte in any::<u8>(),
+        ) {
+            let mut tx = Transaction::new(
+                &chain_id,
+                vec![pk_byte; 32],
+                vec![to_byte; hash::ADDRESS_LEN],
+                amount,
+                fee,
+                nonce,
+            );
+            tx.data = data.clone();
+            let serialized = bincode::serialize(&tx).expect("serialize");
+            let de: Transaction = bincode::deserialize(&serialized).expect("deserialize");
+            let re_serialized = bincode::serialize(&de).expect("re-serialize");
+            prop_assert_eq!(serialized, re_serialized);
+            prop_assert_eq!(tx.amount, de.amount);
+            prop_assert_eq!(&tx.data, &de.data);
+            prop_assert_eq!(tx.nonce, de.nonce);
+        }
+
+        /// Sign + verify is deterministic: same tx + same keypair, sign
+        /// twice (with new sig each time), both verify.
+        #[test]
+        fn prop_sign_verify_roundtrip(
+            amount in any::<u64>(),
+            fee in 0u64..1_000_000,
+            nonce in any::<u64>(),
+        ) {
+            let kp = KeyPair::generate();
+            let mut tx = Transaction::new(
+                "proptest-chain",
+                kp.public_key.clone(),
+                vec![3u8; hash::ADDRESS_LEN],
+                amount,
+                fee,
+                nonce,
+            );
+            tx.sign(&kp);
+            prop_assert!(tx.verify_signature());
+        }
+
+        /// Mutating the `from` address after signing always fails verification.
+        #[test]
+        fn prop_tampering_from_fails_verify(
+            amount in any::<u64>(),
+            tamper_byte in any::<u8>(),
+        ) {
+            let kp = KeyPair::generate();
+            let mut tx = Transaction::new(
+                "proptest-chain",
+                kp.public_key.clone(),
+                vec![3u8; hash::ADDRESS_LEN],
+                amount,
+                10,
+                0,
+            );
+            tx.sign(&kp);
+            // Tamper.
+            let original_from = tx.from.clone();
+            tx.from = vec![tamper_byte; hash::ADDRESS_LEN];
+            prop_assume!(tx.from != original_from);
+            prop_assert!(!tx.verify_signature());
+        }
+    }
 }

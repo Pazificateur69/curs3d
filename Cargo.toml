@@ -69,12 +69,17 @@ clap = { version = "4", features = ["derive"] }
 rand = "0.8"
 rpassword = "7"
 
+# Bounded LRU cache for the paginated block store (refactor #28).
+lru = "0.12"
+
 [dev-dependencies]
 tempfile = "3"
 criterion = { version = "0.5", features = ["html_reports"] }
 # secp256k1 signing for eth_sendRawTransaction tests
 alloy-signer = "1"
 alloy-signer-local = "1"
+# Property-based tests (task #33).
+proptest = "1.5"
 
 [[bin]]
 name = "curs3d"
