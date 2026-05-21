@@ -970,18 +970,40 @@ impl Blockchain {
         self.blocks.iter()
     }
 
-    /// Append a block to the canonical chain. Centralizes the write path
-    /// so #28 Phase B can swap this for `BlockStoreCursor::append` in one
-    /// place without touching every caller. Caller must have validated
+    /// Append a block to the canonical chain. Dual-writes to `self.blocks`
+    /// AND the `BlockStoreCursor` when present, so the two views stay in
+    /// lockstep. Caller must have validated
     /// `block.header.height == self.block_count()` upstream.
     fn push_block_internal(&mut self, block: Block) {
+        if let Some(cursor) = &self.cursor {
+            // Storage already persisted the block elsewhere (via
+            // persist_added_block); cursor.append() re-persists, which is
+            // idempotent under redb's put_block (overwrite-allowed).
+            // Errors here would mean cursor + self.blocks divergence —
+            // log loudly but don't kill the chain since self.blocks is
+            // still the source of truth.
+            if let Err(e) = cursor.append(block.clone()) {
+                tracing::error!(
+                    height = block.header.height,
+                    error = %e,
+                    "BlockStoreCursor.append failed — cursor/blocks may diverge"
+                );
+            }
+        }
         self.blocks.push(block);
     }
 
     /// Replace the entire canonical chain with a new sequence. Used by
-    /// `apply_snapshot` and `replace_blocks` (reorg). Centralizes the
-    /// other write path so #28 Phase B can route both through the cursor.
+    /// `apply_snapshot` and `replace_blocks` (reorg). The cursor is
+    /// truncated to 0 and will be repopulated by subsequent `add_block`
+    /// calls upstream (snapshot apply already calls `push_block_internal`
+    /// per block via `rebuild_canonical_state`).
     fn replace_all_blocks(&mut self, blocks: Vec<Block>) {
+        if let Some(cursor) = &self.cursor
+            && let Err(e) = cursor.invalidate_from(0)
+        {
+            tracing::warn!(error = %e, "cursor.invalidate_from(0) failed during chain replace");
+        }
         self.blocks = blocks;
     }
 

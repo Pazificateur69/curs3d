@@ -1,23 +1,23 @@
 //! Paginated block store — bounded RAM view onto the canonical chain.
 //!
 //! Replaces the existing `Blockchain::blocks: Vec<Block>` (see refactor
-//! plan in `docs/REFACTOR_BLOCK_STORE.md`). This module is **scaffolding
-//! only** at this revision: it compiles, has unit tests, and is wired
-//! into `core::mod`, but is NOT yet plugged into `Blockchain`. That
-//! migration is phases B–D.
+//! plan in `docs/REFACTOR_BLOCK_STORE.md`). All methods take `&self` and
+//! lock an interior `Mutex` so the cursor can be embedded behind
+//! `Arc<Mutex<Blockchain>>` (the shape used by the network layer) without
+//! forcing every chain helper to be `&mut self`.
 //!
 //! Invariants:
 //! - Genesis (height 0) is always resident — never evicted from cache.
-//! - `height_count` is the authoritative "how many blocks have ever been
-//!   appended" counter; it does NOT decrement when pruning.
-//! - `base_height` is the lowest height still present in redb. Blocks
-//!   below this have been pruned and `block_at` returns `Ok(None)`.
+//! - `state.height_count` is the authoritative "how many blocks have ever
+//!   been appended" counter; it does NOT decrement when pruning.
+//! - `state.base_height` is the lowest height still present in redb.
+//!   Blocks below this have been pruned and `block_at` returns `Ok(None)`.
 
 use crate::core::block::Block;
 use crate::storage::{BlockBackend, StorageError};
 use lru::LruCache;
 use std::num::NonZeroUsize;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Default LRU cache size — number of non-genesis blocks kept in RAM.
 /// 1000 × ~3 KB average = ~3 MB RAM per validator. Tunable via
@@ -34,11 +34,13 @@ pub enum BlockStoreError {
     MissingBlock(u64),
     #[error("non-contiguous append: expected height {expected}, got {actual}")]
     NonContiguousAppend { expected: u64, actual: u64 },
+    #[error("cursor mutex poisoned")]
+    Poisoned,
 }
 
-pub struct BlockStoreCursor {
-    storage: Arc<dyn BlockBackend>,
-    /// Genesis block, pinned in memory.
+/// Interior state guarded by the cursor's single Mutex.
+struct CursorState {
+    /// Genesis block, pinned (never evicted, never reloaded from disk).
     genesis: Block,
     /// LRU cache of non-genesis blocks.
     cache: LruCache<u64, Block>,
@@ -47,6 +49,18 @@ pub struct BlockStoreCursor {
     /// Lowest height still readable from redb. Reads below this fail with
     /// `Ok(None)`. Bumped by `prune_below`.
     base_height: u64,
+}
+
+pub struct BlockStoreCursor {
+    storage: Arc<dyn BlockBackend>,
+    state: Mutex<CursorState>,
+}
+
+/// Short-hand for the lock pattern.
+macro_rules! lock_state {
+    ($self:expr) => {
+        $self.state.lock().map_err(|_| BlockStoreError::Poisoned)?
+    };
 }
 
 impl BlockStoreCursor {
@@ -83,34 +97,36 @@ impl BlockStoreCursor {
 
         Ok(Self {
             storage,
-            genesis,
-            cache,
-            height_count,
-            base_height,
+            state: Mutex::new(CursorState {
+                genesis,
+                cache,
+                height_count,
+                base_height,
+            }),
         })
     }
 
-    pub fn genesis(&self) -> &Block {
-        &self.genesis
+    pub fn genesis(&self) -> Result<Block, BlockStoreError> {
+        Ok(lock_state!(self).genesis.clone())
     }
 
     /// Total number of blocks ever appended (= head_height + 1).
-    pub fn len(&self) -> u64 {
-        self.height_count
+    pub fn len(&self) -> Result<u64, BlockStoreError> {
+        Ok(lock_state!(self).height_count)
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.height_count == 0
+    pub fn is_empty(&self) -> Result<bool, BlockStoreError> {
+        Ok(lock_state!(self).height_count == 0)
     }
 
     /// Head height. Returns 0 for a chain with only genesis.
-    pub fn head_height(&self) -> u64 {
-        self.height_count.saturating_sub(1)
+    pub fn head_height(&self) -> Result<u64, BlockStoreError> {
+        Ok(lock_state!(self).height_count.saturating_sub(1))
     }
 
     /// Lowest height present in storage. Reads below this return Ok(None).
-    pub fn base_height(&self) -> u64 {
-        self.base_height
+    pub fn base_height(&self) -> Result<u64, BlockStoreError> {
+        Ok(lock_state!(self).base_height)
     }
 
     /// Fetch the block at `height`. Cache hit returns a clone of the
@@ -118,101 +134,123 @@ impl BlockStoreCursor {
     ///
     /// Returns `Ok(None)` if the height has been pruned (below
     /// base_height) or is above the head.
-    pub fn block_at(&mut self, height: u64) -> Result<Option<Block>, BlockStoreError> {
-        if height == 0 {
-            return Ok(Some(self.genesis.clone()));
-        }
-        if height >= self.height_count {
-            return Ok(None);
-        }
-        if height < self.base_height {
-            return Ok(None);
-        }
-        if let Some(cached) = self.cache.get(&height) {
-            return Ok(Some(cached.clone()));
-        }
-        match self.storage.get_block(height)? {
-            Some(b) => {
-                self.cache.put(height, b.clone());
-                Ok(Some(b))
+    pub fn block_at(&self, height: u64) -> Result<Option<Block>, BlockStoreError> {
+        // Snapshot the bounds + cache hit under the lock, then release
+        // the lock before the (potentially blocking) storage I/O.
+        let cached_or_bounds = {
+            let mut state = lock_state!(self);
+            if height == 0 {
+                return Ok(Some(state.genesis.clone()));
             }
-            None => Ok(None),
+            if height >= state.height_count || height < state.base_height {
+                return Ok(None);
+            }
+            state.cache.get(&height).cloned()
+        };
+        if let Some(b) = cached_or_bounds {
+            return Ok(Some(b));
         }
+
+        let from_storage = self.storage.get_block(height)?;
+        if let Some(b) = from_storage.clone() {
+            // Re-acquire lock to insert. Race tolerated: if two readers
+            // miss concurrently, both call storage and one wins the put.
+            let mut state = lock_state!(self);
+            // Validate bounds again under the second lock — a concurrent
+            // prune may have shifted them.
+            if height >= state.height_count || height < state.base_height {
+                return Ok(None);
+            }
+            state.cache.put(height, b);
+        }
+        Ok(from_storage)
     }
 
     /// Append a new block. The block's `header.height` MUST equal
-    /// `self.height_count` (i.e. one above the current head). Persists
-    /// to redb and inserts into cache.
-    pub fn append(&mut self, block: Block) -> Result<(), BlockStoreError> {
+    /// `self.len()` (i.e. one above the current head). Persists to redb
+    /// and inserts into cache.
+    pub fn append(&self, block: Block) -> Result<(), BlockStoreError> {
         let h = block.header.height;
-        if h != self.height_count {
+        // Bounds + storage call under no lock; we re-validate post-lock.
+        // Pre-validate cheaply so a non-contiguous append doesn't even
+        // touch storage.
+        {
+            let state = lock_state!(self);
+            if h != state.height_count {
+                return Err(BlockStoreError::NonContiguousAppend {
+                    expected: state.height_count,
+                    actual: h,
+                });
+            }
+        }
+        self.storage.put_block(&block)?;
+        let mut state = lock_state!(self);
+        // Recheck after storage write in case a concurrent caller raced.
+        if h != state.height_count {
             return Err(BlockStoreError::NonContiguousAppend {
-                expected: self.height_count,
+                expected: state.height_count,
                 actual: h,
             });
         }
-        self.storage.put_block(&block)?;
         if h == 0 {
-            // Replacing genesis through append is not how genesis is
-            // supposed to be installed, but if it happens, keep state
-            // consistent.
-            self.genesis = block;
+            state.genesis = block;
         } else {
-            self.cache.put(h, block);
+            state.cache.put(h, block);
         }
-        self.height_count += 1;
+        state.height_count += 1;
         Ok(())
     }
 
     /// Drop all blocks below `keep_from` from both redb and the cache.
-    /// Genesis is never dropped (base_height is clamped to >= 1 for
-    /// the in-memory state, but redb may not even have a height 0 slot
-    /// if you never seeded it; we don't touch height 0 here).
-    ///
-    /// Returns the number of blocks actually removed from redb.
-    pub fn prune_below(&mut self, keep_from: u64) -> Result<usize, BlockStoreError> {
+    /// Genesis is never dropped. Returns the number of blocks removed.
+    pub fn prune_below(&self, keep_from: u64) -> Result<usize, BlockStoreError> {
         if keep_from == 0 {
-            // No-op: pruning to 0 keeps everything.
             return Ok(0);
         }
-        if keep_from <= self.base_height {
+        let need_prune = {
+            let state = lock_state!(self);
+            keep_from > state.base_height
+        };
+        if !need_prune {
             return Ok(0);
         }
         let removed = self.storage.prune_blocks_below(keep_from)?;
-        self.base_height = keep_from;
-        // Evict pruned heights from cache.
-        let to_evict: Vec<u64> = self
+        let mut state = lock_state!(self);
+        state.base_height = keep_from;
+        let to_evict: Vec<u64> = state
             .cache
             .iter()
             .filter(|(h, _)| **h < keep_from)
             .map(|(h, _)| *h)
             .collect();
         for h in to_evict {
-            self.cache.pop(&h);
+            state.cache.pop(&h);
         }
         Ok(removed)
     }
 
-    /// Invalidate cache entries at or above `from`. Used during reorgs
-    /// where `replace_blocks` is about to overwrite a suffix of the chain.
-    pub fn invalidate_from(&mut self, from: u64) {
-        let to_evict: Vec<u64> = self
+    /// Invalidate cache entries at or above `from` and truncate the
+    /// height counter. Used by reorg paths.
+    pub fn invalidate_from(&self, from: u64) -> Result<(), BlockStoreError> {
+        let mut state = lock_state!(self);
+        let to_evict: Vec<u64> = state
             .cache
             .iter()
             .filter(|(h, _)| **h >= from)
             .map(|(h, _)| *h)
             .collect();
         for h in to_evict {
-            self.cache.pop(&h);
+            state.cache.pop(&h);
         }
-        if from < self.height_count {
-            self.height_count = from;
+        if from < state.height_count {
+            state.height_count = from;
         }
+        Ok(())
     }
 
     /// Number of currently cached blocks (excluding pinned genesis).
-    pub fn cache_size(&self) -> usize {
-        self.cache.len()
+    pub fn cache_size(&self) -> Result<usize, BlockStoreError> {
+        Ok(lock_state!(self).cache.len())
     }
 }
 
@@ -223,9 +261,8 @@ mod tests {
     use crate::storage::InMemoryBlockBackend;
 
     /// Test fixture: an `InMemoryBlockBackend` boxed as `Arc<dyn BlockBackend>`.
-    /// Bypasses redb tmpdir + fsync — tests run ~10x faster than with the
-    /// concrete `Storage`. The TempDir slot is kept (returned `()`) so test
-    /// signatures match the pre-refactor shape for diff readability.
+    /// Bypasses redb tmpdir + fsync — tests run much faster than with the
+    /// concrete `Storage`.
     fn open_test_storage() -> (Arc<dyn BlockBackend>, ()) {
         let storage: Arc<dyn BlockBackend> = Arc::new(InMemoryBlockBackend::new());
         (storage, ())
@@ -251,10 +288,10 @@ mod tests {
         let g = seed_genesis(storage.as_ref());
 
         let cursor = BlockStoreCursor::new(storage, 8).expect("cursor");
-        assert_eq!(cursor.len(), 1);
-        assert_eq!(cursor.head_height(), 0);
-        assert_eq!(cursor.base_height(), 0);
-        assert_eq!(cursor.genesis().hash, g.hash);
+        assert_eq!(cursor.len().unwrap(), 1);
+        assert_eq!(cursor.head_height().unwrap(), 0);
+        assert_eq!(cursor.base_height().unwrap(), 0);
+        assert_eq!(cursor.genesis().unwrap().hash, g.hash);
     }
 
     #[test]
@@ -262,21 +299,21 @@ mod tests {
         let (storage, _dir) = open_test_storage();
         let g = seed_genesis(storage.as_ref());
 
-        let mut cursor = BlockStoreCursor::new(storage, 8).expect("cursor");
+        let cursor = BlockStoreCursor::new(storage, 8).expect("cursor");
         let b1 = synthetic_block(&g);
         cursor.append(b1.clone()).expect("append");
-        assert_eq!(cursor.len(), 2);
-        assert_eq!(cursor.head_height(), 1);
+        assert_eq!(cursor.len().unwrap(), 2);
+        assert_eq!(cursor.head_height().unwrap(), 1);
         let read = cursor.block_at(1).expect("read").expect("present");
         assert_eq!(read.hash, b1.hash);
-        assert_eq!(cursor.cache_size(), 1);
+        assert_eq!(cursor.cache_size().unwrap(), 1);
     }
 
     #[test]
     fn cursor_rejects_non_contiguous_append() {
         let (storage, _dir) = open_test_storage();
         let g = seed_genesis(storage.as_ref());
-        let mut cursor = BlockStoreCursor::new(storage, 8).expect("cursor");
+        let cursor = BlockStoreCursor::new(storage, 8).expect("cursor");
         let b1 = synthetic_block(&g);
         let b2 = synthetic_block(&b1);
         let err = cursor.append(b2).expect_err("should reject");
@@ -293,7 +330,7 @@ mod tests {
     fn cursor_block_at_genesis_always_returns() {
         let (storage, _dir) = open_test_storage();
         seed_genesis(storage.as_ref());
-        let mut cursor = BlockStoreCursor::new(storage, 8).expect("cursor");
+        let cursor = BlockStoreCursor::new(storage, 8).expect("cursor");
         let g = cursor.block_at(0).expect("ok").expect("genesis present");
         assert_eq!(g.header.height, 0);
     }
@@ -302,7 +339,7 @@ mod tests {
     fn cursor_block_at_above_head_returns_none() {
         let (storage, _dir) = open_test_storage();
         seed_genesis(storage.as_ref());
-        let mut cursor = BlockStoreCursor::new(storage, 8).expect("cursor");
+        let cursor = BlockStoreCursor::new(storage, 8).expect("cursor");
         assert!(cursor.block_at(1).expect("ok").is_none());
         assert!(cursor.block_at(99).expect("ok").is_none());
     }
@@ -311,7 +348,7 @@ mod tests {
     fn cursor_lru_evicts_oldest_when_full() {
         let (storage, _dir) = open_test_storage();
         let g = seed_genesis(storage.as_ref());
-        let mut cursor = BlockStoreCursor::new(storage, 2).expect("cursor");
+        let cursor = BlockStoreCursor::new(storage, 2).expect("cursor");
 
         let mut parent = g;
         for _ in 0..5 {
@@ -319,10 +356,7 @@ mod tests {
             cursor.append(b.clone()).expect("append");
             parent = b;
         }
-        // Cache cap = 2, appended 5 → only the 2 most recent survive.
-        assert!(cursor.cache_size() <= 2);
-
-        // Older blocks still readable (via redb refill).
+        assert!(cursor.cache_size().unwrap() <= 2);
         let b1 = cursor.block_at(1).expect("ok").expect("present");
         assert_eq!(b1.header.height, 1);
     }
@@ -331,7 +365,7 @@ mod tests {
     fn cursor_prune_below_drops_blocks() {
         let (storage, _dir) = open_test_storage();
         let g = seed_genesis(storage.as_ref());
-        let mut cursor = BlockStoreCursor::new(storage, 64).expect("cursor");
+        let cursor = BlockStoreCursor::new(storage, 64).expect("cursor");
 
         let mut parent = g;
         for _ in 0..10 {
@@ -339,17 +373,13 @@ mod tests {
             cursor.append(b.clone()).expect("append");
             parent = b;
         }
-        // Prune everything below height 5.
         let removed = cursor.prune_below(5).expect("prune");
         assert!(removed > 0, "should have pruned heights 1..5");
-        assert_eq!(cursor.base_height(), 5);
+        assert_eq!(cursor.base_height().unwrap(), 5);
 
-        // Below base_height = None.
         assert!(cursor.block_at(2).expect("ok").is_none());
-        // At and above base_height = Some.
         assert!(cursor.block_at(5).expect("ok").is_some());
         assert!(cursor.block_at(9).expect("ok").is_some());
-        // Genesis is still pinned even after prune.
         assert!(cursor.block_at(0).expect("ok").is_some());
     }
 
@@ -357,7 +387,7 @@ mod tests {
     fn cursor_invalidate_from_truncates_height_and_cache() {
         let (storage, _dir) = open_test_storage();
         let g = seed_genesis(storage.as_ref());
-        let mut cursor = BlockStoreCursor::new(storage, 16).expect("cursor");
+        let cursor = BlockStoreCursor::new(storage, 16).expect("cursor");
 
         let mut parent = g;
         for _ in 0..5 {
@@ -365,14 +395,12 @@ mod tests {
             cursor.append(b.clone()).expect("append");
             parent = b;
         }
-        assert_eq!(cursor.head_height(), 5);
+        assert_eq!(cursor.head_height().unwrap(), 5);
 
-        cursor.invalidate_from(3);
-        assert_eq!(cursor.head_height(), 2);
-        assert_eq!(cursor.len(), 3);
-        // Cache no longer reports heights >= 3.
+        cursor.invalidate_from(3).expect("invalidate");
+        assert_eq!(cursor.head_height().unwrap(), 2);
+        assert_eq!(cursor.len().unwrap(), 3);
         for h in 3..=5 {
-            // Reading invalidated entries is `None` because height_count truncated.
             assert!(cursor.block_at(h).expect("ok").is_none());
         }
     }
@@ -384,7 +412,6 @@ mod tests {
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(32))]
 
-        /// Every height appended is readable back, regardless of cache size.
         #[test]
         fn prop_append_then_read_roundtrip(
             cache_size in 1usize..32,
@@ -392,7 +419,7 @@ mod tests {
         ) {
             let (storage, _dir) = open_test_storage();
             let g = seed_genesis(storage.as_ref());
-            let mut cursor = BlockStoreCursor::new(storage, cache_size).expect("cursor");
+            let cursor = BlockStoreCursor::new(storage, cache_size).expect("cursor");
 
             let mut parent = g.clone();
             let mut appended_hashes = vec![g.hash.clone()];
@@ -403,14 +430,12 @@ mod tests {
                 parent = b;
             }
 
-            // Every height must read back the right hash.
             for h in 0..=count as u64 {
                 let read = cursor.block_at(h).expect("ok").expect("present");
                 prop_assert_eq!(&read.hash, &appended_hashes[h as usize]);
             }
         }
 
-        /// Pruning never affects heights >= keep_from.
         #[test]
         fn prop_prune_preserves_above_threshold(
             count in 5u8..30,
@@ -418,7 +443,7 @@ mod tests {
         ) {
             let (storage, _dir) = open_test_storage();
             let g = seed_genesis(storage.as_ref());
-            let mut cursor = BlockStoreCursor::new(storage, 64).expect("cursor");
+            let cursor = BlockStoreCursor::new(storage, 64).expect("cursor");
 
             let mut parent = g;
             let mut hashes = vec![parent.hash.clone()];
@@ -435,19 +460,17 @@ mod tests {
                 let read = cursor.block_at(h).expect("ok").expect("present after prune");
                 prop_assert_eq!(&read.hash, &hashes[h as usize]);
             }
-            // Genesis still pinned.
             prop_assert!(cursor.block_at(0).expect("ok").is_some());
         }
 
-        /// Non-contiguous append always fails.
         #[test]
         fn prop_non_contiguous_append_errors(skip in 2u64..10) {
             let (storage, _dir) = open_test_storage();
             let g = seed_genesis(storage.as_ref());
-            let mut cursor = BlockStoreCursor::new(storage, 8).expect("cursor");
+            let cursor = BlockStoreCursor::new(storage, 8).expect("cursor");
 
             let mut bad = synthetic_block(&g);
-            bad.header.height = skip; // forces non-contiguous append
+            bad.header.height = skip;
             let result = cursor.append(bad);
             let is_expected = matches!(result, Err(BlockStoreError::NonContiguousAppend { .. }));
             prop_assert!(is_expected);
