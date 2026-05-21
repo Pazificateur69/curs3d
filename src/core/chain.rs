@@ -953,6 +953,21 @@ impl Blockchain {
         self.blocks.iter()
     }
 
+    /// Append a block to the canonical chain. Centralizes the write path
+    /// so #28 Phase B can swap this for `BlockStoreCursor::append` in one
+    /// place without touching every caller. Caller must have validated
+    /// `block.header.height == self.block_count()` upstream.
+    fn push_block_internal(&mut self, block: Block) {
+        self.blocks.push(block);
+    }
+
+    /// Replace the entire canonical chain with a new sequence. Used by
+    /// `apply_snapshot` and `replace_blocks` (reorg). Centralizes the
+    /// other write path so #28 Phase B can route both through the cursor.
+    fn replace_all_blocks(&mut self, blocks: Vec<Block>) {
+        self.blocks = blocks;
+    }
+
     pub fn chain_id(&self) -> &str {
         &self.genesis_config.chain_id
     }
@@ -1176,7 +1191,11 @@ impl Blockchain {
         epoch_snapshots.sort_by_key(|(epoch, _)| *epoch);
 
         let snapshot_state = crate::storage::SnapshotState {
-            blocks: self.blocks[..=snapshot_height as usize].to_vec(),
+            blocks: self
+                .iter_blocks()
+                .take(snapshot_height as usize + 1)
+                .cloned()
+                .collect(),
             accounts,
             contracts,
             receipts,
@@ -1406,7 +1425,7 @@ impl Blockchain {
             }
         }
 
-        self.blocks = snapshot_state.blocks;
+        self.replace_all_blocks(snapshot_state.blocks);
         self.accounts = snapshot_state.accounts.into_iter().collect();
         self.contracts = snapshot_state.contracts.into_iter().collect();
         self.receipts = snapshot_state.receipts.into_iter().collect();
@@ -1415,11 +1434,11 @@ impl Blockchain {
         self.slashed_validators = snapshot_state.slashed_validators.into_iter().collect();
         self.epoch_snapshots = snapshot_state.epoch_snapshots.into_iter().collect();
 
-        let mut block_tree = BlockTree::from_genesis(
-            self.blocks
-                .first()
-                .ok_or_else(|| ChainError::SnapshotError("missing genesis block".to_string()))?,
-        );
+        // Genesis is guaranteed present by every Blockchain constructor;
+        // genesis_block() panics on the invariant violation. Keep the
+        // SnapshotError variant for forward-compat once block storage
+        // becomes fallible via BlockStoreCursor.
+        let mut block_tree = BlockTree::from_genesis(self.genesis_block());
         for block in self.iter_blocks().skip(1) {
             let proposer_address =
                 hash::address_bytes_from_public_key(&block.header.validator_public_key);
@@ -2076,7 +2095,7 @@ impl Blockchain {
         self.receipts.extend(execution.receipts);
         self.token_registry = execution.token_registry;
         self.governance = execution.governance;
-        self.blocks.push(block.clone());
+        self.push_block_internal(block.clone());
         self.block_hash_to_height
             .insert(block.hash.clone(), block.header.height);
         for (tx_index, tx) in block.transactions.iter().enumerate() {
@@ -2349,7 +2368,7 @@ impl Blockchain {
             }
         }
 
-        self.blocks = canonical.iter().cloned().cloned().collect();
+        self.replace_all_blocks(canonical.iter().cloned().cloned().collect());
         self.rebuild_canonical_state()?;
         self.persist_full_state()?;
 
@@ -4368,7 +4387,7 @@ impl Blockchain {
     }
 
     fn rebuild_canonical_state(&mut self) -> Result<(), ChainError> {
-        let blocks = self.blocks.clone();
+        let blocks: Vec<Block> = self.iter_blocks().cloned().collect();
         let mut accounts = Self::accounts_from_genesis(&self.genesis_config)?;
         let mut contracts = HashMap::new();
         let mut receipts = HashMap::new();
