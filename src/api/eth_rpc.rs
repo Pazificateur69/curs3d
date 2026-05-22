@@ -195,7 +195,10 @@ fn block_to_eth(chain: &Blockchain, block: &Block, full_tx: bool) -> Value {
         "parentHash": hex_bytes(&block.header.prev_hash),
         "sha3Uncles": EMPTY_UNCLE_HASH,
         "mixHash": ZERO_HASH,
-        "timestamp": hex_u64(block.header.timestamp.max(0) as u64),
+        // `.max(0)` clamps any pre-1970 timestamp to 0 (genesis edge case).
+        // After the clamp the value is non-negative so `cast_unsigned` is
+        // lossless; using it makes clippy::cast_sign_loss happy.
+        "timestamp": hex_u64(block.header.timestamp.max(0).cast_unsigned()),
         "miner": hex_bytes(&hash::address_bytes_from_public_key(&block.header.validator_public_key)),
         "validator": hex_bytes(&block.header.validator_public_key),
         "stateRoot": hex_bytes(&block.header.state_root),
