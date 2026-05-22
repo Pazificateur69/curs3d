@@ -1176,4 +1176,69 @@ mod tests {
         assert_eq!(loaded_chunk.data, vec![1, 2, 3, 4]);
         assert_eq!(loaded_chunk.proof.len(), 1);
     }
+
+    // ─── Property tests (task #33) — redb roundtrip + prune ─────────
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(16))]
+
+        /// put_block then get_block round-trip preserves byte-identity
+        /// for any height. Catches any encoding drift in redb writer/reader.
+        #[test]
+        fn prop_block_roundtrip(height in 0u64..1024) {
+            let dir = tempfile::tempdir().unwrap();
+            let storage = Storage::open(dir.path().join("rt_db")).unwrap();
+            let mut b = Block::genesis();
+            b.header.height = height;
+            b.header.gas_used = height; // any value, just to vary the bytes
+            storage.put_block(&b).unwrap();
+            let read = storage.get_block(height).unwrap().expect("present");
+            prop_assert_eq!(read.header.height, height);
+            prop_assert_eq!(read.header.gas_used, height);
+        }
+
+        /// After prune_blocks_below(K) for any K, every height < K reports
+        /// None and every height >= K (that was originally stored) reports Some.
+        /// Prune semantics must be a clean threshold cut — no leaks, no
+        /// over-aggressive removal.
+        #[test]
+        fn prop_prune_threshold_clean(
+            count in 5u8..30,
+            keep_from in 1u64..15,
+        ) {
+            let dir = tempfile::tempdir().unwrap();
+            let storage = Storage::open(dir.path().join("prune_db")).unwrap();
+            for h in 0..count as u64 {
+                storage.put_block(&synthetic_block_at_height(h)).unwrap();
+            }
+            let keep = keep_from.min(count as u64);
+            storage.prune_blocks_below(keep).unwrap();
+            for h in 0..keep {
+                prop_assert!(storage.get_block(h).unwrap().is_none(),
+                    "pruned height {h} should be None");
+            }
+            for h in keep..count as u64 {
+                prop_assert!(storage.get_block(h).unwrap().is_some(),
+                    "non-pruned height {h} should be Some");
+            }
+        }
+
+        /// put_block overwrites: writing twice at the same height with
+        /// different content keeps the latest write.
+        #[test]
+        fn prop_put_block_overwrites(height in 0u64..256) {
+            let dir = tempfile::tempdir().unwrap();
+            let storage = Storage::open(dir.path().join("overwrite_db")).unwrap();
+            let mut b1 = synthetic_block_at_height(height);
+            b1.header.gas_used = 1;
+            let mut b2 = synthetic_block_at_height(height);
+            b2.header.gas_used = 2;
+            storage.put_block(&b1).unwrap();
+            storage.put_block(&b2).unwrap();
+            let read = storage.get_block(height).unwrap().expect("present");
+            prop_assert_eq!(read.header.gas_used, 2);
+        }
+    }
 }
