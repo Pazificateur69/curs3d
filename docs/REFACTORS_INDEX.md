@@ -17,11 +17,13 @@ risks, and acceptance criteria.
   - Phase E (runtime soak — `--prune-keep-blocks N`) pending
 
 ## Sprint 4 — Auditability + testability
-- **[#29 Split `chain.rs` (now 5774 LOC) into 8-10 submodules](REFACTOR_SPLIT_CHAIN.md)** — in progress 2026-05-22
-  - sibling `state_root.rs` + `state_proof.rs` extracted
-  - directory `core/chain/` created
-  - submodules: `mempool`, `finality`, `produce`, `replay`, `reorg`, `snapshot` extracted
-  - remaining: `apply` (add_block + validate_block_against_state + apply_user_transaction + ~1500 LOC) — high-risk, deferred
+- **[#29 Split `chain.rs` (7269 LOC) into ≤1500 LOC `mod.rs` + submodules](REFACTOR_SPLIT_CHAIN.md)** ✅ done 2026-05-22
+  - chain/mod.rs: 7269 → **1443 LOC** (target ≤1500 LOC hit)
+  - Sibling modules: `state_root.rs` (169), `state_proof.rs` (181)
+  - chain/ submodules: `mempool` (492), `apply` (1209), `consensus` (359),
+    `snapshot` (338), `replay` (217), `persistence` (161), `finality` (147),
+    `produce` (141), `reorg` (139), `estimate` (100), `genesis` (62)
+  - chain/tests.rs (2575) — test module moved out wholesale
 - **[#30 Split `network/mod.rs::run_with_chain()` handlers](#)** — 1 week (no doc yet)
 - **[#31 Trait `PersistenceBackend` (testable / mockable storage)](REFACTOR_STORAGE_TRAIT.md)** — 3 days
 
