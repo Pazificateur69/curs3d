@@ -32,7 +32,7 @@ zeroize = { version = "1", features = ["derive"] }
 
 # Networking
 tokio = { version = "1", features = ["full"] }
-libp2p = { version = "0.54", features = ["tcp", "noise", "yamux", "gossipsub", "mdns", "tokio", "macros"] }
+libp2p = { version = "0.56", features = ["tcp", "noise", "yamux", "gossipsub", "mdns", "tokio", "macros"] }
 futures = "0.3"
 
 # HTTP API
