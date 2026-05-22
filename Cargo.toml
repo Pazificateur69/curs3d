@@ -47,7 +47,7 @@ wasmer = "7"
 wasmer-types = "7"
 
 # EVM VM (revm 38 + alloy for RLP-encoded MetaMask txs)
-revm = { version = "38", default-features = false, features = [
+revm = { version = "40", default-features = false, features = [
     "std",
     "optional_balance_check",
     "optional_no_base_fee",
