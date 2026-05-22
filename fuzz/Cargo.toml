@@ -9,6 +9,11 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+# Serialization deps used by the deserializer fuzz targets — match the
+# main crate's pinned versions so a malformed payload here is the same
+# kind of payload prod would parse.
+bincode = "1"
+serde_json = "1"
 
 [dependencies.curs3d]
 path = ".."
