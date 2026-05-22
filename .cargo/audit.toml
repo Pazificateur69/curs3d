@@ -13,13 +13,22 @@ ignore = [
     "RUSTSEC-2026-0099",  # rustls-webpki 0.101.7 name constraints
     "RUSTSEC-2026-0104",  # rustls-webpki 0.101.7 panic on CRL parsing
 
-    # ── acknowledged transitive risks pinned behind libp2p 0.54 ──
+    # ── acknowledged transitive risks pulled in by libp2p ──
     # hickory-proto 0.24.4 O(n²) DNS name compression. Pulled by
     # libp2p-mdns. mDNS is a local-network discovery feature; in our
     # public testnet the relevant traffic is gossipsub/identify, and a
     # remote attacker cannot reach the mDNS path (multicast is LAN-only).
-    # Re-evaluate when libp2p 0.55+ is adopted.
+    # Still present in libp2p 0.56 (hickory bumped to 0.25 but the old
+    # advisory tag stayed; re-evaluate when libp2p 0.57+ ships).
     "RUSTSEC-2026-0119",
+    # hickory-proto 0.25.2 NSEC3 closest-encloser proof validation
+    # enters unbounded loop on cross-zone DNS responses. NO upstream
+    # fix yet. Pulled transitively by libp2p-mdns (multicast LAN-only,
+    # not exploitable from internet) and libp2p-dns (only used at startup
+    # to resolve hard-coded bootnode multiaddrs — never resolves
+    # attacker-controlled hostnames). Re-evaluate when hickory-dns ships
+    # a fix or libp2p switches resolvers.
+    "RUSTSEC-2026-0118",
 
     # ── unmaintained crates we cannot drop without a migration ──
     # bincode 1.x -> 2.x is a serialization-format break that would
