@@ -30,7 +30,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      - name: Build counter contract WASM artifact
+        # Both `src/core/chain.rs` and `src/vm/mod.rs` use `include_bytes!`
+        # against `sdk/rust/examples/counter/target/.../counter_contract.wasm`,
+        # which is only produced by a release build of the contract crate.
+        # Locally the file is left over from a prior dev session; CI starts
+        # clean, so we build it explicitly before `cargo test --lib`.
+        working-directory: sdk/rust/examples/counter
+        run: cargo build --release --target wasm32-unknown-unknown
       - name: Provide missing probestack symbol and run tests
         run: |
           echo '.global __rust_probestack; .type __rust_probestack, @function; __rust_probestack: ret' > /tmp/probestack.s
@@ -47,7 +56,14 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: clippy
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
+      - name: Build counter contract WASM artifact
+        # `cargo clippy --all-targets` compiles every test target, which
+        # `include_bytes!` the counter contract — same dependency the test
+        # job has, so we build it here too.
+        working-directory: sdk/rust/examples/counter
+        run: cargo build --release --target wasm32-unknown-unknown
       # NOTE: --all-targets covers lib + tests + benches + examples.
       # Local pre-commit must run the same: `cargo clippy --all-targets -- -D warnings`.
       - run: cargo clippy --all-targets -- -D warnings
