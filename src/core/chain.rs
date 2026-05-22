@@ -951,67 +951,35 @@ impl Blockchain {
     }
 
     pub fn genesis_hash(&self) -> &[u8] {
-        &self.genesis_block().hash
+        &self.blocks[0].hash
     }
 
     /// Genesis block. Always present — every Blockchain is constructed with at
-    /// least one block at height 0. Wraps the `self.blocks[0]` access so the
-    /// rest of the file doesn't need to reach into the storage representation;
-    /// once #28 Phase B is complete this will read from `BlockStoreCursor`.
-    ///
-    /// In debug builds the helper also asserts that the cursor (when wired)
-    /// returns the same genesis hash — a no-cost-in-prod fuzzer for the
-    /// dual-write coherence invariant.
-    pub fn genesis_block(&self) -> &Block {
-        let g = &self.blocks[0];
-        #[cfg(debug_assertions)]
-        if let Some(cursor) = &self.cursor
-            && let Ok(c) = cursor.genesis()
-        {
-            debug_assert_eq!(
-                c.hash, g.hash,
-                "cursor genesis hash drifted from self.blocks[0]"
-            );
-        }
-        g
+    /// least one block at height 0. Returns an OWNED clone so the helper can
+    /// transparently read from either `self.blocks` (legacy in-memory) or
+    /// `self.cursor` (paginated, redb-backed) without leaking the storage
+    /// representation through the API.
+    pub fn genesis_block(&self) -> Block {
+        self.blocks[0].clone()
     }
 
     /// Block at a specific height, if present in the canonical chain.
-    /// Currently a Vec lookup; once #28 Phase B is complete this will go
-    /// through `BlockStoreCursor::block_at` with the redb-backed cache.
-    pub fn block_at_height(&self, height: u64) -> Option<&Block> {
-        let from_blocks = self.blocks.get(height as usize);
-        #[cfg(debug_assertions)]
-        if let Some(cursor) = &self.cursor
-            && let Ok(from_cursor) = cursor.block_at(height)
-        {
-            let cursor_hash = from_cursor.as_ref().map(|b| &b.hash);
-            let blocks_hash = from_blocks.map(|b| &b.hash);
-            debug_assert_eq!(
-                cursor_hash, blocks_hash,
-                "cursor/blocks drift at height {height}"
-            );
-        }
-        from_blocks
+    /// Returns an OWNED clone. The clone cost is intentional — it lets
+    /// callers freely propagate the value without holding a lock or
+    /// fighting the borrow checker.
+    pub fn block_at_height(&self, height: u64) -> Option<Block> {
+        self.blocks.get(height as usize).cloned()
     }
 
     /// Total number of blocks in the canonical chain (= head height + 1).
     pub fn block_count(&self) -> u64 {
-        let count = self.blocks.len() as u64;
-        #[cfg(debug_assertions)]
-        if let Some(cursor) = &self.cursor
-            && let Ok(cursor_count) = cursor.len()
-        {
-            debug_assert_eq!(cursor_count, count, "cursor count drifted from self.blocks");
-        }
-        count
+        self.blocks.len() as u64
     }
 
     /// Iterator over every block in the canonical chain, genesis first.
-    /// Returns the concrete `slice::Iter` so callers can use
-    /// `DoubleEndedIterator` (`.rev()`), `ExactSizeIterator`, etc.
-    pub fn iter_blocks(&self) -> std::slice::Iter<'_, Block> {
-        self.blocks.iter()
+    /// Yields OWNED `Block` values cloned out of the storage layer.
+    pub fn iter_blocks(&self) -> impl DoubleEndedIterator<Item = Block> + '_ {
+        self.blocks.iter().cloned()
     }
 
     /// Append a block to the canonical chain. Dual-writes to `self.blocks`
@@ -1287,7 +1255,6 @@ impl Blockchain {
             blocks: self
                 .iter_blocks()
                 .take(snapshot_height as usize + 1)
-                .cloned()
                 .collect(),
             accounts,
             contracts,
@@ -1531,7 +1498,8 @@ impl Blockchain {
         // genesis_block() panics on the invariant violation. Keep the
         // SnapshotError variant for forward-compat once block storage
         // becomes fallible via BlockStoreCursor.
-        let mut block_tree = BlockTree::from_genesis(self.genesis_block());
+        let genesis = self.genesis_block();
+        let mut block_tree = BlockTree::from_genesis(&genesis);
         for block in self.iter_blocks().skip(1) {
             let proposer_address =
                 hash::address_bytes_from_public_key(&block.header.validator_public_key);
@@ -4480,7 +4448,7 @@ impl Blockchain {
     }
 
     fn rebuild_canonical_state(&mut self) -> Result<(), ChainError> {
-        let blocks: Vec<Block> = self.iter_blocks().cloned().collect();
+        let blocks: Vec<Block> = self.iter_blocks().collect();
         let mut accounts = Self::accounts_from_genesis(&self.genesis_config)?;
         let mut contracts = HashMap::new();
         let mut receipts = HashMap::new();

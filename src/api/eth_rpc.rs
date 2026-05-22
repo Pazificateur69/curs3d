@@ -257,15 +257,17 @@ fn tx_to_eth(chain: &Blockchain, tx: &Transaction, location: Option<(u64, usize)
 fn receipt_to_eth(chain: &Blockchain, indexed: &IndexedReceipt) -> Value {
     let block = chain.block_at_height(indexed.block_height);
     let block_hash = block
+        .as_ref()
         .map(|b| hex_bytes(&b.hash))
         .unwrap_or_else(|| "0x".into());
     // Return the Ethereum-shape hash if the underlying tx is EVM, so forge /
     // ethers can match it against what they got from `eth_sendRawTransaction`.
-    let tx_hash = block
-        .and_then(|b| b.transactions.get(indexed.tx_index))
+    let tx = block
+        .as_ref()
+        .and_then(|b| b.transactions.get(indexed.tx_index));
+    let tx_hash = tx
         .map(eth_wire_hash)
         .unwrap_or_else(|| format!("0x{}", hex::encode(&indexed.tx_hash)));
-    let tx = block.and_then(|b| b.transactions.get(indexed.tx_index));
     let from = tx
         .map(|tx| Value::String(hex_bytes(&tx.from)))
         .unwrap_or(Value::Null);
@@ -325,12 +327,14 @@ fn receipt_to_eth(chain: &Blockchain, indexed: &IndexedReceipt) -> Value {
 fn log_to_eth(chain: &Blockchain, log: &IndexedLogEntry) -> Value {
     let block = chain.block_at_height(log.block_height);
     let block_hash = block
+        .as_ref()
         .map(|b| hex_bytes(&b.hash))
         .unwrap_or_else(|| "0x".into());
     // Map the internal tx_hash to the Ethereum wire hash when the source tx
     // is EVM, so wallets/explorers see consistent hashes across receipt /
     // tx / log.
     let tx_hash = block
+        .as_ref()
         .and_then(|b| b.transactions.get(log.tx_index))
         .map(eth_wire_hash)
         .unwrap_or_else(|| hex_bytes(&log.tx_hash));
@@ -447,13 +451,13 @@ async fn dispatch(chain: &Arc<Mutex<Blockchain>>, request: &Value) -> Value {
             let mut gas_used_ratios: Vec<f64> = Vec::new();
             for h in oldest..=newest {
                 if let Some(b) = chain.block_at_height(h) {
-                    base_fees.push(hex_u64(chain.next_base_fee_per_gas(b)));
+                    base_fees.push(hex_u64(chain.next_base_fee_per_gas(&b)));
                     gas_used_ratios.push(0.5);
                 }
             }
             // Push one extra base fee for the next block (eth_feeHistory contract)
             if let Some(latest) = chain.iter_blocks().next_back() {
-                base_fees.push(hex_u64(chain.next_base_fee_per_gas(latest)));
+                base_fees.push(hex_u64(chain.next_base_fee_per_gas(&latest)));
             }
             rpc_success(
                 id,
@@ -537,7 +541,7 @@ async fn dispatch(chain: &Arc<Mutex<Blockchain>>, request: &Value) -> Value {
                 None => return rpc_error(id, -32602, "invalid block tag"),
             };
             match chain.block_at_height(height) {
-                Some(block) => rpc_success(id, block_to_eth(&chain, block, full_tx)),
+                Some(block) => rpc_success(id, block_to_eth(&chain, &block, full_tx)),
                 None => rpc_success(id, Value::Null),
             }
         }
@@ -552,7 +556,7 @@ async fn dispatch(chain: &Arc<Mutex<Blockchain>>, request: &Value) -> Value {
             let chain = chain.lock().await;
             let height = chain.block_hash_to_height.get(&target).copied();
             match height.and_then(|h| chain.block_at_height(h)) {
-                Some(block) => rpc_success(id, block_to_eth(&chain, block, full_tx)),
+                Some(block) => rpc_success(id, block_to_eth(&chain, &block, full_tx)),
                 None => rpc_success(id, Value::Null),
             }
         }
@@ -589,7 +593,7 @@ async fn dispatch(chain: &Arc<Mutex<Blockchain>>, request: &Value) -> Value {
                 if let Some((height, idx)) = resolve_eth_tx_lookup(&chain, &target) {
                     chain
                         .block_at_height(height)
-                        .and_then(|b| b.transactions.get(idx))
+                        .and_then(|b| b.transactions.into_iter().nth(idx))
                         .map(|tx| tx.hash())
                         .unwrap_or_else(|| target.clone())
                 } else {

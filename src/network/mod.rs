@@ -2365,7 +2365,7 @@ impl NetworkNode {
 
         for h in from_height..=end_height {
             if let Some(block) = chain_lock.block_at_height(h)
-                && let Ok(serialized) = bincode::serialize(block)
+                && let Ok(serialized) = bincode::serialize(&block)
             {
                 blocks_data.push(serialized);
             }

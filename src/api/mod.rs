@@ -960,7 +960,7 @@ async fn handle_request(
             };
             let chain = chain.lock().await;
             match chain.block_at_height(height) {
-                Some(block) => Ok(json_ok(block_to_api(block))),
+                Some(block) => Ok(json_ok(block_to_api(&block))),
                 None => Ok(json_err(StatusCode::NOT_FOUND, "block not found")),
             }
         }
@@ -969,17 +969,17 @@ async fn handle_request(
         // GET /api/genesis — minimal info for a light client to anchor on
         (Method::GET, ["api", "genesis"]) => {
             let chain = chain.lock().await;
-            let genesis = Some(chain.genesis_block());
+            let genesis = chain.genesis_block();
             Ok(json_ok(serde_json::json!({
                 "chain_id": chain.chain_id(),
                 "chain_name": chain.genesis_config.chain_name,
-                "genesis_hash": genesis.map(|b| hex::encode(&b.hash)),
-                "genesis_timestamp": genesis.map(|b| b.header.timestamp),
-                "genesis_state_root": genesis.map(|b| hex::encode(&b.header.state_root)),
+                "genesis_hash": hex::encode(&genesis.hash),
+                "genesis_timestamp": genesis.header.timestamp,
+                "genesis_state_root": hex::encode(&genesis.header.state_root),
                 "block_gas_limit": chain.genesis_config.block_gas_limit,
                 "minimum_stake": chain.minimum_stake,
                 "epoch_length": chain.genesis_config.epoch_length,
-                "protocol_version": genesis.map(|b| b.header.version).unwrap_or(0),
+                "protocol_version": genesis.header.version,
             })))
         }
 
@@ -1067,7 +1067,7 @@ async fn handle_request(
             let chain = chain.lock().await;
             let height = chain.block_hash_to_height.get(&hash_bytes).copied();
             match height.and_then(|h| chain.block_at_height(h)) {
-                Some(block) => Ok(json_ok(block_to_api(block))),
+                Some(block) => Ok(json_ok(block_to_api(&block))),
                 None => Ok(json_err(StatusCode::NOT_FOUND, "block not found")),
             }
         }
@@ -1101,7 +1101,7 @@ async fn handle_request(
             let blocks: Vec<ApiBlockSummary> = (start..=height)
                 .rev()
                 .take(limit)
-                .filter_map(|h| chain.block_at_height(h).map(block_to_summary))
+                .filter_map(|h| chain.block_at_height(h).as_ref().map(block_to_summary))
                 .collect();
 
             Ok(json_ok(blocks))
