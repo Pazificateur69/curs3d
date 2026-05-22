@@ -2904,7 +2904,7 @@ mod tests {
         let topic = topic_name(&chain_id, proto_a);
 
         // Capture A's expected per-height hashes before we move it into the Arc.
-        let expected_hashes: Vec<Vec<u8>> = chain_a.blocks.iter().map(|b| b.hash.clone()).collect();
+        let expected_hashes: Vec<Vec<u8>> = chain_a.iter_blocks().map(|b| b.hash).collect();
         let chain_a = Arc::new(Mutex::new(chain_a));
         let chain_b = Arc::new(Mutex::new(chain_b));
 
@@ -3067,7 +3067,10 @@ mod tests {
         // Verify every block matches A's chain.
         let chain_b_lock = chain_b.lock().await;
         for (i, expected) in expected_hashes.iter().enumerate() {
-            if &chain_b_lock.blocks[i].hash != expected {
+            let actual = chain_b_lock
+                .block_at_height(i as u64)
+                .expect("block at i must exist after sync");
+            if &actual.hash != expected {
                 eprintln!("cold_sync_once: hash mismatch at height {}", i);
                 return false;
             }
@@ -3124,7 +3127,7 @@ mod tests {
         let proto_a = chain_a.protocol_version_at_height(chain_a.height());
         let topic = topic_name(&chain_id, proto_a);
 
-        let expected_hashes: Vec<Vec<u8>> = chain_a.blocks.iter().map(|b| b.hash.clone()).collect();
+        let expected_hashes: Vec<Vec<u8>> = chain_a.iter_blocks().map(|b| b.hash).collect();
         let chain_a = Arc::new(Mutex::new(chain_a));
         let chain_b = Arc::new(Mutex::new(chain_b));
 
@@ -3273,8 +3276,11 @@ mod tests {
         );
         let chain_b_lock = chain_b.lock().await;
         for (i, expected) in expected_hashes.iter().enumerate() {
+            let actual = chain_b_lock
+                .block_at_height(i as u64)
+                .expect("block at i must exist after recovery");
             assert_eq!(
-                &chain_b_lock.blocks[i].hash, expected,
+                &actual.hash, expected,
                 "hash mismatch at height {} after recovery",
                 i
             );
@@ -3314,7 +3320,10 @@ mod tests {
             chain_b.add_block(block).unwrap();
         }
         assert_eq!(chain_b.height(), 5);
-        assert_eq!(chain_a.blocks[5].hash, chain_b.blocks[5].hash);
+        assert_eq!(
+            chain_a.block_at_height(5).unwrap().hash,
+            chain_b.block_at_height(5).unwrap().hash,
+        );
 
         let chain_b = Arc::new(Mutex::new(chain_b));
         let genesis_hash = chain_b.lock().await.genesis_hash().to_vec();
@@ -3364,9 +3373,10 @@ mod tests {
             let b = chain_b.create_block(&validator).unwrap();
             chain_b.add_block(b).unwrap();
         }
-        let serialized: Vec<Vec<u8>> = chain_b.blocks[1..=5]
-            .iter()
-            .map(|b| bincode::serialize(b).unwrap())
+        let serialized: Vec<Vec<u8>> = (1u64..=5)
+            .map(|h| {
+                bincode::serialize(&chain_b.block_at_height(h).unwrap()).expect("serialize block")
+            })
             .collect();
         let chain_b = Arc::new(Mutex::new(chain_b));
         let genesis_hash = chain_b.lock().await.genesis_hash().to_vec();

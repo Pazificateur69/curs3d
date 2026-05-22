@@ -275,6 +275,8 @@ pub enum ChainError {
     ContractNotFound(String),
     #[error("storage error: {0}")]
     Storage(#[from] StorageError),
+    #[error("block store error: {0}")]
+    BlockStore(#[from] crate::core::block_store::BlockStoreError),
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -309,7 +311,6 @@ pub struct TransactionEstimate {
 }
 
 pub struct Blockchain {
-    pub blocks: Vec<Block>,
     pub accounts: HashMap<Vec<u8>, AccountState>,
     pub pending_transactions: Vec<Transaction>,
     pub block_reward: u64,
@@ -349,13 +350,15 @@ pub struct Blockchain {
     pub evm_tx_hash_index: HashMap<Vec<u8>, (u64, usize)>,
     storage: Option<Storage>,
     persistence: PersistenceMode,
-    /// Paginated block view backed by redb (or by `InMemoryBlockBackend`
-    /// for storage-less chains constructed via [`Blockchain::from_genesis`]).
-    /// Load-bearing since #28 Phase D.2: [`Blockchain::genesis_block`],
-    /// [`Blockchain::block_at_height`] and [`Blockchain::block_count`] read
-    /// from this cursor first, falling back to `self.blocks` only when the
-    /// cursor reports `Ok(None)`. Phase D.3 removes `self.blocks` entirely.
-    cursor: Option<crate::core::block_store::BlockStoreCursor>,
+    /// Paginated block view backed by redb (in the `with_storage_mode`
+    /// path) or by `InMemoryBlockBackend` (in `from_genesis`). Sole
+    /// source of truth for canonical-chain block reads since #28 Phase
+    /// D.3 deleted `Blockchain::blocks`. Helpers like
+    /// [`Blockchain::genesis_block`], [`Blockchain::block_at_height`] and
+    /// [`Blockchain::block_count`] route every read through it; writes
+    /// go through [`Blockchain::push_block_internal`] /
+    /// [`Blockchain::replace_all_blocks`].
+    cursor: crate::core::block_store::BlockStoreCursor,
 }
 
 enum PersistenceMode {
@@ -668,10 +671,18 @@ impl Drop for PersistenceHandle {
 
 impl PersistedChainState {
     fn from_chain(chain: &Blockchain) -> Self {
+        // Materialize the full block sequence from the cursor. O(n) memory
+        // — intrinsic to "snapshot every block for redb's replace_blocks
+        // batch", which is the whole point of this struct. Hot paths
+        // (header reads, fork choice) don't go through here.
+        let count = chain.block_count();
+        let blocks: Vec<Block> = (0..count)
+            .filter_map(|h| chain.block_at_height(h))
+            .collect();
         Self {
             genesis_config: chain.genesis_config.clone(),
             finalized_height: chain.finality_tracker.finalized_height,
-            blocks: chain.blocks.clone(),
+            blocks,
             accounts: chain.accounts.clone(),
             contracts: chain.contracts.clone(),
             receipts: chain.receipts.clone(),
@@ -719,22 +730,20 @@ impl Blockchain {
             Self::build_epoch_snapshot_for_accounts(&genesis_config, 0, &accounts, &HashSet::new()),
         );
 
-        // Wire an in-memory-backed BlockStoreCursor even when the chain has
-        // no persistent Storage (tests, dry-run, bootstrap-before-storage).
-        // After D.3 removes self.blocks entirely, this cursor becomes the
-        // sole canonical block view for storage-less chains. Until then the
-        // cursor and self.blocks dual-write under push_block_internal /
-        // replace_all_blocks.
+        // Sole canonical view: an InMemoryBlockBackend seeded with the
+        // genesis block, wrapped in a self-persisting cursor. The
+        // self_persist flag ensures every `cursor.append` also writes the
+        // block to the backend, so an LRU eviction can recover from
+        // storage — required now that `self.blocks` is gone and the
+        // cursor has no fallback.
         let in_mem: Arc<dyn BlockBackend> = Arc::new(InMemoryBlockBackend::new());
         in_mem.put_block(&genesis)?;
-        let cursor = crate::core::block_store::BlockStoreCursor::new(
-            Arc::clone(&in_mem),
+        let cursor = crate::core::block_store::BlockStoreCursor::new_self_persisting(
+            in_mem,
             crate::core::block_store::DEFAULT_BLOCK_CACHE_SIZE,
-        )
-        .ok();
+        )?;
 
         Ok(Blockchain {
-            blocks: vec![genesis],
             accounts,
             pending_transactions: Vec::new(),
             block_reward: genesis_config.block_reward,
@@ -807,16 +816,19 @@ impl Blockchain {
             )
             .hash;
 
-            let mut blocks = Vec::new();
-            for h in 0..=stored_height {
-                if let Some(block) = storage.get_block_compat(h, &stored_genesis.chain_id)? {
-                    blocks.push(block);
-                } else {
-                    break;
-                }
-            }
+            // Wire the cursor up front so we can read blocks lazily instead
+            // of paging the whole chain into a `Vec<Block>` like we used to
+            // pre-D.3. The cursor reads redb on demand — block_tree
+            // construction still has to touch every block once, but that
+            // cost is intrinsic (we can't validate a chain without seeing
+            // every block) whereas the previous Vec stayed in RAM forever.
+            let cursor = crate::core::block_store::BlockStoreCursor::new(
+                std::sync::Arc::new(storage.clone()),
+                crate::core::block_store::DEFAULT_BLOCK_CACHE_SIZE,
+            )?;
 
-            if blocks.is_empty() || blocks[0].hash != expected_genesis_hash {
+            let genesis_block = cursor.block_at(0)?.ok_or(ChainError::GenesisMismatch)?;
+            if genesis_block.hash != expected_genesis_hash {
                 return Err(ChainError::GenesisMismatch);
             }
 
@@ -826,30 +838,30 @@ impl Blockchain {
             let loaded_accounts_for_weights: HashMap<Vec<u8>, AccountState> =
                 storage.get_all_accounts_compat()?.into_iter().collect();
 
-            // Rebuild block tree from stored blocks
-            let block_tree = if !blocks.is_empty() {
-                let mut tree = BlockTree::from_genesis(&blocks[0]);
-                for block in blocks.iter().skip(1) {
-                    let proposer_stake = loaded_accounts_for_weights
-                        .get(&hash::address_bytes_from_public_key(
-                            &block.header.validator_public_key,
-                        ))
-                        .map(|a| a.staked_balance)
-                        .unwrap_or(0);
-                    let _ = tree.insert(block.clone(), proposer_stake);
-                }
-                tree
-            } else {
-                BlockTree::from_genesis(&Block::genesis())
-            };
+            // Rebuild block tree by walking cursor.block_at — one disk
+            // read per height. Cursor's LRU cache amortizes nothing on
+            // first pass but keeps a working set for later operations.
+            let mut block_tree = BlockTree::from_genesis(&genesis_block);
+            for h in 1..=stored_height {
+                let Some(block) = cursor.block_at(h)? else {
+                    break;
+                };
+                let proposer_stake = loaded_accounts_for_weights
+                    .get(&hash::address_bytes_from_public_key(
+                        &block.header.validator_public_key,
+                    ))
+                    .map(|a| a.staked_balance)
+                    .unwrap_or(0);
+                let _ = block_tree.insert(block, proposer_stake);
+            }
 
             // Load finalized height from meta
             let finalized_height: u64 = storage.get_meta(b"finalized_height")?.unwrap_or(0);
             let finality_tracker = FinalityTracker::with_finalized(
                 finalized_height,
-                blocks
-                    .get(finalized_height as usize)
-                    .map(|b| b.hash.clone())
+                cursor
+                    .block_at(finalized_height)?
+                    .map(|b| b.hash)
                     .unwrap_or_default(),
             );
 
@@ -871,7 +883,6 @@ impl Blockchain {
                 .unwrap_or_default();
 
             let mut chain = Blockchain {
-                blocks,
                 accounts: HashMap::new(),
                 pending_transactions,
                 block_reward: stored_genesis.block_reward,
@@ -899,15 +910,7 @@ impl Blockchain {
                 evm_tx_hash_index: HashMap::new(),
                 storage: Some(storage.clone()),
                 persistence: PersistenceMode::Sync,
-                // Wire the paginated cursor over the same backing redb.
-                // Storage impls BlockBackend, so wrapping a clone in an Arc
-                // hands the cursor its own shared handle to the database.
-                // Not yet used by helpers (see field doc on Blockchain).
-                cursor: crate::core::block_store::BlockStoreCursor::new(
-                    std::sync::Arc::new(storage.clone()),
-                    crate::core::block_store::DEFAULT_BLOCK_CACHE_SIZE,
-                )
-                .ok(),
+                cursor,
             };
 
             chain.rebuild_canonical_state()?;
@@ -926,16 +929,15 @@ impl Blockchain {
             chain.storage = Some(storage.clone());
             chain.persist_full_state()?;
 
-            // Wire the BlockStoreCursor here too — without this, a freshly
-            // bootstrapped chain (no prior height in storage) would have
-            // cursor=None and the dual-write in push_block_internal would
-            // be a no-op. The cursor sits on the same redb backing as
-            // self.storage so the two views read the same persisted blocks.
+            // Replace the in-memory cursor produced by `from_genesis` with
+            // one backed by the on-disk storage. The redb path has its own
+            // persistence pipeline (`persist_added_block`), so this cursor
+            // is the non-self-persisting variant — cursor.append updates
+            // only the cache; storage writes happen separately.
             chain.cursor = crate::core::block_store::BlockStoreCursor::new(
                 std::sync::Arc::new(storage.clone()),
                 crate::core::block_store::DEFAULT_BLOCK_CACHE_SIZE,
-            )
-            .ok();
+            )?;
 
             if async_persistence {
                 chain.persistence = PersistenceMode::Async(PersistenceHandle::spawn(storage));
@@ -975,90 +977,81 @@ impl Blockchain {
         self.genesis_block().hash
     }
 
-    /// Genesis block. Always present — every Blockchain is constructed with at
-    /// least one block at height 0. Returns an OWNED clone. Prefers the
-    /// paginated cursor over `self.blocks`; falls back to the legacy field
-    /// during the D.2 → D.3 transition so a misbehaving cursor cannot break
-    /// reads.
+    /// Genesis block. Always present — every Blockchain is constructed with
+    /// at least one block at height 0. Returns an OWNED clone.
     pub fn genesis_block(&self) -> Block {
         self.cursor
-            .as_ref()
-            .and_then(|c| c.genesis().ok())
-            .unwrap_or_else(|| self.blocks[0].clone())
+            .genesis()
+            .expect("cursor genesis read must succeed (mutex poisoned)")
     }
 
     /// Block at a specific height, if present in the canonical chain.
-    /// Returns an OWNED clone. Prefers the cursor; falls back to `self.blocks`
-    /// when the cursor reports `Ok(None)` (e.g. an LRU eviction with no
-    /// persistent backend behind it during the storage-less transition).
+    /// Returns an OWNED clone. `None` for heights above the head or
+    /// below the prune watermark.
     pub fn block_at_height(&self, height: u64) -> Option<Block> {
         self.cursor
-            .as_ref()
-            .and_then(|c| c.block_at(height).ok().flatten())
-            .or_else(|| self.blocks.get(height as usize).cloned())
+            .block_at(height)
+            .expect("cursor read must succeed (storage I/O or mutex poison)")
     }
 
     /// Total number of blocks in the canonical chain (= head height + 1).
-    /// Reads from the cursor when available; otherwise falls back to
-    /// `self.blocks.len()`. After D.3 the cursor is the only source.
     pub fn block_count(&self) -> u64 {
         self.cursor
-            .as_ref()
-            .and_then(|c| c.len().ok())
-            .unwrap_or(self.blocks.len() as u64)
+            .len()
+            .expect("cursor len must succeed (mutex poisoned)")
     }
 
     /// Iterator over every block in the canonical chain, genesis first.
-    /// Yields OWNED `Block` values cloned out of the storage layer.
+    /// Yields OWNED `Block` values fetched from the cursor on demand. The
+    /// iterator borrows `&self` for the duration of iteration; each step
+    /// locks the cursor's mutex briefly to read one block. Memory cost is
+    /// O(1) per step (no chain-length Vec materialized).
     pub fn iter_blocks(&self) -> impl DoubleEndedIterator<Item = Block> + '_ {
-        self.blocks.iter().cloned()
+        let count = self.block_count();
+        (0..count).filter_map(move |h| self.block_at_height(h))
     }
 
-    /// Append a block to the canonical chain. Dual-writes to `self.blocks`
-    /// AND the `BlockStoreCursor` when present, so the two views stay in
-    /// lockstep. Caller must have validated
-    /// `block.header.height == self.block_count()` upstream.
+    /// Append a block to the canonical chain via the cursor. Caller must
+    /// have validated `block.header.height == self.block_count()` upstream.
+    /// In the storage-less path (`from_genesis`) the cursor is in
+    /// self-persisting mode so `append` also writes to the in-memory
+    /// backend; in the redb path persistence happens separately via
+    /// `persist_added_block` and the cursor's append only refreshes its
+    /// cache.
     fn push_block_internal(&mut self, block: Block) {
-        if let Some(cursor) = &self.cursor {
-            // Storage already persisted the block elsewhere (via
-            // persist_added_block); cursor.append() re-persists, which is
-            // idempotent under redb's put_block (overwrite-allowed).
-            // Errors here would mean cursor + self.blocks divergence —
-            // log loudly but don't kill the chain since self.blocks is
-            // still the source of truth.
-            if let Err(e) = cursor.append(block.clone()) {
-                tracing::error!(
-                    height = block.header.height,
-                    error = %e,
-                    "BlockStoreCursor.append failed — cursor/blocks may diverge"
-                );
-            }
+        let height = block.header.height;
+        if let Err(e) = self.cursor.append(block) {
+            // Append failures here are fatal-class: either the cursor's
+            // mutex is poisoned, or the in-memory backend's put_block
+            // failed (also mutex poison). Logging-and-continue keeps the
+            // node alive long enough for the operator to notice the next
+            // height mismatch — there is no longer a `self.blocks`
+            // fallback to mask the issue.
+            tracing::error!(
+                height = height,
+                error = %e,
+                "BlockStoreCursor.append failed in push_block_internal — chain head is now inconsistent"
+            );
         }
-        self.blocks.push(block);
     }
 
     /// Replace the entire canonical chain with a new sequence. Used by
-    /// `apply_snapshot` and `replace_blocks` (reorg). Truncates the
-    /// cursor and re-feeds it the new block sequence so the dual-write
-    /// invariant holds — without this re-feed, any subsequent reader
-    /// (`block_count`, `block_at_height`, ...) trips the debug_assert
-    /// that compares cursor vs self.blocks.
+    /// `apply_snapshot` and `replace_blocks` (reorg). Truncates the cursor
+    /// to height 0 and re-feeds it the new block sequence.
     fn replace_all_blocks(&mut self, blocks: Vec<Block>) {
-        if let Some(cursor) = &self.cursor {
-            if let Err(e) = cursor.invalidate_from(0) {
-                tracing::warn!(error = %e, "cursor.invalidate_from(0) failed during chain replace");
-            }
-            for block in &blocks {
-                if let Err(e) = cursor.append(block.clone()) {
-                    tracing::error!(
-                        height = block.header.height,
-                        error = %e,
-                        "cursor.append failed during chain replace — cursor/blocks may diverge"
-                    );
-                }
+        if let Err(e) = self.cursor.invalidate_from(0) {
+            tracing::warn!(error = %e, "cursor.invalidate_from(0) failed during chain replace");
+        }
+        for block in blocks {
+            let height = block.header.height;
+            if let Err(e) = self.cursor.append(block) {
+                tracing::error!(
+                    height = height,
+                    error = %e,
+                    "cursor.append failed during chain replace"
+                );
             }
         }
-        self.blocks = blocks;
     }
 
     pub fn chain_id(&self) -> &str {
@@ -1251,9 +1244,8 @@ impl Blockchain {
             self.height()
         };
         let snapshot_hash = self
-            .blocks
-            .get(snapshot_height as usize)
-            .map(|block| block.hash.clone())
+            .block_at_height(snapshot_height)
+            .map(|block| block.hash)
             .ok_or_else(|| ChainError::SnapshotError("snapshot height missing".to_string()))?;
         let (snapshot_accounts, snapshot_contracts, snapshot_receipts, _, _) =
             self.replay_state_to_canonical_height(snapshot_height)?;
@@ -1744,12 +1736,16 @@ impl Blockchain {
         self.receipt_locations.clear();
         self.log_index.clear();
 
-        // Split borrow: iterate `self.blocks` directly so the borrow checker
-        // sees only that field is borrowed immutably while we mutate
-        // `self.receipt_locations` / `self.log_index`. Routing through the
-        // `iter_blocks()` helper would tie the iterator lifetime to all of
-        // `self` and block the mutations below.
-        for block in &self.blocks {
+        // Walk via cursor block-by-block. Each iteration materializes one
+        // owned `Block` on the stack — O(1) memory per step — which the
+        // borrow checker is happy with because nothing borrows
+        // `&self.blocks` anymore. The cursor's LRU cache is reused
+        // afterwards by validate / fork-choice code.
+        let count = self.block_count();
+        for h in 0..count {
+            let Some(block) = self.block_at_height(h) else {
+                continue;
+            };
             for (tx_index, tx) in block.transactions.iter().enumerate() {
                 if tx.is_coinbase() {
                     continue;
@@ -2052,11 +2048,12 @@ impl Blockchain {
         // `create_block` is `&self` and the canonical update of the tracker
         // happens in `add_block` once the block is actually accepted.
         let mut projected_missed = self.validator_missed_epochs.clone();
+        let producers = self.proposer_addresses_for_settling_epoch(height);
         Self::apply_epoch_settlement_for_block(
             height,
             self.epoch_length,
             &self.epoch_snapshots,
-            &self.blocks,
+            &producers,
             &mut projected_accounts,
             &mut projected_missed,
         );
@@ -2147,11 +2144,12 @@ impl Blockchain {
         // settlement application was the root cause of the
         // `state_root_mismatch` crash on restart at multiples of
         // `epoch_length` past `2 * epoch_length`.
+        let producers = self.proposer_addresses_for_settling_epoch(block.header.height);
         Self::apply_epoch_settlement_for_block(
             block.header.height,
             self.epoch_length,
             &self.epoch_snapshots,
-            &self.blocks,
+            &producers,
             &mut self.accounts,
             &mut self.validator_missed_epochs,
         );
@@ -2966,11 +2964,36 @@ impl Blockchain {
     /// The first epoch boundary (`prev_epoch == 0`) intentionally skips
     /// settlement for the genesis epoch, matching the historical guard in
     /// `add_block`.
+    /// Collect proposer addresses across the previous epoch (the one
+    /// ending right before `block_height`). Returns empty when there is
+    /// no settlement to do (first epoch, no transition). Used to feed
+    /// [`Self::apply_epoch_settlement_for_block`] now that the in-memory
+    /// `Vec<Block>` is gone — the helper used to accept `&[Block]` and
+    /// re-derive addresses, but the slice came from `self.blocks`. Going
+    /// through `block_at_height` here lets the caller hand the helper a
+    /// pre-computed `&[Vec<u8>]` without re-borrowing `self`.
+    fn proposer_addresses_for_settling_epoch(&self, block_height: u64) -> Vec<Vec<u8>> {
+        let epoch_len = self.epoch_length.max(1);
+        let prev_epoch = block_height.saturating_sub(1) / epoch_len;
+        let new_epoch = block_height / epoch_len;
+        if new_epoch <= prev_epoch || prev_epoch == 0 {
+            return Vec::new();
+        }
+        let epoch_start = prev_epoch * epoch_len;
+        let epoch_end = new_epoch * epoch_len;
+        (epoch_start..epoch_end)
+            .filter_map(|h| {
+                self.block_at_height(h)
+                    .map(|b| hash::address_bytes_from_public_key(&b.header.validator_public_key))
+            })
+            .collect()
+    }
+
     fn apply_epoch_settlement_for_block(
         block_height: u64,
         epoch_length: u64,
         epoch_snapshots: &HashMap<u64, EpochSnapshot>,
-        blocks: &[Block],
+        producer_addresses_in_prev_epoch: &[Vec<u8>],
         accounts: &mut HashMap<Vec<u8>, AccountState>,
         validator_missed_epochs: &mut HashMap<Vec<u8>, u64>,
     ) {
@@ -2984,14 +3007,13 @@ impl Blockchain {
             return;
         };
 
-        let epoch_start = prev_epoch * epoch_len;
-        let epoch_end = new_epoch * epoch_len;
+        // `producer_addresses_in_prev_epoch` is pre-computed by the caller
+        // from `cursor.block_at(h)` over `epoch_start..epoch_end`. We just
+        // tally — order doesn't matter, the histogram only cares about
+        // counts per address.
         let mut block_producers: HashMap<Vec<u8>, u64> = HashMap::new();
-        for h in epoch_start..epoch_end {
-            if let Some(b) = blocks.get(h as usize) {
-                let addr = hash::address_bytes_from_public_key(&b.header.validator_public_key);
-                *block_producers.entry(addr).or_default() += 1;
-            }
+        for addr in producer_addresses_in_prev_epoch {
+            *block_producers.entry(addr.clone()).or_default() += 1;
         }
 
         let settlement = crate::consensus::compute_epoch_settlement(
@@ -3325,11 +3347,12 @@ impl Blockchain {
         // the live `add_block` path so the recomputed state root agrees.
         let mut missed_epochs: HashMap<Vec<u8>, u64> = HashMap::new();
         for block in lineage.iter().skip(1) {
+            let producers = self.proposer_addresses_for_settling_epoch(block.header.height);
             Self::apply_epoch_settlement_for_block(
                 block.header.height,
                 self.epoch_length,
                 &self.epoch_snapshots,
-                &self.blocks,
+                &producers,
                 &mut accounts,
                 &mut missed_epochs,
             );
@@ -3367,8 +3390,7 @@ impl Blockchain {
         ChainError,
     > {
         let block = self
-            .blocks
-            .get(target_height as usize)
+            .block_at_height(target_height)
             .ok_or_else(|| ChainError::SnapshotError("target height missing".to_string()))?;
         self.replay_state_to_tip(&block.hash)
     }
@@ -4541,11 +4563,12 @@ impl Blockchain {
             // `Failed to initialize blockchain storage: invalid state root`
             // crash loop seen on the testnet at every multiple of
             // `epoch_length` past `2 * epoch_length`.
+            let producers = self.proposer_addresses_for_settling_epoch(block.header.height);
             Self::apply_epoch_settlement_for_block(
                 block.header.height,
                 self.epoch_length,
                 &self.epoch_snapshots,
-                &blocks,
+                &producers,
                 &mut accounts,
                 &mut missed_epochs,
             );
@@ -5054,7 +5077,7 @@ mod tests {
 
         let mut fork = chain.create_block(&validator).unwrap();
         fork.header.height = 1;
-        fork.header.prev_hash = chain.blocks[0].hash.clone();
+        fork.header.prev_hash = chain.genesis_block().hash;
         fork.header.state_root = vec![7; 32];
         fork.hash = Block::compute_hash(&fork.header);
         fork.signature = Some(validator.sign(&Block::signable_block_hash(&fork.hash)));
@@ -6002,7 +6025,7 @@ mod tests {
             Blockchain::with_storage(dir_a.path().to_str().unwrap(), Some(&genesis)).unwrap();
         let block = chain_a.create_block(&validator).unwrap();
         chain_a.add_block(block).unwrap();
-        let local_block_1_hash = chain_a.blocks[1].hash.clone();
+        let local_block_1_hash = chain_a.block_at_height(1).unwrap().hash;
 
         // chain_b = remote peer with a divergent history, several blocks ahead.
         // To force divergence at height 1 (block creation is otherwise deterministic
@@ -6016,7 +6039,7 @@ mod tests {
             chain_b.add_block(block).unwrap();
         }
         // Sanity: chain_b's block at height 1 must disagree with chain_a's.
-        assert_ne!(chain_b.blocks[1].hash, local_block_1_hash);
+        assert_ne!(chain_b.block_at_height(1).unwrap().hash, local_block_1_hash);
         // chain_a is shorter than chain_b's snapshot tip, so the legacy
         // tip-only check cannot fire here.
         assert!(chain_a.height() < chain_b.height());
@@ -6025,8 +6048,11 @@ mod tests {
         let chunks_b = chain_b.get_snapshot_chunks(manifest_b.height).unwrap();
         chain_a.apply_snapshot(&manifest_b, &chunks_b).unwrap();
         assert_eq!(chain_a.height(), chain_b.height());
-        assert_ne!(chain_a.blocks[1].hash, local_block_1_hash);
-        assert_eq!(chain_a.blocks[1].hash, chain_b.blocks[1].hash);
+        assert_ne!(chain_a.block_at_height(1).unwrap().hash, local_block_1_hash);
+        assert_eq!(
+            chain_a.block_at_height(1).unwrap().hash,
+            chain_b.block_at_height(1).unwrap().hash
+        );
     }
 
     #[test]
@@ -6054,7 +6080,7 @@ mod tests {
             Blockchain::with_storage(dir_a.path().to_str().unwrap(), Some(&genesis)).unwrap();
         let block = chain_a.create_block(&validator).unwrap();
         chain_a.add_block(block).unwrap();
-        let local_block_1_hash = chain_a.blocks[1].hash.clone();
+        let local_block_1_hash = chain_a.block_at_height(1).unwrap().hash;
         chain_a
             .block_tree
             .set_finalized(local_block_1_hash.clone(), 1);
@@ -6067,13 +6093,13 @@ mod tests {
             let block = chain_b.create_block(&validator).unwrap();
             chain_b.add_block(block).unwrap();
         }
-        assert_ne!(chain_b.blocks[1].hash, local_block_1_hash);
+        assert_ne!(chain_b.block_at_height(1).unwrap().hash, local_block_1_hash);
 
         let manifest_b = chain_b.create_snapshot().unwrap();
         let chunks_b = chain_b.get_snapshot_chunks(manifest_b.height).unwrap();
         let err = chain_a.apply_snapshot(&manifest_b, &chunks_b).unwrap_err();
         assert!(matches!(err, ChainError::SnapshotError(_)));
-        assert_eq!(chain_a.blocks[1].hash, local_block_1_hash);
+        assert_eq!(chain_a.block_at_height(1).unwrap().hash, local_block_1_hash);
     }
 
     #[test]
@@ -6196,11 +6222,8 @@ mod tests {
             chain.add_block(block).unwrap();
         }
         let expected_height = chain.height();
-        let expected_state_roots: Vec<Vec<u8>> = chain
-            .blocks
-            .iter()
-            .map(|b| b.header.state_root.clone())
-            .collect();
+        let expected_state_roots: Vec<Vec<u8>> =
+            chain.iter_blocks().map(|b| b.header.state_root).collect();
 
         drop(chain);
 
@@ -6210,7 +6233,12 @@ mod tests {
         assert_eq!(restarted.height(), expected_height);
         for (h, expected_root) in expected_state_roots.iter().enumerate() {
             assert_eq!(
-                &restarted.blocks[h].header.state_root, expected_root,
+                &restarted
+                    .block_at_height(h as u64)
+                    .unwrap()
+                    .header
+                    .state_root,
+                expected_root,
                 "state_root for block {} diverged after restart",
                 h
             );
@@ -6614,11 +6642,7 @@ mod tests {
                 chain.add_block(block).unwrap();
             }
             expected_height = chain.height();
-            expected_state_roots = chain
-                .blocks
-                .iter()
-                .map(|b| b.header.state_root.clone())
-                .collect();
+            expected_state_roots = chain.iter_blocks().map(|b| b.header.state_root).collect();
             assert_eq!(expected_height, target_height);
         }
 
@@ -6627,7 +6651,12 @@ mod tests {
         assert_eq!(restarted.height(), expected_height);
         for (h, expected_root) in expected_state_roots.iter().enumerate() {
             assert_eq!(
-                &restarted.blocks[h].header.state_root, expected_root,
+                &restarted
+                    .block_at_height(h as u64)
+                    .unwrap()
+                    .header
+                    .state_root,
+                expected_root,
                 "state_root for block {} diverged after restart",
                 h
             );
@@ -7019,17 +7048,20 @@ mod tests {
         );
     }
 
-    /// Coherence safety net for #28 Phase B: as long as `self.blocks` and
-    /// `self.cursor` co-exist (dual-write transition), they MUST report
-    /// the same block at every height. Catches any drift introduced by a
-    /// future code path that updates one and forgets the other.
+    /// Post-D.3 the cursor IS the canonical block view. The Phase-B
+    /// dual-write coherence assertion is gone (nothing to compare
+    /// against). This replacement test exercises the same scenario but
+    /// asserts cursor self-consistency: every block added via
+    /// `add_block` must be readable from the cursor at its height, the
+    /// `block_count` must track `height + 1`, and the cursor's view of
+    /// the head must match the head a fresh `with_storage` reload sees.
     #[test]
-    fn cursor_stays_coherent_with_blocks_across_add_block() {
+    fn cursor_is_canonical_block_view_after_add_block() {
         let dir = tempfile::tempdir().unwrap();
         let validator = KeyPair::generate();
         let genesis = GenesisConfig {
-            chain_id: "curs3d-cursor-coherence-test".to_string(),
-            chain_name: "curs3d-cursor-coherence-test".to_string(),
+            chain_id: "curs3d-cursor-canonical-test".to_string(),
+            chain_name: "curs3d-cursor-canonical-test".to_string(),
             block_reward: DEFAULT_BLOCK_REWARD,
             minimum_stake: 1_000,
             epoch_length: 8,
@@ -7043,45 +7075,41 @@ mod tests {
         let data_dir = dir.path().to_str().unwrap();
         let mut chain = Blockchain::with_storage(data_dir, Some(&genesis)).unwrap();
 
-        // Cursor must be wired when storage is present.
-        assert!(
-            chain.cursor.is_some(),
-            "Blockchain::with_storage must init the BlockStoreCursor"
-        );
-
-        // Add 10 blocks; after each one, assert cursor and self.blocks
-        // agree on every height up to the head.
+        // Track the hashes we just produced so we can verify the cursor
+        // (and a fresh reload) report the same chain.
+        let mut expected_hashes = vec![chain.genesis_block().hash];
         for _ in 0..10 {
             let block = chain.create_block(&validator).unwrap();
-            chain.add_block(block).unwrap();
+            chain.add_block(block.clone()).unwrap();
+            expected_hashes.push(block.hash);
 
             let head = chain.height();
-            let cursor = chain.cursor.as_ref().expect("cursor present");
-            assert_eq!(
-                cursor.len().unwrap(),
-                chain.block_count(),
-                "cursor.len() must equal self.block_count()"
-            );
+            assert_eq!(chain.block_count(), head + 1);
 
             for h in 0..=head {
-                let from_blocks = &chain.blocks[h as usize];
-                let from_cursor = cursor
-                    .block_at(h)
-                    .expect("cursor ok")
+                let read = chain
+                    .block_at_height(h)
                     .unwrap_or_else(|| panic!("cursor missing block at height {h}"));
                 assert_eq!(
-                    from_cursor.hash, from_blocks.hash,
-                    "cursor/blocks hash mismatch at height {h}",
+                    read.hash, expected_hashes[h as usize],
+                    "cursor hash mismatch at height {h}"
                 );
-                assert_eq!(
-                    from_cursor.header.height, from_blocks.header.height,
-                    "cursor/blocks height mismatch at height {h}",
-                );
-                assert_eq!(
-                    from_cursor.header.state_root, from_blocks.header.state_root,
-                    "cursor/blocks state_root mismatch at height {h}",
-                );
+                assert_eq!(read.header.height, h);
             }
+        }
+
+        // After a fresh reload (rebuilds the cursor from redb), the chain
+        // must see the same blocks. This catches any persistence bug that
+        // wouldn't show up while the cursor's in-memory cache still has
+        // the blocks.
+        drop(chain);
+        let reopened = Blockchain::with_storage(data_dir, Some(&genesis)).unwrap();
+        assert_eq!(reopened.block_count(), expected_hashes.len() as u64);
+        for (h, expected) in expected_hashes.iter().enumerate() {
+            let read = reopened
+                .block_at_height(h as u64)
+                .unwrap_or_else(|| panic!("reload missing block at height {h}"));
+            assert_eq!(&read.hash, expected, "reload hash mismatch at height {h}");
         }
     }
 }
