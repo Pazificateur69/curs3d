@@ -359,6 +359,13 @@ pub struct Blockchain {
     /// go through [`Blockchain::push_block_internal`] /
     /// [`Blockchain::replace_all_blocks`].
     cursor: crate::core::block_store::BlockStoreCursor,
+    /// Number of blocks to retain below the finalized height. `None`
+    /// means archival mode (no pruning, default). `Some(N)` means each
+    /// time the finality tracker finalizes a block, the cursor calls
+    /// `prune_below(finalized_height - N)` to drop older blocks from
+    /// both the LRU cache and the backing storage. Wired by the CLI
+    /// flags `--archival` / `--prune-keep-blocks`. #28 Phase E.
+    prune_keep_blocks: Option<u64>,
 }
 
 enum PersistenceMode {
@@ -772,6 +779,7 @@ impl Blockchain {
             storage: None,
             persistence: PersistenceMode::Sync,
             cursor,
+            prune_keep_blocks: None,
         })
     }
 
@@ -911,6 +919,7 @@ impl Blockchain {
                 storage: Some(storage.clone()),
                 persistence: PersistenceMode::Sync,
                 cursor,
+                prune_keep_blocks: None,
             };
 
             chain.rebuild_canonical_state()?;
@@ -999,6 +1008,67 @@ impl Blockchain {
         self.cursor
             .len()
             .expect("cursor len must succeed (mutex poisoned)")
+    }
+
+    /// Lowest block height still readable from the cursor. 0 in archival
+    /// mode (default). Larger when pruning has dropped older blocks.
+    /// Exposed for the `curs3d_chain_base_height` Prometheus gauge.
+    pub fn chain_base_height(&self) -> u64 {
+        self.cursor
+            .base_height()
+            .expect("cursor base_height must succeed (mutex poisoned)")
+    }
+
+    /// Enable or disable history pruning. `None` is archival (default).
+    /// `Some(N)` keeps `N` blocks below the finalized height; older
+    /// blocks are dropped at every finalization via `cursor.prune_below`.
+    /// Wired from the `--archival` / `--prune-keep-blocks` CLI flags.
+    pub fn set_prune_keep_blocks(&mut self, keep: Option<u64>) {
+        self.prune_keep_blocks = keep;
+    }
+
+    /// Currently configured prune window, if any.
+    pub fn prune_keep_blocks(&self) -> Option<u64> {
+        self.prune_keep_blocks
+    }
+
+    /// Apply the prune policy at a finalization event. If pruning is
+    /// disabled this is a no-op. Otherwise drops every block below
+    /// `finalized_height - keep`. Logged at `audit` info level on
+    /// non-trivial prunes so the operator can see retention in journald.
+    /// Pure side effect — returns the number of blocks actually
+    /// removed for tests / metrics.
+    fn maybe_prune_finalized(&mut self, finalized_height: u64) -> usize {
+        let Some(keep) = self.prune_keep_blocks else {
+            return 0;
+        };
+        // Need at least `keep + 1` blocks below the finalized height for a
+        // prune to make sense (we keep heights [keep_from, finalized]).
+        let Some(keep_from) = finalized_height.checked_sub(keep) else {
+            return 0;
+        };
+        if keep_from == 0 {
+            // Genesis pin already protects 0; anything below is empty.
+            return 0;
+        }
+        match self.cursor.prune_below(keep_from) {
+            Ok(removed) => {
+                if removed > 0 {
+                    tracing::info!(
+                        target: "audit",
+                        event = "blocks_pruned",
+                        keep_from,
+                        finalized = finalized_height,
+                        removed,
+                    );
+                }
+                removed
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "cursor.prune_below failed at finality");
+                0
+            }
+        }
     }
 
     /// Iterator over every block in the canonical chain, genesis first.
@@ -2262,6 +2332,13 @@ impl Blockchain {
                 height = finalized.height,
                 hash = %hex::encode(&finalized.hash),
             );
+
+            // #28 Phase E — drop history below the prune watermark every
+            // finalization. No-op in archival mode. Safe because anything
+            // strictly below the finalized height can never be needed for
+            // a future reorg (the chain's own ReorgBelowFinality guard
+            // enforces that invariant).
+            let _removed = self.maybe_prune_finalized(finalized.height);
         }
 
         result
@@ -7111,5 +7188,82 @@ mod tests {
                 .unwrap_or_else(|| panic!("reload missing block at height {h}"));
             assert_eq!(&read.hash, expected, "reload hash mismatch at height {h}");
         }
+    }
+
+    /// #28 Phase E — `maybe_prune_finalized` drops history below
+    /// `finalized - keep_blocks`. Archival mode (None) is a no-op. With
+    /// `Some(K)`, finalizing block F prunes [1, F-K). Genesis (h=0)
+    /// always stays pinned. The cursor's storage backend (redb in this
+    /// test) must report the pruned heights as gone too — otherwise
+    /// the disk usage never shrinks.
+    #[test]
+    fn maybe_prune_finalized_drops_history_below_watermark() {
+        let dir = tempfile::tempdir().unwrap();
+        let validator = KeyPair::generate();
+        let genesis = GenesisConfig {
+            chain_id: "curs3d-prune-test".to_string(),
+            chain_name: "curs3d-prune-test".to_string(),
+            block_reward: DEFAULT_BLOCK_REWARD,
+            minimum_stake: 1_000,
+            epoch_length: 8,
+            allocations: vec![GenesisAllocation {
+                public_key: hex::encode(&validator.public_key),
+                balance: 1_000_000_000,
+                staked_balance: 5_000,
+            }],
+            ..Default::default()
+        };
+        let data_dir = dir.path().to_str().unwrap();
+        let mut chain = Blockchain::with_storage(data_dir, Some(&genesis)).unwrap();
+
+        // Build a chain of 20 blocks so we have a meaningful prune target.
+        for _ in 0..20 {
+            let block = chain.create_block(&validator).unwrap();
+            chain.add_block(block).unwrap();
+        }
+        assert_eq!(chain.height(), 20);
+        assert_eq!(chain.chain_base_height(), 0, "archival mode = no prune");
+
+        // Archival mode: no prune even with a finalization event.
+        let removed = chain.maybe_prune_finalized(15);
+        assert_eq!(removed, 0);
+        assert_eq!(chain.chain_base_height(), 0);
+        assert!(chain.block_at_height(5).is_some(), "no prune in archival");
+
+        // Enable pruning with a 5-block retention window. Finalize at
+        // height 15 → keep heights [10, 15], drop heights [1, 9].
+        chain.set_prune_keep_blocks(Some(5));
+        assert_eq!(chain.prune_keep_blocks(), Some(5));
+        let removed = chain.maybe_prune_finalized(15);
+        assert!(removed > 0, "should have pruned some history");
+        assert_eq!(chain.chain_base_height(), 10);
+
+        // Pruned heights return None; retained heights still resolve.
+        for h in 1..10 {
+            assert!(
+                chain.block_at_height(h).is_none(),
+                "height {h} should be pruned"
+            );
+        }
+        for h in 10..=20 {
+            assert!(
+                chain.block_at_height(h).is_some(),
+                "height {h} must still resolve"
+            );
+        }
+        // Genesis is always preserved (pinned by cursor).
+        assert!(chain.block_at_height(0).is_some());
+
+        // A second prune at the same finalized height is a no-op.
+        let removed = chain.maybe_prune_finalized(15);
+        assert_eq!(removed, 0);
+        assert_eq!(chain.chain_base_height(), 10);
+
+        // Disable pruning again: future finalizations don't extend the
+        // prune watermark.
+        chain.set_prune_keep_blocks(None);
+        let removed = chain.maybe_prune_finalized(20);
+        assert_eq!(removed, 0);
+        assert_eq!(chain.chain_base_height(), 10, "watermark unchanged");
     }
 }

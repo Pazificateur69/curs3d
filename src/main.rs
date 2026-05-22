@@ -55,20 +55,18 @@ enum Commands {
         #[arg(long, default_value_t = false)]
         reset_p2p_identity: bool,
         /// Archival mode: never prune any historical blocks. Equivalent to
-        /// `--prune-keep-blocks` set to infinity. Default for now — runtime
-        /// pruning is still gated behind the in-memory `Blockchain::blocks`
-        /// base-offset refactor (`Storage::prune_blocks_below` ships ahead of
-        /// integration so the primitive can be exercised by ops tooling and
-        /// unit tests). Once the chain-side refactor lands, this flag and
-        /// `--prune-keep-blocks` will gate the per-finality prune step.
+        /// `--prune-keep-blocks` set to infinity. Default — disable
+        /// pruning unless the operator opts in. Wired since #28 Phase E:
+        /// pruning fires from `Blockchain::add_finality_vote` whenever a
+        /// new block is finalized.
         #[arg(long, default_value_t = true)]
         archival: bool,
         /// Number of blocks to retain below the finalised height when
-        /// pruning is enabled. Ignored while `--archival` is true (the
-        /// current default). A modest window (10_000 blocks ≈ 28 hours at
-        /// 10 s/block) lets a node still serve recent blocks to peers
-        /// that are behind, without forcing an immediate snapshot
-        /// escalation for the common late-joiner case.
+        /// pruning is enabled. Ignored while `--archival` is true. A
+        /// modest window (10_000 blocks ≈ 28 hours at 10 s/block) lets a
+        /// node still serve recent blocks to peers that are behind,
+        /// without forcing an immediate snapshot escalation for the
+        /// common late-joiner case.
         #[arg(long, default_value_t = 10_000)]
         prune_keep_blocks: u64,
     },
@@ -256,20 +254,6 @@ async fn main() {
             archival,
             prune_keep_blocks,
         } => {
-            // archival / prune_keep_blocks are parsed but currently
-            // unused at runtime — see the doc comment on those CLI
-            // fields and the SAFETY note on Storage::prune_blocks_below.
-            // Log the effective mode so operators see what their flags
-            // are doing (even if "nothing yet" is the answer right
-            // now).
-            if !archival {
-                eprintln!(
-                    "warn: --archival=false requested with prune-keep-blocks={prune_keep_blocks}; \
-                     runtime pruning is not yet wired (Storage::prune_blocks_below is callable \
-                     from tooling but not from the live chain loop). The node will behave as if \
-                     --archival=true until the chain-side base-offset refactor lands."
-                );
-            }
             run_node(
                 port,
                 &data_dir,
@@ -281,6 +265,8 @@ async fn main() {
                 http_addr.as_deref(),
                 genesis_config.as_deref(),
                 reset_p2p_identity,
+                archival,
+                prune_keep_blocks,
             )
             .await
         }
@@ -529,6 +515,8 @@ async fn run_node(
     http_addr_override: Option<&str>,
     genesis_config_path: Option<&str>,
     reset_p2p_identity: bool,
+    archival: bool,
+    prune_keep_blocks: u64,
 ) {
     println!(
         r#"
@@ -557,8 +545,10 @@ async fn run_node(
         }
     };
 
-    let chain = match Blockchain::with_storage_async_persistence(data_dir, genesis_config.as_ref())
-    {
+    let mut chain = match Blockchain::with_storage_async_persistence(
+        data_dir,
+        genesis_config.as_ref(),
+    ) {
         Ok(chain) => chain,
         Err(e) => {
             eprintln!("Failed to initialize blockchain storage: {}", e);
@@ -568,6 +558,23 @@ async fn run_node(
             return;
         }
     };
+
+    // Apply pruning policy from CLI flags. Archival = keep everything.
+    // Otherwise keep `prune_keep_blocks` blocks below the finalized
+    // height; the prune step fires from `Blockchain::add_finality_vote`
+    // each time a new block is finalized.
+    if archival {
+        chain.set_prune_keep_blocks(None);
+        info!(
+            "Pruning mode: ARCHIVAL (no pruning, every historical block retained on disk and in cache)"
+        );
+    } else {
+        chain.set_prune_keep_blocks(Some(prune_keep_blocks));
+        info!(
+            "Pruning mode: PRUNED (keep_keep_blocks={} below finalized; older blocks dropped from cache + redb at every finalization)",
+            prune_keep_blocks
+        );
+    }
 
     let chain_height = chain.height();
     let latest_hash = chain.latest_block().hash_hex();

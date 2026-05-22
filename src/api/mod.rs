@@ -900,6 +900,10 @@ async fn handle_request(
                     "curs3d_logs_total {}\n",
                     "# TYPE curs3d_base_fee_per_gas gauge\n",
                     "curs3d_base_fee_per_gas {}\n",
+                    "# TYPE curs3d_chain_base_height gauge\n",
+                    "# Lowest block height still readable from the node. 0 in archival mode; \n",
+                    "# advances as `--prune-keep-blocks` drops history at finalization (#28 E).\n",
+                    "curs3d_chain_base_height {}\n",
                 ),
                 uptime,
                 head,
@@ -921,6 +925,7 @@ async fn handle_request(
                 chain.receipts.len(),
                 chain.log_index.len(),
                 chain.current_base_fee_per_gas(),
+                chain.chain_base_height(),
             );
             Ok(text_response(
                 StatusCode::OK,
