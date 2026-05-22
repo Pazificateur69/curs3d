@@ -915,4 +915,295 @@ impl Blockchain {
             .unwrap_or_default()
             .saturating_mul(gas_used)
     }
+
+    pub(super) fn apply_token_or_governance_tx(
+        token_registry: &mut TokenRegistry,
+        governance: &mut GovernanceState,
+        accounts: &HashMap<Vec<u8>, AccountState>,
+        minimum_stake: u64,
+        epoch_length: u64,
+        tx: &Transaction,
+        current_height: u64,
+    ) -> Result<(), ChainError> {
+        match tx.kind {
+            TransactionKind::DeployToken => {
+                let params: crate::token::DeployTokenParams = serde_json::from_slice(&tx.data)
+                    .map_err(|_| {
+                        ChainError::InvalidTransactionFormat("invalid DeployToken JSON in data")
+                    })?;
+                token_registry
+                    .deploy_token(
+                        &tx.from,
+                        tx.nonce.saturating_sub(1),
+                        &params,
+                        current_height,
+                    )
+                    .map_err(|_e| ChainError::InvalidTransactionFormat("token operation failed"))?;
+            }
+            TransactionKind::TokenTransfer => {
+                let params: crate::token::TokenTransferParams = serde_json::from_slice(&tx.data)
+                    .map_err(|_| {
+                        ChainError::InvalidTransactionFormat("invalid TokenTransfer JSON in data")
+                    })?;
+                token_registry
+                    .transfer(
+                        &params.token_address,
+                        &tx.from,
+                        &params.recipient,
+                        params.amount,
+                    )
+                    .map_err(|_e| ChainError::InvalidTransactionFormat("token operation failed"))?;
+            }
+            TransactionKind::TokenApprove => {
+                let params: crate::token::TokenApproveParams = serde_json::from_slice(&tx.data)
+                    .map_err(|_| {
+                        ChainError::InvalidTransactionFormat("invalid TokenApprove JSON in data")
+                    })?;
+                token_registry
+                    .approve(
+                        &params.token_address,
+                        &tx.from,
+                        &params.spender,
+                        params.amount,
+                    )
+                    .map_err(|_e| ChainError::InvalidTransactionFormat("token operation failed"))?;
+            }
+            TransactionKind::TokenTransferFrom => {
+                let params: crate::token::TokenTransferFromParams =
+                    serde_json::from_slice(&tx.data).map_err(|_| {
+                        ChainError::InvalidTransactionFormat(
+                            "invalid TokenTransferFrom JSON in data",
+                        )
+                    })?;
+                token_registry
+                    .transfer_from(
+                        &params.token_address,
+                        &tx.from,
+                        &params.from,
+                        &params.recipient,
+                        params.amount,
+                    )
+                    .map_err(|_e| ChainError::InvalidTransactionFormat("token operation failed"))?;
+            }
+            TransactionKind::SubmitProposal => {
+                let params: crate::governance::SubmitProposalParams =
+                    serde_json::from_slice(&tx.data).map_err(|_| {
+                        ChainError::InvalidTransactionFormat("invalid SubmitProposal JSON in data")
+                    })?;
+                // Verify sender is a validator
+                let sender_account = accounts.get(&tx.from);
+                let is_validator =
+                    sender_account.is_some_and(|a| a.staked_balance >= minimum_stake);
+                if !is_validator {
+                    return Err(ChainError::UnauthorizedValidator);
+                }
+                // Snapshot all validator stakes at proposal creation time
+                let stake_snapshot: std::collections::HashMap<Vec<u8>, u64> = accounts
+                    .iter()
+                    .filter(|(_, a)| a.staked_balance >= minimum_stake)
+                    .map(|(addr, a)| (addr.clone(), a.staked_balance))
+                    .collect();
+                governance
+                    .submit_proposal(
+                        &tx.from,
+                        &params,
+                        current_height,
+                        epoch_length,
+                        stake_snapshot,
+                    )
+                    .map_err(|_| {
+                        ChainError::InvalidTransactionFormat("governance operation failed")
+                    })?;
+            }
+            TransactionKind::GovernanceVote => {
+                let params: crate::governance::GovernanceVoteParams =
+                    serde_json::from_slice(&tx.data).map_err(|_| {
+                        ChainError::InvalidTransactionFormat("invalid GovernanceVote JSON in data")
+                    })?;
+                // Get voter stake
+                let voter_stake = accounts
+                    .get(&tx.from)
+                    .map(|a| a.staked_balance)
+                    .unwrap_or(0);
+                if voter_stake < minimum_stake {
+                    return Err(ChainError::UnauthorizedValidator);
+                }
+                governance
+                    .vote(
+                        &tx.from,
+                        &params.proposal_id,
+                        &params.vote,
+                        voter_stake,
+                        current_height,
+                    )
+                    .map_err(|_e| {
+                        ChainError::InvalidTransactionFormat("governance operation failed")
+                    })?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Apply an EVM-style `DeployEvmContract` tx by building a fresh state
+    /// view from the chain accounts/contracts, running revm, then merging
+    /// the delta back. Sender balance/nonce updates from revm are applied
+    /// after the surrounding fee-handling block in `apply_user_transaction`
+    /// has already debited the sender, so we re-apply revm's nonce
+    /// faithfully (it's identical to ours except for the +1 we did).
+    pub(super) fn apply_evm_deploy(
+        accounts: &mut HashMap<Vec<u8>, AccountState>,
+        contracts: &mut HashMap<Vec<u8>, ContractState>,
+        tx: &Transaction,
+        current_height: u64,
+        base_fee_per_gas: u64,
+    ) -> Result<crate::vm::evm::EvmOutcome, ChainError> {
+        // `apply_user_transaction` already incremented sender.nonce above.
+        // For CREATE, revm computes the contract address from the
+        // sender's nonce in the state view (= keccak(rlp([sender, nonce]))[12:]),
+        // and that nonce is the *pre-tx* one (the one in the tx itself).
+        // Without this fix, the state view we hand to revm has nonce = tx.nonce
+        // + 1, so revm derives a contract address one nonce ahead of standard
+        // Ethereum (Token at nonce 0 ends up where Faucet at nonce 1 should be).
+        // Compensate by handing revm a state view where the caller's nonce is
+        // tx.nonce (pre-increment).
+        let mut state = Self::evm_state_view(accounts, contracts);
+        let mut caller = [0u8; 20];
+        if tx.from.len() == 20 {
+            caller.copy_from_slice(&tx.from);
+        }
+        if let Some((bal, _post_nonce)) = state.accounts.get(&caller) {
+            let pre_nonce = tx.nonce;
+            state.accounts.insert(caller, (*bal, pre_nonce));
+        }
+        let outcome = crate::vm::evm::deploy(
+            state,
+            caller,
+            &tx.data,
+            tx.amount,
+            tx.gas_limit,
+            base_fee_per_gas.max(1),
+            current_height,
+            base_fee_per_gas,
+            super::DEFAULT_BLOCK_GAS_LIMIT,
+        )
+        .map_err(|e| ChainError::InvalidTransactionFormat(Self::leak_evm_err(e)))?;
+        Self::merge_evm_outcome(accounts, contracts, &outcome);
+        Ok(outcome)
+    }
+
+    pub(super) fn apply_evm_call(
+        accounts: &mut HashMap<Vec<u8>, AccountState>,
+        contracts: &mut HashMap<Vec<u8>, ContractState>,
+        tx: &Transaction,
+        current_height: u64,
+        base_fee_per_gas: u64,
+    ) -> Result<crate::vm::evm::EvmOutcome, ChainError> {
+        let state = Self::evm_state_view(accounts, contracts);
+        let mut caller = [0u8; 20];
+        if tx.from.len() == 20 {
+            caller.copy_from_slice(&tx.from);
+        }
+        let mut to = [0u8; 20];
+        if tx.to.len() == 20 {
+            to.copy_from_slice(&tx.to);
+        }
+        let outcome = crate::vm::evm::call(
+            state,
+            caller,
+            to,
+            &tx.data,
+            tx.amount,
+            tx.gas_limit,
+            base_fee_per_gas.max(1),
+            current_height,
+            base_fee_per_gas,
+            super::DEFAULT_BLOCK_GAS_LIMIT,
+        )
+        .map_err(|e| ChainError::InvalidTransactionFormat(Self::leak_evm_err(e)))?;
+        Self::merge_evm_outcome(accounts, contracts, &outcome);
+        Ok(outcome)
+    }
+
+    fn evm_state_view(
+        accounts: &HashMap<Vec<u8>, AccountState>,
+        contracts: &HashMap<Vec<u8>, ContractState>,
+    ) -> crate::vm::evm::EvmStateView {
+        let mut view = crate::vm::evm::EvmStateView::new();
+        for (addr, account) in accounts {
+            if addr.len() != 20 {
+                continue;
+            }
+            let mut key = [0u8; 20];
+            key.copy_from_slice(addr);
+            view.insert_account(key, account.balance, account.nonce);
+        }
+        for (addr, contract) in contracts {
+            if addr.len() != 20 {
+                continue;
+            }
+            let mut key = [0u8; 20];
+            key.copy_from_slice(addr);
+            view.insert_contract(key, contract.clone());
+        }
+        view
+    }
+
+    fn merge_evm_outcome(
+        accounts: &mut HashMap<Vec<u8>, AccountState>,
+        contracts: &mut HashMap<Vec<u8>, ContractState>,
+        outcome: &crate::vm::evm::EvmOutcome,
+    ) {
+        for (addr, (balance, nonce)) in &outcome.account_updates {
+            let entry = accounts.entry(addr.to_vec()).or_default();
+            entry.balance = *balance;
+            entry.nonce = *nonce;
+        }
+        for (addr, contract) in &outcome.contracts_created {
+            // Merge: keep storage we computed below from storage_updates
+            let merged_storage = outcome
+                .storage_updates
+                .get(addr)
+                .cloned()
+                .unwrap_or_else(|| contract.storage.clone());
+            contracts.insert(
+                addr.to_vec(),
+                ContractState {
+                    code_hash: contract.code_hash.clone(),
+                    code: contract.code.clone(),
+                    storage: merged_storage,
+                    owner: contract.owner.clone(),
+                },
+            );
+        }
+        // Apply storage updates to existing contracts (call kind).
+        for (addr, slot_updates) in &outcome.storage_updates {
+            if outcome.contracts_created.contains_key(addr) {
+                continue;
+            }
+            if let Some(contract) = contracts.get_mut(&addr.to_vec()) {
+                for (slot, value) in slot_updates {
+                    contract.storage.insert(slot.clone(), value.clone());
+                }
+            }
+        }
+    }
+
+    fn leak_evm_err(err: crate::vm::evm::EvmError) -> &'static str {
+        // Convert any EVM error to a small static label for the surrounding
+        // `InvalidTransactionFormat(&'static str)`. Preserving exact reverts
+        // is the receipt's job (success=false, return_data carries the
+        // revert reason).
+        match err {
+            crate::vm::evm::EvmError::EmptyBytecode => "evm deploy: empty bytecode",
+            crate::vm::evm::EvmError::InvalidBytecode => "evm: invalid bytecode",
+            crate::vm::evm::EvmError::ContractNotFound => "evm: contract not found",
+            crate::vm::evm::EvmError::OutOfGas => "evm: out of gas",
+            crate::vm::evm::EvmError::Reverted(_) => "evm: reverted",
+            crate::vm::evm::EvmError::Halted(_) => "evm: halted",
+            crate::vm::evm::EvmError::Internal(_) => "evm: internal error",
+            crate::vm::evm::EvmError::RlpDecode(_) => "evm: rlp decode failed",
+            crate::vm::evm::EvmError::SignatureRecovery => "evm: signature recovery failed",
+        }
+    }
 }
