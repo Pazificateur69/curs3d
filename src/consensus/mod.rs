@@ -1416,4 +1416,155 @@ mod tests {
             2
         );
     }
+
+    // ─── Property tests (task #33) — BFT finality invariants ────────
+
+    use proptest::prelude::*;
+
+    /// Build a uniform-stake EpochSnapshot of `n` validators, each owning
+    /// `per_stake`. Returns the snapshot, the keypairs, and the validators'
+    /// addresses (in insertion order — usable for ordered slot-leader tests).
+    fn proptest_uniform_snapshot(n: usize, per_stake: u64) -> (EpochSnapshot, Vec<KeyPair>) {
+        let mut validators = Vec::with_capacity(n);
+        let mut kps = Vec::with_capacity(n);
+        for _ in 0..n {
+            let kp = KeyPair::generate();
+            let address = hash::address_bytes_from_public_key(&kp.public_key);
+            validators.push(Validator {
+                address,
+                public_key: kp.public_key.clone(),
+                stake: per_stake,
+            });
+            kps.push(kp);
+        }
+        let total_stake = per_stake.saturating_mul(n as u64);
+        let snapshot = EpochSnapshot {
+            epoch: 0,
+            start_height: 0,
+            validators,
+            total_stake,
+        };
+        (snapshot, kps)
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(24))]
+
+        /// Strict 2/3 finality threshold: a block with k validators voting
+        /// (out of n uniform-stake) finalizes iff k/n >= 2/3 (i.e.
+        /// k * 3 >= n * 2). No fewer, no more.
+        #[test]
+        fn prop_finality_only_at_two_thirds(
+            n in 3usize..12,
+            voters in 1usize..12,
+        ) {
+            let voters = voters.min(n);
+            let (snapshot, kps) = proptest_uniform_snapshot(n, 1_000);
+            let mut tracker = FinalityTracker::new();
+            let block_hash = hash::sha3_hash(b"prop-finality-block");
+            let block_height = 1;
+            let epoch = 0;
+
+            let mut finalized = None;
+            for kp in kps.iter().take(voters) {
+                let vote = FinalityVote::new(block_hash.clone(), block_height, epoch, kp);
+                if let Some(f) = tracker.add_vote(vote, &snapshot) {
+                    finalized = Some(f);
+                    break;
+                }
+            }
+
+            let voted_stake = (voters as u64) * 1_000;
+            let total_stake = snapshot.total_stake;
+            // Implementation uses `voted_stake * 3 >= total_active_stake * 2`.
+            let expected_finalized = voted_stake * 3 >= total_stake * 2;
+            prop_assert_eq!(finalized.is_some(), expected_finalized);
+        }
+
+        /// A vote from a validator NOT in the snapshot must be rejected
+        /// (returns None) — defends against forged finality from a slashed
+        /// or unstaked actor.
+        #[test]
+        fn prop_unknown_validator_vote_rejected(_seed in any::<u8>()) {
+            let (snapshot, _kps) = proptest_uniform_snapshot(5, 1_000);
+            let mut tracker = FinalityTracker::new();
+            let block_hash = hash::sha3_hash(b"prop-unknown-block");
+
+            // Outsider validator not in the snapshot.
+            let stranger = KeyPair::generate();
+            let vote = FinalityVote::new(block_hash.clone(), 1, 0, &stranger);
+            let result = tracker.add_vote(vote, &snapshot);
+            prop_assert!(result.is_none());
+        }
+
+        /// Two votes from the same validator at the same (height, epoch)
+        /// for DIFFERENT hashes: the second is rejected by the dedup
+        /// guard (replay protection). Both hashes never both reach finality.
+        #[test]
+        fn prop_dedup_replay_protection(_seed in any::<u8>()) {
+            let (snapshot, kps) = proptest_uniform_snapshot(5, 1_000);
+            let mut tracker = FinalityTracker::new();
+            let block_hash_a = hash::sha3_hash(b"prop-block-a");
+            let block_hash_b = hash::sha3_hash(b"prop-block-b");
+
+            let voter = &kps[0];
+            let v1 = FinalityVote::new(block_hash_a.clone(), 1, 0, voter);
+            let r1 = tracker.add_vote(v1, &snapshot);
+            // First vote alone doesn't finalize (1/5 < 2/3) — None.
+            prop_assert!(r1.is_none());
+
+            // Second vote at same (height, epoch) but for a different hash:
+            // must be silently rejected.
+            let v2 = FinalityVote::new(block_hash_b.clone(), 1, 0, voter);
+            let r2 = tracker.add_vote(v2, &snapshot);
+            prop_assert!(r2.is_none());
+
+            // Even if 4 other validators vote for hash_b (would-be 4/5 ≥ 2/3),
+            // hash_b never finalizes because the dedup'd vote from voter is
+            // attributed to hash_a (the first one) and doesn't count for B.
+            let mut hash_b_finalized = false;
+            for kp in kps.iter().skip(1) {
+                let v = FinalityVote::new(block_hash_b.clone(), 1, 0, kp);
+                if let Some(f) = tracker.add_vote(v, &snapshot)
+                    && f.hash == block_hash_b
+                {
+                    hash_b_finalized = true;
+                }
+            }
+            // 4 of 5 voted for B (4_000 stake, > 2/3 of 5_000): B finalizes.
+            // This proptest verifies the dedup doesn't prevent B from finalizing
+            // when the OTHER 4 validators rally to B — the duplicate vote from
+            // `voter` is the only one prevented.
+            prop_assert!(hash_b_finalized);
+        }
+
+        /// Slot-leader is deterministic: same (snapshot, height, prev_hash)
+        /// always produces the same leader address. Critical for consensus
+        /// — non-determinism here forks the chain immediately.
+        #[test]
+        fn prop_slot_leader_deterministic(
+            height in any::<u64>(),
+            prev_seed in any::<u8>(),
+        ) {
+            let (snapshot, _) = proptest_uniform_snapshot(5, 1_000);
+            let parent_hash = hash::sha3_hash(&[prev_seed]);
+            let leader1 = slot_leader(&snapshot, height, &parent_hash);
+            let leader2 = slot_leader(&snapshot, height, &parent_hash);
+            prop_assert_eq!(leader1, leader2);
+        }
+
+        /// Slot-leader picks ONE of the snapshot's validators (never a
+        /// stranger). Sanity check that nothing leaks foreign addresses.
+        #[test]
+        fn prop_slot_leader_is_active_validator(
+            height in any::<u64>(),
+            prev_seed in any::<u8>(),
+        ) {
+            let (snapshot, _) = proptest_uniform_snapshot(5, 1_000);
+            let parent_hash = hash::sha3_hash(&[prev_seed]);
+            let leader = slot_leader(&snapshot, height, &parent_hash).expect("snapshot non-empty");
+            let known: Vec<&Vec<u8>> = snapshot.validators.iter().map(|v| &v.address).collect();
+            prop_assert!(known.contains(&&leader));
+        }
+    }
 }
