@@ -958,20 +958,53 @@ impl Blockchain {
     /// least one block at height 0. Wraps the `self.blocks[0]` access so the
     /// rest of the file doesn't need to reach into the storage representation;
     /// once #28 Phase B is complete this will read from `BlockStoreCursor`.
+    ///
+    /// In debug builds the helper also asserts that the cursor (when wired)
+    /// returns the same genesis hash — a no-cost-in-prod fuzzer for the
+    /// dual-write coherence invariant.
     pub fn genesis_block(&self) -> &Block {
-        &self.blocks[0]
+        let g = &self.blocks[0];
+        #[cfg(debug_assertions)]
+        if let Some(cursor) = &self.cursor
+            && let Ok(c) = cursor.genesis()
+        {
+            debug_assert_eq!(
+                c.hash, g.hash,
+                "cursor genesis hash drifted from self.blocks[0]"
+            );
+        }
+        g
     }
 
     /// Block at a specific height, if present in the canonical chain.
     /// Currently a Vec lookup; once #28 Phase B is complete this will go
     /// through `BlockStoreCursor::block_at` with the redb-backed cache.
     pub fn block_at_height(&self, height: u64) -> Option<&Block> {
-        self.blocks.get(height as usize)
+        let from_blocks = self.blocks.get(height as usize);
+        #[cfg(debug_assertions)]
+        if let Some(cursor) = &self.cursor
+            && let Ok(from_cursor) = cursor.block_at(height)
+        {
+            let cursor_hash = from_cursor.as_ref().map(|b| &b.hash);
+            let blocks_hash = from_blocks.map(|b| &b.hash);
+            debug_assert_eq!(
+                cursor_hash, blocks_hash,
+                "cursor/blocks drift at height {height}"
+            );
+        }
+        from_blocks
     }
 
     /// Total number of blocks in the canonical chain (= head height + 1).
     pub fn block_count(&self) -> u64 {
-        self.blocks.len() as u64
+        let count = self.blocks.len() as u64;
+        #[cfg(debug_assertions)]
+        if let Some(cursor) = &self.cursor
+            && let Ok(cursor_count) = cursor.len()
+        {
+            debug_assert_eq!(cursor_count, count, "cursor count drifted from self.blocks");
+        }
+        count
     }
 
     /// Iterator over every block in the canonical chain, genesis first.
@@ -1005,15 +1038,25 @@ impl Blockchain {
     }
 
     /// Replace the entire canonical chain with a new sequence. Used by
-    /// `apply_snapshot` and `replace_blocks` (reorg). The cursor is
-    /// truncated to 0 and will be repopulated by subsequent `add_block`
-    /// calls upstream (snapshot apply already calls `push_block_internal`
-    /// per block via `rebuild_canonical_state`).
+    /// `apply_snapshot` and `replace_blocks` (reorg). Truncates the
+    /// cursor and re-feeds it the new block sequence so the dual-write
+    /// invariant holds — without this re-feed, any subsequent reader
+    /// (`block_count`, `block_at_height`, ...) trips the debug_assert
+    /// that compares cursor vs self.blocks.
     fn replace_all_blocks(&mut self, blocks: Vec<Block>) {
-        if let Some(cursor) = &self.cursor
-            && let Err(e) = cursor.invalidate_from(0)
-        {
-            tracing::warn!(error = %e, "cursor.invalidate_from(0) failed during chain replace");
+        if let Some(cursor) = &self.cursor {
+            if let Err(e) = cursor.invalidate_from(0) {
+                tracing::warn!(error = %e, "cursor.invalidate_from(0) failed during chain replace");
+            }
+            for block in &blocks {
+                if let Err(e) = cursor.append(block.clone()) {
+                    tracing::error!(
+                        height = block.header.height,
+                        error = %e,
+                        "cursor.append failed during chain replace — cursor/blocks may diverge"
+                    );
+                }
+            }
         }
         self.blocks = blocks;
     }
