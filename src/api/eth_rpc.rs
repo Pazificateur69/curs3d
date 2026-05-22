@@ -866,6 +866,14 @@ fn parse_eth_log_filter(chain: &Blockchain, value: &Value) -> Result<LogFilter, 
     })
 }
 
+/// Hard cap on a single JSON-RPC batch. Standard Ethereum tooling
+/// (Hardhat, ethers.js batching) groups ~10–50 requests at most. The
+/// 1 MB HTTP body cap bounds raw bytes, but lets an attacker pack
+/// ~500 000 empty `{}` entries — using `Vec::with_capacity(batch.len())`
+/// would then allocate ~64 MB instantly. 1024 is a generous ceiling
+/// for legitimate clients while keeping the up-front allocation small.
+const MAX_JSONRPC_BATCH_SIZE: usize = 1024;
+
 /// Top-level handler for a JSON-RPC request body. Supports single requests and batches.
 pub async fn handle(chain: Arc<Mutex<Blockchain>>, body: &[u8]) -> Value {
     let parsed: Value = match serde_json::from_slice(body) {
@@ -876,7 +884,22 @@ pub async fn handle(chain: Arc<Mutex<Blockchain>>, body: &[u8]) -> Value {
     };
 
     if let Some(batch) = parsed.as_array() {
-        let mut responses = Vec::with_capacity(batch.len());
+        if batch.len() > MAX_JSONRPC_BATCH_SIZE {
+            return rpc_error(
+                Value::Null,
+                -32600,
+                &format!(
+                    "batch too large: {} entries (max {})",
+                    batch.len(),
+                    MAX_JSONRPC_BATCH_SIZE
+                ),
+            );
+        }
+        // Cap the up-front allocation at the smaller of batch.len() and the
+        // max — defence in depth even though the size check above already
+        // rejects oversize batches.
+        let cap = batch.len().min(MAX_JSONRPC_BATCH_SIZE);
+        let mut responses = Vec::with_capacity(cap);
         for entry in batch {
             responses.push(dispatch(&chain, entry).await);
         }
