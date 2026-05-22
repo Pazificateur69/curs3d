@@ -54,6 +54,15 @@ struct CursorState {
 pub struct BlockStoreCursor {
     storage: Arc<dyn BlockBackend>,
     state: Mutex<CursorState>,
+    /// When true, [`Self::append`] persists the block to `storage` before
+    /// updating the in-memory cache. Use this when the cursor's backend is
+    /// the only durable home for blocks (e.g. an `InMemoryBlockBackend`
+    /// behind a storage-less chain). Leave false when a separate
+    /// persistence pipeline (e.g. `chain::persist_added_block`) already
+    /// writes to storage — double-writing through both paths would also
+    /// break the async-persistence invariant
+    /// (`test_async_persistence_does_not_write_on_each_block`).
+    self_persist: bool,
 }
 
 /// Short-hand for the lock pattern.
@@ -67,7 +76,31 @@ impl BlockStoreCursor {
     /// Construct a cursor over any `BlockBackend`. Loads genesis eagerly.
     /// Returns `MissingGenesis` if storage has not been initialized with
     /// at least one block (height 0).
+    ///
+    /// Append-time persistence is **disabled** — the caller is expected
+    /// to write blocks to storage through a separate pipeline (this is
+    /// the redb path in `Blockchain::with_storage_mode`).
     pub fn new(storage: Arc<dyn BlockBackend>, cache_size: usize) -> Result<Self, BlockStoreError> {
+        Self::new_with_persist(storage, cache_size, false)
+    }
+
+    /// Same as [`Self::new`] but enables append-time persistence: every
+    /// [`Self::append`] call writes the block to `storage` before
+    /// inserting it into the cache. Use for storage-less chains where the
+    /// cursor's backend (typically `InMemoryBlockBackend`) is the only
+    /// place blocks live durably.
+    pub fn new_self_persisting(
+        storage: Arc<dyn BlockBackend>,
+        cache_size: usize,
+    ) -> Result<Self, BlockStoreError> {
+        Self::new_with_persist(storage, cache_size, true)
+    }
+
+    fn new_with_persist(
+        storage: Arc<dyn BlockBackend>,
+        cache_size: usize,
+        self_persist: bool,
+    ) -> Result<Self, BlockStoreError> {
         let genesis = storage
             .get_block(0)?
             .ok_or(BlockStoreError::MissingGenesis)?;
@@ -103,6 +136,7 @@ impl BlockStoreCursor {
                 height_count,
                 base_height,
             }),
+            self_persist,
         })
     }
 
@@ -167,14 +201,19 @@ impl BlockStoreCursor {
     }
 
     /// Append a new block to the cursor's view. The block's `header.height`
-    /// MUST equal `self.len()` (i.e. one above the current head). Updates
-    /// the in-memory cache + counter only — **does NOT touch storage**.
+    /// MUST equal `self.len()` (i.e. one above the current head).
     ///
-    /// Storage persistence is the caller's responsibility (chain.rs already
-    /// has its own sync/async persistence pipeline via `persist_added_block`).
-    /// Routing storage through the cursor would force a sync write that
-    /// breaks the async-persistence invariant tested by
-    /// `test_async_persistence_does_not_write_on_each_block`.
+    /// Behavior depends on the construction mode:
+    /// - default ([`Self::new`]): only updates the in-memory cache +
+    ///   counter. Storage persistence is the caller's responsibility
+    ///   (chain.rs handles it via `persist_added_block`). Avoids
+    ///   double-writing in the redb path and preserves the
+    ///   async-persistence invariant tested by
+    ///   `test_async_persistence_does_not_write_on_each_block`.
+    /// - self-persisting ([`Self::new_self_persisting`]): persists to
+    ///   `storage` first, then updates the cache. Required when the
+    ///   cursor's backend is the only durable storage (storage-less
+    ///   chains) — without it, an LRU eviction could lose history.
     pub fn append(&self, block: Block) -> Result<(), BlockStoreError> {
         let h = block.header.height;
         let mut state = lock_state!(self);
@@ -183,6 +222,9 @@ impl BlockStoreCursor {
                 expected: state.height_count,
                 actual: h,
             });
+        }
+        if self.self_persist {
+            self.storage.put_block(&block)?;
         }
         if h == 0 {
             state.genesis = block;
@@ -589,6 +631,62 @@ mod tests {
         }
         // Genesis is always present, even after a deep prune.
         assert!(cursor.block_at(0).expect("ok").is_some());
+    }
+
+    /// In self-persisting mode, the cursor writes to the backend on every
+    /// append. Blocks evicted from the LRU cache must therefore still be
+    /// retrievable via the backend. This is the invariant that lets
+    /// storage-less chains drop `self.blocks` (Phase D.3 of #28) without
+    /// losing history when the cache turns over.
+    #[test]
+    fn cursor_self_persist_survives_lru_eviction() {
+        let (storage, _dir) = open_test_storage();
+        seed_genesis(storage.as_ref());
+        let cursor =
+            BlockStoreCursor::new_self_persisting(Arc::clone(&storage), 2).expect("cursor");
+
+        // Append 10 blocks with a cache that holds only 2. Without
+        // self-persist, heights 1..=7 would all be lost (cache evicted,
+        // backend never written).
+        let mut parent = cursor.genesis().unwrap();
+        let mut hashes = vec![parent.hash.clone()];
+        for _ in 0..10 {
+            let b = synthetic_block(&parent);
+            hashes.push(b.hash.clone());
+            cursor.append(b.clone()).expect("append");
+            parent = b;
+        }
+        assert_eq!(cursor.len().unwrap(), 11);
+        assert!(cursor.cache_size().unwrap() <= 2);
+
+        // Every height (including evicted ones) must still resolve.
+        for h in 0..=10 {
+            let read = cursor
+                .block_at(h)
+                .expect("ok")
+                .unwrap_or_else(|| panic!("evicted height {h} should still be retrievable"));
+            assert_eq!(read.hash, hashes[h as usize]);
+        }
+    }
+
+    /// Default (non-self-persisting) cursor must NOT write to the backend.
+    /// Verifying this protects the async-persistence invariant in the
+    /// redb-backed chain path.
+    #[test]
+    fn cursor_default_mode_does_not_persist_on_append() {
+        let (storage, _dir) = open_test_storage();
+        let g = seed_genesis(storage.as_ref());
+        let cursor = BlockStoreCursor::new(Arc::clone(&storage), 8).expect("cursor");
+
+        let b1 = synthetic_block(&g);
+        cursor.append(b1.clone()).expect("append");
+
+        // Cursor's cache sees b1, but backend was never written.
+        assert!(cursor.block_at(1).expect("ok").is_some());
+        assert!(
+            storage.get_block(1).expect("ok").is_none(),
+            "default-mode cursor must not write to backend on append"
+        );
     }
 
     /// `is_empty` matches `len() == 0` across the cursor lifecycle.
