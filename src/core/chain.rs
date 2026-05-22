@@ -20,7 +20,7 @@ use crate::core::transaction::{MempoolClass, Transaction, TransactionKind};
 use crate::crypto::dilithium::KeyPair;
 use crate::crypto::hash;
 use crate::governance::GovernanceState;
-use crate::storage::{Storage, StorageError};
+use crate::storage::{BlockBackend, InMemoryBlockBackend, Storage, StorageError};
 use crate::token::TokenRegistry;
 use crate::vm::state::ContractState;
 use crate::vm::{Vm, VmError};
@@ -349,12 +349,12 @@ pub struct Blockchain {
     pub evm_tx_hash_index: HashMap<Vec<u8>, (u64, usize)>,
     storage: Option<Storage>,
     persistence: PersistenceMode,
-    /// Paginated block view backed by redb. **Wired but not yet
-    /// load-bearing**: helpers like [`Blockchain::block_at_height`] still
-    /// read from `self.blocks` directly. Phase C of #28 will swap the
-    /// helpers to read here, with `self.blocks` kept transiently for a
-    /// dual-read assertion before its final removal.
-    #[allow(dead_code)]
+    /// Paginated block view backed by redb (or by `InMemoryBlockBackend`
+    /// for storage-less chains constructed via [`Blockchain::from_genesis`]).
+    /// Load-bearing since #28 Phase D.2: [`Blockchain::genesis_block`],
+    /// [`Blockchain::block_at_height`] and [`Blockchain::block_count`] read
+    /// from this cursor first, falling back to `self.blocks` only when the
+    /// cursor reports `Ok(None)`. Phase D.3 removes `self.blocks` entirely.
     cursor: Option<crate::core::block_store::BlockStoreCursor>,
 }
 
@@ -719,6 +719,20 @@ impl Blockchain {
             Self::build_epoch_snapshot_for_accounts(&genesis_config, 0, &accounts, &HashSet::new()),
         );
 
+        // Wire an in-memory-backed BlockStoreCursor even when the chain has
+        // no persistent Storage (tests, dry-run, bootstrap-before-storage).
+        // After D.3 removes self.blocks entirely, this cursor becomes the
+        // sole canonical block view for storage-less chains. Until then the
+        // cursor and self.blocks dual-write under push_block_internal /
+        // replace_all_blocks.
+        let in_mem: Arc<dyn BlockBackend> = Arc::new(InMemoryBlockBackend::new());
+        in_mem.put_block(&genesis)?;
+        let cursor = crate::core::block_store::BlockStoreCursor::new(
+            Arc::clone(&in_mem),
+            crate::core::block_store::DEFAULT_BLOCK_CACHE_SIZE,
+        )
+        .ok();
+
         Ok(Blockchain {
             blocks: vec![genesis],
             accounts,
@@ -748,7 +762,7 @@ impl Blockchain {
             evm_tx_hash_index: HashMap::new(),
             storage: None,
             persistence: PersistenceMode::Sync,
-            cursor: None,
+            cursor,
         })
     }
 
@@ -955,25 +969,36 @@ impl Blockchain {
     }
 
     /// Genesis block. Always present — every Blockchain is constructed with at
-    /// least one block at height 0. Returns an OWNED clone so the helper can
-    /// transparently read from either `self.blocks` (legacy in-memory) or
-    /// `self.cursor` (paginated, redb-backed) without leaking the storage
-    /// representation through the API.
+    /// least one block at height 0. Returns an OWNED clone. Prefers the
+    /// paginated cursor over `self.blocks`; falls back to the legacy field
+    /// during the D.2 → D.3 transition so a misbehaving cursor cannot break
+    /// reads.
     pub fn genesis_block(&self) -> Block {
-        self.blocks[0].clone()
+        self.cursor
+            .as_ref()
+            .and_then(|c| c.genesis().ok())
+            .unwrap_or_else(|| self.blocks[0].clone())
     }
 
     /// Block at a specific height, if present in the canonical chain.
-    /// Returns an OWNED clone. The clone cost is intentional — it lets
-    /// callers freely propagate the value without holding a lock or
-    /// fighting the borrow checker.
+    /// Returns an OWNED clone. Prefers the cursor; falls back to `self.blocks`
+    /// when the cursor reports `Ok(None)` (e.g. an LRU eviction with no
+    /// persistent backend behind it during the storage-less transition).
     pub fn block_at_height(&self, height: u64) -> Option<Block> {
-        self.blocks.get(height as usize).cloned()
+        self.cursor
+            .as_ref()
+            .and_then(|c| c.block_at(height).ok().flatten())
+            .or_else(|| self.blocks.get(height as usize).cloned())
     }
 
     /// Total number of blocks in the canonical chain (= head height + 1).
+    /// Reads from the cursor when available; otherwise falls back to
+    /// `self.blocks.len()`. After D.3 the cursor is the only source.
     pub fn block_count(&self) -> u64 {
-        self.blocks.len() as u64
+        self.cursor
+            .as_ref()
+            .and_then(|c| c.len().ok())
+            .unwrap_or(self.blocks.len() as u64)
     }
 
     /// Iterator over every block in the canonical chain, genesis first.
