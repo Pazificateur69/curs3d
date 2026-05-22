@@ -386,4 +386,58 @@ impl Blockchain {
             governance: projected_governance,
         })
     }
+
+    pub(super) fn apply_coinbase_transaction(
+        accounts: &mut HashMap<Vec<u8>, AccountState>,
+        tx: &Transaction,
+    ) -> Result<(), ChainError> {
+        Self::validate_transaction_shape(tx)?;
+        if !tx.is_coinbase() {
+            return Err(ChainError::InvalidCoinbase);
+        }
+
+        let recipient = accounts.entry(tx.to.clone()).or_default();
+        recipient.balance = recipient.balance.saturating_add(tx.amount);
+        Ok(())
+    }
+
+    pub(super) fn apply_unstake_unlocks(
+        accounts: &mut HashMap<Vec<u8>, AccountState>,
+        block_height: u64,
+    ) {
+        for account in accounts.values_mut() {
+            let mut released = 0u64;
+            account.pending_unstakes.retain(|pending| {
+                if pending.unlock_height <= block_height {
+                    released = released.saturating_add(pending.amount);
+                    false
+                } else {
+                    true
+                }
+            });
+            account.balance = account.balance.saturating_add(released);
+        }
+    }
+
+    pub(super) fn ensure_transaction_fee_covers_base(
+        tx: &Transaction,
+        gas_used: u64,
+        base_fee_per_gas: u64,
+    ) -> Result<(), ChainError> {
+        let required = gas_used.saturating_mul(base_fee_per_gas);
+        if tx.max_fee_per_gas() < base_fee_per_gas || tx.total_fee_cap() < required {
+            return Err(ChainError::FeeTooLow);
+        }
+        Ok(())
+    }
+
+    pub(super) fn priority_fee_for_transaction(
+        tx: &Transaction,
+        gas_used: u64,
+        base_fee_per_gas: u64,
+    ) -> u64 {
+        tx.priority_fee_per_gas(base_fee_per_gas)
+            .unwrap_or_default()
+            .saturating_mul(gas_used)
+    }
 }
