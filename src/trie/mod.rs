@@ -69,6 +69,12 @@ impl SparseMerkleTrie {
     }
 
     /// Insert or update a key-value pair. Key must be 32 bytes (SHA-3 hash).
+    ///
+    /// **Empty-value semantics**: passing `value = []` removes the key. This
+    /// mirrors how account/contract state with all-zero fields is represented
+    /// in tree-based EVM/state systems — "missing" and "empty" are the same
+    /// thing for proof purposes. Callers that want to distinguish them must
+    /// wrap the value (e.g. prepend a non-zero marker byte).
     pub fn insert(&mut self, key: Vec<u8>, value: Vec<u8>) {
         assert_eq!(key.len(), 32, "SMT keys must be 32 bytes");
         if value.is_empty() {
@@ -365,5 +371,90 @@ mod tests {
 
         assert_ne!(root1, root2);
         assert_eq!(trie.get(&key), Some(&b"v2".to_vec()));
+    }
+
+    // ─── Property tests (task #33) for v6 SMT activation safety ─────
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        /// Inserting the same (key, value) pairs in any order produces the
+        /// same root. Critical for v6 SMT activation: a state_root that
+        /// depends on insertion order would fork the chain.
+        #[test]
+        fn prop_root_is_insertion_order_independent(
+            entries in proptest::collection::vec(
+                (proptest::collection::vec(any::<u8>(), 32..33), proptest::collection::vec(any::<u8>(), 0..64)),
+                1..16,
+            ),
+        ) {
+            let mut t1 = SparseMerkleTrie::new();
+            for (k, v) in &entries {
+                t1.insert(k.clone(), v.clone());
+            }
+            let root_forward = t1.root();
+
+            let mut t2 = SparseMerkleTrie::new();
+            for (k, v) in entries.iter().rev() {
+                t2.insert(k.clone(), v.clone());
+            }
+            let root_reverse = t2.root();
+
+            prop_assert_eq!(root_forward, root_reverse);
+        }
+
+        /// Same trie state → same root. Determinism is THE SMT invariant.
+        #[test]
+        fn prop_root_deterministic(
+            entries in proptest::collection::vec(
+                (proptest::collection::vec(any::<u8>(), 32..33), proptest::collection::vec(any::<u8>(), 0..64)),
+                0..16,
+            ),
+        ) {
+            let mut t1 = SparseMerkleTrie::new();
+            let mut t2 = SparseMerkleTrie::new();
+            for (k, v) in &entries {
+                t1.insert(k.clone(), v.clone());
+                t2.insert(k.clone(), v.clone());
+            }
+            prop_assert_eq!(t1.root(), t2.root());
+        }
+
+        /// Inserting then removing leaves the trie state equivalent to never
+        /// having inserted — root must reset to the empty hash. Values are
+        /// constrained to non-empty: the SMT semantics treats `value = []`
+        /// as "no insert" (intentional design choice — account / contract
+        /// records always carry at least one field).
+        #[test]
+        fn prop_insert_then_remove_restores_root(
+            key in proptest::collection::vec(any::<u8>(), 32..33),
+            value in proptest::collection::vec(any::<u8>(), 1..64),
+        ) {
+            let mut trie = SparseMerkleTrie::new();
+            let empty_root = trie.root().to_vec();
+
+            trie.insert(key.clone(), value);
+            prop_assert_ne!(trie.root(), empty_root.as_slice());
+
+            trie.remove(&key);
+            prop_assert_eq!(trie.root(), empty_root.as_slice());
+        }
+
+        /// `get(k)` returns the last inserted (non-empty) value for `k`.
+        #[test]
+        fn prop_get_returns_latest_value(
+            key in proptest::collection::vec(any::<u8>(), 32..33),
+            values in proptest::collection::vec(proptest::collection::vec(any::<u8>(), 1..32), 1..8),
+        ) {
+            let mut trie = SparseMerkleTrie::new();
+            let mut last = None;
+            for v in &values {
+                trie.insert(key.clone(), v.clone());
+                last = Some(v.clone());
+            }
+            prop_assert_eq!(trie.get(&key), last.as_ref());
+        }
     }
 }
