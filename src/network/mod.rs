@@ -2082,7 +2082,13 @@ impl NetworkNode {
                         SwarmEvent::ConnectionClosed { peer_id, .. } => {
                             info!("Disconnected from peer {}", peer_id);
                             last_peer_change_at = Instant::now();
-                            verified_peer_tips.remove(&peer_id.to_string());
+                            // Drop per-peer entries so they don't accumulate
+                            // forever on validator churn. (peer_heights was
+                            // previously leaking — verified_peer_tips already
+                            // cleaned up but peer_heights didn't.)
+                            let peer_key = peer_id.to_string();
+                            verified_peer_tips.remove(&peer_key);
+                            peer_heights.remove(&peer_key);
                             let mut state = runtime_state.write().await;
                             state.set_peer_count(self.swarm.connected_peers().count());
                         }
