@@ -2,6 +2,9 @@ target/
 *.exe
 *.pdb
 
+# proptest replay seeds — auto-generated on test failure, kept locally only.
+proptest-regressions/
+
 # Local cross-compile linker config (machine-specific gcc cross binaries).
 # The Docker-based `cross` path uses Cross.toml — committed.
 .cargo/config.toml
