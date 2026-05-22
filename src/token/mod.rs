@@ -421,4 +421,83 @@ mod tests {
         deploy_test_token(&mut registry);
         assert_eq!(registry.list_tokens().len(), 1);
     }
+
+    // ─── Property tests (task #33) — CUR-20 invariants ───────────────
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        /// Conservation of supply: total balance across ALL holders after
+        /// any sequence of transfers must equal the original total_supply.
+        /// (Tokens cannot be minted or burned by transfers.)
+        #[test]
+        fn prop_transfers_conserve_total_supply(
+            amounts in proptest::collection::vec(1u64..1_000_000, 0..32),
+        ) {
+            let mut registry = TokenRegistry::new();
+            let addr = deploy_test_token(&mut registry);
+            let recipient = test_recipient();
+
+            for amount in &amounts {
+                // Skip transfers that would underflow.
+                let bal = registry.balance_of(&addr, &test_deployer());
+                if bal < *amount { continue; }
+                let _ = registry.transfer(&addr, &test_deployer(), &recipient, *amount);
+            }
+
+            let total =
+                registry.balance_of(&addr, &test_deployer())
+                + registry.balance_of(&addr, &recipient);
+            prop_assert_eq!(total, 1_000_000_000);
+        }
+
+        /// Transfer amount > balance must fail without mutating state.
+        #[test]
+        fn prop_overdraft_transfer_does_not_mutate(
+            extra in 1u64..1_000_000_000,
+        ) {
+            let mut registry = TokenRegistry::new();
+            let addr = deploy_test_token(&mut registry);
+            let amount = 1_000_000_000u64.saturating_add(extra);
+            let pre_dep = registry.balance_of(&addr, &test_deployer());
+            let pre_rec = registry.balance_of(&addr, &test_recipient());
+
+            let result = registry.transfer(&addr, &test_deployer(), &test_recipient(), amount);
+            prop_assert!(result.is_err());
+
+            let post_dep = registry.balance_of(&addr, &test_deployer());
+            let post_rec = registry.balance_of(&addr, &test_recipient());
+            prop_assert_eq!(pre_dep, post_dep);
+            prop_assert_eq!(pre_rec, post_rec);
+        }
+
+        /// transferFrom decreases allowance by the transferred amount.
+        #[test]
+        fn prop_transfer_from_decreases_allowance(
+            allowance in 1u64..1_000_000,
+            transfer_amount in 1u64..1_000_000,
+        ) {
+            prop_assume!(transfer_amount <= allowance);
+            let mut registry = TokenRegistry::new();
+            let addr = deploy_test_token(&mut registry);
+            registry
+                .approve(&addr, &test_deployer(), &test_spender(), allowance)
+                .unwrap();
+
+            registry
+                .transfer_from(
+                    &addr,
+                    &test_spender(),
+                    &test_deployer(),
+                    &test_recipient(),
+                    transfer_amount,
+                )
+                .unwrap();
+
+            let remaining = registry.allowance(&addr, &test_deployer(), &test_spender());
+            prop_assert_eq!(remaining, allowance - transfer_amount);
+        }
+    }
 }

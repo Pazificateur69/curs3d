@@ -446,4 +446,85 @@ mod tests {
         let result = gov.vote(&test_validator(), &id, &VoteChoice::For, 1000, deadline + 1);
         assert_eq!(result, Err(GovernanceError::VotingEnded));
     }
+
+    // ─── Property tests (task #33) — governance invariants ──────────
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(48))]
+
+        /// Vote weight accumulates exactly the validator's stake — no
+        /// double-counting, no rounding loss.
+        #[test]
+        fn prop_vote_records_stake_exactly(
+            stake in 100u64..1_000_000,
+            choice_idx in 0u8..2,
+        ) {
+            let mut gov = GovernanceState::new();
+            let mut snap = HashMap::new();
+            snap.insert(test_validator(), stake);
+            let params = SubmitProposalParams {
+                kind: ProposalKind::ParameterChange {
+                    parameter: "block_gas_limit".to_string(),
+                    new_value: 20_000_000,
+                },
+            };
+            let id = gov.submit_proposal(&test_validator(), &params, 100, 32, snap).unwrap();
+            let choice = if choice_idx % 2 == 0 { VoteChoice::For } else { VoteChoice::Against };
+            gov.vote(&test_validator(), &id, &choice, stake, 110).unwrap();
+
+            let p = gov.get_proposal(&id).unwrap();
+            let total_recorded = p.votes_for + p.votes_against;
+            prop_assert_eq!(total_recorded, stake);
+        }
+
+        /// Two distinct validators voting independently both have their
+        /// stake counted (no race / overwrite).
+        #[test]
+        fn prop_two_voters_both_count(
+            stake_a in 100u64..500_000,
+            stake_b in 100u64..500_000,
+        ) {
+            let mut gov = GovernanceState::new();
+            let mut snap = HashMap::new();
+            snap.insert(test_validator(), stake_a);
+            snap.insert(test_validator2(), stake_b);
+            let params = SubmitProposalParams {
+                kind: ProposalKind::ParameterChange {
+                    parameter: "block_gas_limit".to_string(),
+                    new_value: 20_000_000,
+                },
+            };
+            let id = gov.submit_proposal(&test_validator(), &params, 100, 32, snap).unwrap();
+            gov.vote(&test_validator(), &id, &VoteChoice::For, stake_a, 110).unwrap();
+            gov.vote(&test_validator2(), &id, &VoteChoice::Against, stake_b, 110).unwrap();
+
+            let p = gov.get_proposal(&id).unwrap();
+            prop_assert_eq!(p.votes_for, stake_a);
+            prop_assert_eq!(p.votes_against, stake_b);
+        }
+
+        /// A validator NOT in the proposal's snapshot must not be allowed
+        /// to vote (snapshot-bound enfranchisement).
+        #[test]
+        fn prop_non_snapshot_validator_rejected(
+            stake in 100u64..1_000_000,
+        ) {
+            let mut gov = GovernanceState::new();
+            let mut snap = HashMap::new();
+            snap.insert(test_validator(), stake);
+            let params = SubmitProposalParams {
+                kind: ProposalKind::ParameterChange {
+                    parameter: "block_gas_limit".to_string(),
+                    new_value: 20_000_000,
+                },
+            };
+            let id = gov.submit_proposal(&test_validator(), &params, 100, 32, snap).unwrap();
+
+            // test_validator2 is NOT in the snapshot.
+            let result = gov.vote(&test_validator2(), &id, &VoteChoice::For, stake, 110);
+            prop_assert!(result.is_err());
+        }
+    }
 }
