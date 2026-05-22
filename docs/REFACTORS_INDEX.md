@@ -5,9 +5,16 @@ priority order. Each refactor has its own design doc with phases,
 risks, and acceptance criteria.
 
 ## Sprint 3 — Memory bound (THE blocker for mainnet)
-- **[#28 Refactor `Vec<Block>` → paginated `BlockStoreCursor`](REFACTOR_BLOCK_STORE.md)** — 1 week
-  - Phase A (scaffolding) ✅ done 2026-05-21
-  - Phase B-E pending
+- **[#28 Refactor `Vec<Block>` → paginated `BlockStoreCursor`](REFACTOR_BLOCK_STORE.md)** ✅ done 2026-05-22
+  - Phase A (scaffolding) ✅ 2026-05-21
+  - Phase B-C (route reads through helpers) ✅ 2026-05-21
+  - Phase D.1 (owned Block helpers) ✅ 2026-05-22 (commit `06a2403`)
+  - Phase D.2 (init cursor always + cursor-first reads) ✅ 2026-05-22 (commit `1c48409`)
+  - Phase D.3 (delete `self.blocks`, cursor is sole view) ✅ 2026-05-22
+    - D.3.a self-persisting cursor mode (commit `9a714f0`)
+    - D.3.b reference helpers → owned (commit `c2e7a9b`)
+    - D.3.c remove `pub blocks: Vec<Block>` (commit `f171602`)
+  - Phase E (runtime soak — `--prune-keep-blocks N`) pending
 
 ## Sprint 4 — Auditability + testability
 - **[#29 Split `chain.rs` (6846 LOC) into 8-10 submodules](REFACTOR_SPLIT_CHAIN.md)** — 1 week
