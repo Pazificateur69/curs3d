@@ -1612,8 +1612,7 @@ impl NetworkNode {
                                         }
                                         if known_finalized_height > 0 {
                                             let checkpoint_ok = chain_lock
-                                                .blocks
-                                                .get(known_finalized_height as usize)
+                                                .block_at_height(known_finalized_height)
                                                 .map(|block| block.hash == known_finalized_hash)
                                                 .unwrap_or(false);
                                             if !checkpoint_ok {
@@ -2207,7 +2206,7 @@ impl NetworkNode {
                     }
                     Err(e) => {
                         // Check for equivocation: same height, same validator, different hash
-                        if let Some(our_block) = chain_lock.blocks.get(block_height as usize)
+                        if let Some(our_block) = chain_lock.block_at_height(block_height)
                             && our_block.header.validator_public_key
                                 == block.header.validator_public_key
                             && our_block.hash != block.hash
@@ -2315,7 +2314,7 @@ impl NetworkNode {
             return;
         }
         if from_height > 0
-            && let Some(prev_block) = chain_lock.blocks.get((from_height - 1) as usize)
+            && let Some(prev_block) = chain_lock.block_at_height(from_height - 1)
             && prev_block.hash != expected_prev_hash
         {
             warn!(
@@ -2365,7 +2364,7 @@ impl NetworkNode {
         let mut blocks_data = Vec::new();
 
         for h in from_height..=end_height {
-            if let Some(block) = chain_lock.blocks.get(h as usize)
+            if let Some(block) = chain_lock.block_at_height(h)
                 && let Ok(serialized) = bincode::serialize(block)
             {
                 blocks_data.push(serialized);

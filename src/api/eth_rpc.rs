@@ -223,8 +223,7 @@ fn tx_to_eth(chain: &Blockchain, tx: &Transaction, location: Option<(u64, usize)
         Some((h, i)) => (
             Value::String(hex_u64(h)),
             chain
-                .blocks
-                .get(h as usize)
+                .block_at_height(h)
                 .map(|b| Value::String(hex_bytes(&b.hash)))
                 .unwrap_or(Value::Null),
             Value::String(hex_u64(i as u64)),
@@ -256,7 +255,7 @@ fn tx_to_eth(chain: &Blockchain, tx: &Transaction, location: Option<(u64, usize)
 }
 
 fn receipt_to_eth(chain: &Blockchain, indexed: &IndexedReceipt) -> Value {
-    let block = chain.blocks.get(indexed.block_height as usize);
+    let block = chain.block_at_height(indexed.block_height);
     let block_hash = block
         .map(|b| hex_bytes(&b.hash))
         .unwrap_or_else(|| "0x".into());
@@ -324,7 +323,7 @@ fn receipt_to_eth(chain: &Blockchain, indexed: &IndexedReceipt) -> Value {
 }
 
 fn log_to_eth(chain: &Blockchain, log: &IndexedLogEntry) -> Value {
-    let block = chain.blocks.get(log.block_height as usize);
+    let block = chain.block_at_height(log.block_height);
     let block_hash = block
         .map(|b| hex_bytes(&b.hash))
         .unwrap_or_else(|| "0x".into());
@@ -447,13 +446,13 @@ async fn dispatch(chain: &Arc<Mutex<Blockchain>>, request: &Value) -> Value {
             let mut base_fees: Vec<String> = Vec::new();
             let mut gas_used_ratios: Vec<f64> = Vec::new();
             for h in oldest..=newest {
-                if let Some(b) = chain.blocks.get(h as usize) {
+                if let Some(b) = chain.block_at_height(h) {
                     base_fees.push(hex_u64(chain.next_base_fee_per_gas(b)));
                     gas_used_ratios.push(0.5);
                 }
             }
             // Push one extra base fee for the next block (eth_feeHistory contract)
-            if let Some(latest) = chain.blocks.last() {
+            if let Some(latest) = chain.iter_blocks().next_back() {
                 base_fees.push(hex_u64(chain.next_base_fee_per_gas(latest)));
             }
             rpc_success(
@@ -537,7 +536,7 @@ async fn dispatch(chain: &Arc<Mutex<Blockchain>>, request: &Value) -> Value {
                 Some(h) => h,
                 None => return rpc_error(id, -32602, "invalid block tag"),
             };
-            match chain.blocks.get(height as usize) {
+            match chain.block_at_height(height) {
                 Some(block) => rpc_success(id, block_to_eth(&chain, block, full_tx)),
                 None => rpc_success(id, Value::Null),
             }
@@ -552,7 +551,7 @@ async fn dispatch(chain: &Arc<Mutex<Blockchain>>, request: &Value) -> Value {
             let full_tx = params_arr.get(1).and_then(|v| v.as_bool()).unwrap_or(false);
             let chain = chain.lock().await;
             let height = chain.block_hash_to_height.get(&target).copied();
-            match height.and_then(|h| chain.blocks.get(h as usize)) {
+            match height.and_then(|h| chain.block_at_height(h)) {
                 Some(block) => rpc_success(id, block_to_eth(&chain, block, full_tx)),
                 None => rpc_success(id, Value::Null),
             }
@@ -568,7 +567,7 @@ async fn dispatch(chain: &Arc<Mutex<Blockchain>>, request: &Value) -> Value {
             // Try both indexes: native txs are keyed by Transaction::hash(),
             // EVM txs by keccak256(rlp_signed).
             if let Some((height, idx)) = resolve_eth_tx_lookup(&chain, &target)
-                && let Some(block) = chain.blocks.get(height as usize)
+                && let Some(block) = chain.block_at_height(height)
                 && let Some(tx) = block.transactions.get(idx)
             {
                 return rpc_success(id, tx_to_eth(&chain, tx, Some((height, idx))));
@@ -589,8 +588,7 @@ async fn dispatch(chain: &Arc<Mutex<Blockchain>>, request: &Value) -> Value {
             let internal_hash: Vec<u8> =
                 if let Some((height, idx)) = resolve_eth_tx_lookup(&chain, &target) {
                     chain
-                        .blocks
-                        .get(height as usize)
+                        .block_at_height(height)
                         .and_then(|b| b.transactions.get(idx))
                         .map(|tx| tx.hash())
                         .unwrap_or_else(|| target.clone())
@@ -611,7 +609,7 @@ async fn dispatch(chain: &Arc<Mutex<Blockchain>>, request: &Value) -> Value {
                 Some(h) => h,
                 None => return rpc_error(id, -32602, "invalid block tag"),
             };
-            match chain.blocks.get(height as usize) {
+            match chain.block_at_height(height) {
                 Some(block) => rpc_success(id, json!(hex_u64(block.transactions.len() as u64))),
                 None => rpc_success(id, Value::Null),
             }

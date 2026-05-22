@@ -959,7 +959,7 @@ async fn handle_request(
                 Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid height")),
             };
             let chain = chain.lock().await;
-            match chain.blocks.get(height as usize) {
+            match chain.block_at_height(height) {
                 Some(block) => Ok(json_ok(block_to_api(block))),
                 None => Ok(json_err(StatusCode::NOT_FOUND, "block not found")),
             }
@@ -969,7 +969,7 @@ async fn handle_request(
         // GET /api/genesis — minimal info for a light client to anchor on
         (Method::GET, ["api", "genesis"]) => {
             let chain = chain.lock().await;
-            let genesis = chain.blocks.first();
+            let genesis = Some(chain.genesis_block());
             Ok(json_ok(serde_json::json!({
                 "chain_id": chain.chain_id(),
                 "chain_name": chain.genesis_config.chain_name,
@@ -1010,7 +1010,7 @@ async fn handle_request(
             let upper = to.min(height).min(from + limit as u64);
             let mut headers: Vec<SignedHeader> = Vec::new();
             for h in from..=upper {
-                if let Some(block) = chain.blocks.get(h as usize) {
+                if let Some(block) = chain.block_at_height(h) {
                     headers.push(SignedHeader {
                         chain_id: chain_id.clone(),
                         header: block.header.clone(),
@@ -1034,7 +1034,7 @@ async fn handle_request(
                 Err(_) => return Ok(json_err(StatusCode::BAD_REQUEST, "invalid height")),
             };
             let chain = chain.lock().await;
-            match chain.blocks.get(height as usize) {
+            match chain.block_at_height(height) {
                 Some(block) => {
                     let signed = SignedHeader {
                         chain_id: chain.chain_id().to_string(),
@@ -1066,7 +1066,7 @@ async fn handle_request(
             };
             let chain = chain.lock().await;
             let height = chain.block_hash_to_height.get(&hash_bytes).copied();
-            match height.and_then(|h| chain.blocks.get(h as usize)) {
+            match height.and_then(|h| chain.block_at_height(h)) {
                 Some(block) => Ok(json_ok(block_to_api(block))),
                 None => Ok(json_err(StatusCode::NOT_FOUND, "block not found")),
             }
@@ -1101,7 +1101,7 @@ async fn handle_request(
             let blocks: Vec<ApiBlockSummary> = (start..=height)
                 .rev()
                 .take(limit)
-                .filter_map(|h| chain.blocks.get(h as usize).map(block_to_summary))
+                .filter_map(|h| chain.block_at_height(h).map(block_to_summary))
                 .collect();
 
             Ok(json_ok(blocks))
@@ -1236,7 +1236,7 @@ async fn handle_request(
             };
             let chain = chain.lock().await;
             if let Some((height, idx)) = chain.tx_hash_index.get(&target).copied()
-                && let Some(block) = chain.blocks.get(height as usize)
+                && let Some(block) = chain.block_at_height(height)
                 && let Some(tx) = block.transactions.get(idx)
             {
                 return Ok(json_ok(tx_to_api(tx)));
