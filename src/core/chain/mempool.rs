@@ -19,13 +19,245 @@
 //! method that calls into many other Blockchain pieces, and moving it
 //! belongs in a follow-up extraction.
 
+use std::collections::{HashMap, HashSet};
+
 use super::{
-    Blockchain, ChainError, MAX_PENDING_GAS_BUDGET_MULTIPLIER, MAX_PENDING_TRANSACTIONS_USER,
-    MAX_PENDING_TX_AGE_SECS, RESERVED_SYSTEM_SLOTS,
+    Blockchain, ChainError, MAX_CONTRACT_CODE_BYTES, MAX_FUTURE_TX_TIME_SECS,
+    MAX_PENDING_GAS_BUDGET_MULTIPLIER, MAX_PENDING_GAS_PER_ACCOUNT_MULTIPLIER,
+    MAX_PENDING_NONCE_GAP, MAX_PENDING_TRANSACTIONS_PER_ACCOUNT, MAX_PENDING_TRANSACTIONS_USER,
+    MAX_PENDING_TX_AGE_SECS, MIN_REPLACEMENT_FEE_BUMP_PCT, MIN_REPLACEMENT_PRIORITY_BUMP_PCT,
+    RESERVED_SYSTEM_SLOTS,
 };
-use crate::core::transaction::{MempoolClass, Transaction};
+use crate::core::transaction::{MempoolClass, Transaction, TransactionKind};
 
 impl Blockchain {
+    /// Admit a transaction into the mempool. Runs the full gauntlet:
+    /// shape checks, nonce + class capacity, fee floors,
+    /// replacement-fee-bump, dry-run apply against projected state, then
+    /// inserts + enforces global limits + sorts + persists. Returns
+    /// `Ok(())` on success or a `ChainError` describing which gate
+    /// rejected the tx.
+    pub fn add_transaction(&mut self, tx: Transaction) -> Result<(), ChainError> {
+        self.prune_pending_transactions();
+
+        if tx.is_coinbase() {
+            return Err(ChainError::InvalidTransactionFormat(
+                "coinbase transactions cannot enter the mempool",
+            ));
+        }
+
+        if tx.chain_id != self.genesis_config.chain_id {
+            return Err(ChainError::InvalidChainId {
+                expected: self.genesis_config.chain_id.clone(),
+                got: tx.chain_id.clone(),
+            });
+        }
+
+        let now = chrono::Utc::now().timestamp();
+        if tx.timestamp > now + MAX_FUTURE_TX_TIME_SECS {
+            return Err(ChainError::InvalidTransactionFormat(
+                "transaction timestamp too far in the future",
+            ));
+        }
+        if tx.estimated_gas_for_admission() > self.block_gas_limit {
+            return Err(ChainError::InvalidTransactionFormat(
+                "transaction gas limit exceeds block gas limit",
+            ));
+        }
+        if tx.kind == TransactionKind::DeployContract && tx.to.len() > MAX_CONTRACT_CODE_BYTES {
+            return Err(ChainError::InvalidTransactionFormat(
+                "deploy contract: wasm code exceeds 256 KB limit",
+            ));
+        }
+        let pending_base_fee = self.next_base_fee_per_gas(&self.latest_block());
+        if tx.max_fee_per_gas() < pending_base_fee {
+            return Err(ChainError::FeeTooLow);
+        }
+        if tx
+            .priority_fee_per_gas(pending_base_fee)
+            .unwrap_or_default()
+            < self.minimum_priority_fee_per_gas(&tx, pending_base_fee)
+        {
+            return Err(ChainError::FeeTooLow);
+        }
+        if tx.total_fee_cap() < self.minimum_admission_fee(&tx, pending_base_fee) {
+            return Err(ChainError::FeeTooLow);
+        }
+        let expected_nonce_floor = self.accounts.get(&tx.from).map(|a| a.nonce).unwrap_or(0);
+        if tx.nonce < expected_nonce_floor {
+            return Err(ChainError::InvalidTransactionFormat(
+                "transaction nonce below account nonce (stale transaction)",
+            ));
+        }
+        if tx.nonce > expected_nonce_floor.saturating_add(MAX_PENDING_NONCE_GAP) {
+            return Err(ChainError::InvalidTransactionFormat(
+                "transaction nonce gap too large for mempool admission",
+            ));
+        }
+
+        let replacement_index = self
+            .pending_transactions
+            .iter()
+            .position(|pending| pending.from == tx.from && pending.nonce == tx.nonce);
+
+        // Per-class capacity. System (Stake/Unstake/SubmitProposal/
+        // GovernanceVote) gets `RESERVED_SYSTEM_SLOTS` exclusive slots so
+        // a flood of user transfers cannot starve consensus-adjacent
+        // traffic. User has the remaining budget. Replacements (same
+        // sender + same nonce, fee-bumped) bypass the cap check.
+        if replacement_index.is_none() {
+            let incoming_class = tx.mempool_class();
+            let (system_count, user_count) = self.count_pending_by_class();
+            let class_full = match incoming_class {
+                MempoolClass::System => system_count >= RESERVED_SYSTEM_SLOTS,
+                MempoolClass::User => user_count >= MAX_PENDING_TRANSACTIONS_USER,
+            };
+            if class_full {
+                return Err(ChainError::MempoolFull);
+            }
+        }
+
+        let sender_pending = self
+            .pending_transactions
+            .iter()
+            .filter(|pending| pending.from == tx.from)
+            .count();
+        if sender_pending >= MAX_PENDING_TRANSACTIONS_PER_ACCOUNT && replacement_index.is_none() {
+            return Err(ChainError::MempoolFull);
+        }
+        let sender_pending_gas: u64 = self
+            .pending_transactions
+            .iter()
+            .filter(|pending| pending.from == tx.from)
+            .map(Transaction::estimated_gas_for_admission)
+            .sum();
+        let sender_pending_gas_budget = self
+            .block_gas_limit
+            .saturating_mul(MAX_PENDING_GAS_PER_ACCOUNT_MULTIPLIER);
+        if replacement_index.is_none()
+            && sender_pending_gas.saturating_add(tx.estimated_gas_for_admission())
+                > sender_pending_gas_budget
+        {
+            return Err(ChainError::MempoolFull);
+        }
+
+        let tx_hash = tx.hash();
+        if self
+            .pending_transactions
+            .iter()
+            .any(|pending| pending.hash() == tx_hash)
+        {
+            return Err(ChainError::DuplicateTransaction);
+        }
+
+        if let Some(index) = replacement_index {
+            let existing = &self.pending_transactions[index];
+            let min_total_fee_cap = existing
+                .total_fee_cap()
+                .saturating_add(
+                    existing
+                        .total_fee_cap()
+                        .saturating_mul(MIN_REPLACEMENT_FEE_BUMP_PCT)
+                        / 100,
+                )
+                .max(existing.total_fee_cap().saturating_add(1));
+            let existing_priority = existing
+                .priority_fee_per_gas(pending_base_fee)
+                .unwrap_or_default();
+            let min_priority_fee = existing_priority
+                .saturating_add(
+                    existing_priority.saturating_mul(MIN_REPLACEMENT_PRIORITY_BUMP_PCT) / 100,
+                )
+                .max(existing_priority.saturating_add(1));
+            let min_max_fee_per_gas = existing
+                .max_fee_per_gas()
+                .saturating_add(
+                    existing
+                        .max_fee_per_gas()
+                        .saturating_mul(MIN_REPLACEMENT_FEE_BUMP_PCT)
+                        / 100,
+                )
+                .max(existing.max_fee_per_gas().saturating_add(1));
+            if tx.total_fee_cap() < min_total_fee_cap
+                || tx.max_fee_per_gas() < min_max_fee_per_gas
+                || tx
+                    .priority_fee_per_gas(pending_base_fee)
+                    .unwrap_or_default()
+                    < min_priority_fee
+            {
+                return Err(ChainError::ReplacementFeeTooLow);
+            }
+        }
+
+        let mut projected_accounts = self.accounts.clone();
+        let mut projected_contracts = self.contracts.clone();
+        let mut projected_receipts = HashMap::new();
+        let mut projected_token_registry = self.token_registry.clone();
+        let mut projected_governance = self.governance.clone();
+        let mut seen_hashes = HashSet::new();
+        for (index, pending) in self.pending_transactions.iter().enumerate() {
+            if replacement_index == Some(index) {
+                continue;
+            }
+            let pending_hash = pending.hash();
+            if !seen_hashes.insert(pending_hash) {
+                return Err(ChainError::DuplicateTransaction);
+            }
+            Self::apply_user_transaction(
+                &mut projected_accounts,
+                &mut projected_contracts,
+                &mut projected_receipts,
+                &mut projected_token_registry,
+                &mut projected_governance,
+                pending,
+                self.height() + 1,
+                self.unstake_delay_blocks,
+                self.epoch_length,
+                self.minimum_stake,
+                pending_base_fee,
+            )?;
+        }
+
+        Self::apply_user_transaction(
+            &mut projected_accounts,
+            &mut projected_contracts,
+            &mut projected_receipts,
+            &mut projected_token_registry,
+            &mut projected_governance,
+            &tx,
+            self.height() + 1,
+            self.unstake_delay_blocks,
+            self.epoch_length,
+            self.minimum_stake,
+            pending_base_fee,
+        )?;
+        let protected_from = tx.from.clone();
+        let protected_nonce = tx.nonce;
+        if let Some(index) = replacement_index {
+            self.pending_transactions[index] = tx;
+        } else {
+            self.pending_transactions.push(tx);
+        }
+        let protected_hash = self
+            .pending_transactions
+            .iter()
+            .find(|pending| pending.from == protected_from && pending.nonce == protected_nonce)
+            .map(Transaction::hash)
+            .unwrap_or_default();
+        self.enforce_mempool_limits(&protected_hash)?;
+        self.sort_pending_transactions();
+        self.persist_pending_transactions()?;
+        tracing::info!(
+            target: "audit",
+            event = "tx_accepted",
+            tx_hash = %hex::encode(&protected_hash),
+            sender = %hex::encode(&protected_from),
+            nonce = protected_nonce,
+            pending_count = self.pending_transactions.len(),
+        );
+        Ok(())
+    }
+
     /// Aggregated mempool stats for /api/metrics. Returns
     /// `(system_count, user_count, gas_usage, gas_budget)`. Cheap O(n)
     /// on pending_transactions; pending is bounded by
