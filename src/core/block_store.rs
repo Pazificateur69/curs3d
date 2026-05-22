@@ -476,4 +476,131 @@ mod tests {
             prop_assert!(is_expected);
         }
     }
+
+    // ─── Concurrent + edge-case tests ────────────────────────────────
+
+    /// Cursor is `Send + Sync` (Mutex inside). Concurrent block_at from
+    /// many threads must not race the cache or panic the mutex.
+    #[test]
+    fn cursor_concurrent_block_at_is_safe() {
+        use std::thread;
+
+        let (storage, _dir) = open_test_storage();
+        let g = seed_genesis(storage.as_ref());
+        let cursor = Arc::new(BlockStoreCursor::new(Arc::clone(&storage), 4).expect("cursor"));
+
+        // Seed 20 blocks.
+        let mut parent = g;
+        for _ in 0..20 {
+            let b = synthetic_block(&parent);
+            storage.put_block(&b).expect("persist");
+            cursor.append(b.clone()).expect("append");
+            parent = b;
+        }
+
+        // Spawn 8 threads, each reads every height. None must panic.
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let cursor = Arc::clone(&cursor);
+                thread::spawn(move || {
+                    for h in 0..=20u64 {
+                        let b = cursor.block_at(h).expect("ok").expect("present");
+                        assert_eq!(b.header.height, h);
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().expect("thread did not panic");
+        }
+    }
+
+    /// After invalidate_from(0) the cursor reports len=0; re-appending
+    /// from scratch must work and read back consistently. Mirrors the
+    /// chain's reorg/snapshot path that replace_all_blocks triggers.
+    #[test]
+    fn cursor_reorg_via_invalidate_then_reappend() {
+        let (storage, _dir) = open_test_storage();
+        let g = seed_genesis(storage.as_ref());
+        let cursor = BlockStoreCursor::new(Arc::clone(&storage), 8).expect("cursor");
+
+        let mut parent = g.clone();
+        for _ in 0..5 {
+            let b = synthetic_block(&parent);
+            storage.put_block(&b).expect("persist");
+            cursor.append(b.clone()).expect("append");
+            parent = b;
+        }
+        assert_eq!(cursor.len().unwrap(), 6);
+
+        // Reorg: throw away everything from height 0 onwards.
+        cursor.invalidate_from(0).expect("invalidate");
+        assert_eq!(cursor.len().unwrap(), 0);
+
+        // Re-append from genesis. The cursor's `append` requires the
+        // first block's height to match its `height_count` (now 0).
+        let mut new_g = Block::genesis();
+        new_g.hash = vec![0xaau8; 32];
+        cursor.append(new_g.clone()).expect("re-append genesis");
+        let mut new_parent = new_g;
+        for _ in 0..3 {
+            let b = synthetic_block(&new_parent);
+            storage.put_block(&b).expect("persist");
+            cursor.append(b.clone()).expect("append");
+            new_parent = b;
+        }
+        assert_eq!(cursor.len().unwrap(), 4);
+        assert_eq!(cursor.head_height().unwrap(), 3);
+
+        // Genesis through cursor must match the re-appended block (the
+        // cursor accepted height-0 as the new genesis under invalidate semantics).
+        let g_read = cursor.block_at(0).expect("ok").expect("present");
+        assert_eq!(g_read.hash, vec![0xaau8; 32]);
+    }
+
+    /// Pruning while a concurrent reader is walking the chain must not
+    /// produce stale Block instances for pruned heights.
+    #[test]
+    fn cursor_prune_then_read_pruned_returns_none() {
+        let (storage, _dir) = open_test_storage();
+        let g = seed_genesis(storage.as_ref());
+        let cursor = BlockStoreCursor::new(Arc::clone(&storage), 64).expect("cursor");
+
+        let mut parent = g;
+        for _ in 0..20 {
+            let b = synthetic_block(&parent);
+            storage.put_block(&b).expect("persist");
+            cursor.append(b.clone()).expect("append");
+            parent = b;
+        }
+
+        cursor.prune_below(10).expect("prune");
+        for h in 1..10 {
+            assert!(
+                cursor.block_at(h).expect("ok").is_none(),
+                "pruned height {h} must report None",
+            );
+        }
+        for h in 10..=20 {
+            assert!(
+                cursor.block_at(h).expect("ok").is_some(),
+                "post-prune height {h} must still be present",
+            );
+        }
+        // Genesis is always present, even after a deep prune.
+        assert!(cursor.block_at(0).expect("ok").is_some());
+    }
+
+    /// `is_empty` matches `len() == 0` across the cursor lifecycle.
+    #[test]
+    fn cursor_is_empty_consistent_with_len() {
+        let (storage, _dir) = open_test_storage();
+        seed_genesis(storage.as_ref());
+        let cursor = BlockStoreCursor::new(Arc::clone(&storage), 4).expect("cursor");
+
+        assert!(!cursor.is_empty().unwrap());
+        cursor.invalidate_from(0).expect("invalidate");
+        assert!(cursor.is_empty().unwrap());
+        assert_eq!(cursor.len().unwrap(), 0);
+    }
 }
