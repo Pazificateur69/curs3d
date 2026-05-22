@@ -5228,7 +5228,7 @@ mod tests {
     #[test]
     fn test_sdk_counter_via_chain_integration() {
         const COUNTER_WASM: &[u8] = include_bytes!(
-            "../../sdk/rust/examples/counter/target/wasm32-unknown-unknown/release/counter_contract.wasm"
+            "../../../sdk/rust/examples/counter/target/wasm32-unknown-unknown/release/counter_contract.wasm"
         );
         if COUNTER_WASM.len() < 16 {
             return;
