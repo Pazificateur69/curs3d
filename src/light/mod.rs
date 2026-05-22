@@ -333,4 +333,61 @@ mod tests {
 
         assert_eq!(lc.height(), 1);
     }
+
+    // ─── Property tests (task #33) — light client Merkle proofs ─────
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        /// A valid Merkle proof at index `i` over leaves `L` must verify
+        /// against the Merkle root of `L`. Catches any drift between the
+        /// merkle_root / merkle_proof / verify_merkle_proof trio
+        /// (the trio that the v6 SMT activation depends on).
+        #[test]
+        fn prop_valid_proof_verifies(
+            leaves in proptest::collection::vec(
+                proptest::collection::vec(any::<u8>(), 32..33),
+                1..16,
+            ),
+            index_seed in any::<u32>(),
+        ) {
+            let n = leaves.len();
+            let index = (index_seed as usize) % n;
+            let root = hash::merkle_root(&leaves);
+            let proof_path = hash::merkle_proof(&leaves, index);
+            prop_assert!(hash::verify_merkle_proof(
+                &leaves[index],
+                &proof_path,
+                index,
+                &root,
+            ));
+        }
+
+        /// A proof with a tampered leaf must NOT verify. Defends against
+        /// a light client being tricked by a malicious peer into accepting
+        /// an arbitrary leaf as part of a real Merkle root.
+        #[test]
+        fn prop_tampered_leaf_proof_fails(
+            leaves in proptest::collection::vec(
+                proptest::collection::vec(any::<u8>(), 32..33),
+                1..16,
+            ),
+            tamper in 1u8..255,
+        ) {
+            let index = 0usize;
+            let root = hash::merkle_root(&leaves);
+            let proof_path = hash::merkle_proof(&leaves, index);
+            let mut fake_leaf = leaves[index].clone();
+            fake_leaf[0] = fake_leaf[0].wrapping_add(tamper);
+            prop_assume!(fake_leaf != leaves[index]);
+            prop_assert!(!hash::verify_merkle_proof(
+                &fake_leaf,
+                &proof_path,
+                index,
+                &root,
+            ));
+        }
+    }
 }
