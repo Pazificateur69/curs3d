@@ -954,18 +954,25 @@ impl Blockchain {
         self.block_count().saturating_sub(1)
     }
 
-    pub fn latest_block(&self) -> &Block {
-        self.blocks
-            .last()
+    /// Block at the chain tip. Returns an OWNED clone. Reads through
+    /// [`Self::block_at_height`] so the cursor path is used when present.
+    pub fn latest_block(&self) -> Block {
+        let h = self.height();
+        self.block_at_height(h)
             .expect("chain must have at least genesis")
     }
 
-    pub fn latest_hash(&self) -> &[u8] {
-        &self.latest_block().hash
+    /// Hash of the chain tip. Owned `Vec<u8>` — drops the previous
+    /// `&[u8]` shape now that the underlying block storage is paginated
+    /// (cursor returns owned blocks; no stable reference to lend out).
+    pub fn latest_hash(&self) -> Vec<u8> {
+        self.latest_block().hash
     }
 
-    pub fn genesis_hash(&self) -> &[u8] {
-        &self.blocks[0].hash
+    /// Hash of the genesis block. Owned `Vec<u8>` for the same reason
+    /// as [`Self::latest_hash`].
+    pub fn genesis_hash(&self) -> Vec<u8> {
+        self.genesis_block().hash
     }
 
     /// Genesis block. Always present — every Blockchain is constructed with at
@@ -1662,7 +1669,7 @@ impl Blockchain {
             });
         }
 
-        let pending_base_fee = self.next_base_fee_per_gas(self.latest_block());
+        let pending_base_fee = self.next_base_fee_per_gas(&self.latest_block());
         let replacement_index = self
             .pending_transactions
             .iter()
@@ -1811,7 +1818,7 @@ impl Blockchain {
                 "deploy contract: wasm code exceeds 256 KB limit",
             ));
         }
-        let pending_base_fee = self.next_base_fee_per_gas(self.latest_block());
+        let pending_base_fee = self.next_base_fee_per_gas(&self.latest_block());
         if tx.max_fee_per_gas() < pending_base_fee {
             return Err(ChainError::FeeTooLow);
         }
@@ -2005,7 +2012,7 @@ impl Blockchain {
         let height = prev_block.header.height + 1;
         let prev_hash = prev_block.hash.clone();
         let protocol_version = self.protocol_version_at_height(height);
-        let base_fee_per_gas = self.next_base_fee_per_gas(prev_block);
+        let base_fee_per_gas = self.next_base_fee_per_gas(&prev_block);
 
         let proposer_public_key = validator_keypair.public_key.clone();
         let proposer_address = hash::address_bytes_from_public_key(&proposer_public_key);
@@ -2151,7 +2158,7 @@ impl Blockchain {
         let prev = self.latest_block();
         let execution = self.validate_block_against_state(
             &block,
-            prev,
+            &prev,
             &self.accounts,
             &self.contracts,
             &self.token_registry,
@@ -4192,7 +4199,7 @@ impl Blockchain {
     }
 
     fn sort_pending_transactions(&mut self) {
-        let base_fee_per_gas = self.next_base_fee_per_gas(self.latest_block());
+        let base_fee_per_gas = self.next_base_fee_per_gas(&self.latest_block());
         self.pending_transactions.sort_by(|a, b| {
             if a.from == b.from {
                 // Same sender: nonce order is mandatory regardless of
@@ -4227,7 +4234,7 @@ impl Blockchain {
 
     fn prune_pending_transactions(&mut self) {
         let cutoff = chrono::Utc::now().timestamp() - MAX_PENDING_TX_AGE_SECS;
-        let base_fee_per_gas = self.next_base_fee_per_gas(self.latest_block());
+        let base_fee_per_gas = self.next_base_fee_per_gas(&self.latest_block());
         let usage = self.pending_gas_usage();
         let budget = self.pending_gas_budget().max(1);
         self.pending_transactions.retain(|pending| {
@@ -4325,7 +4332,7 @@ impl Blockchain {
     /// `filter = |_| true`; that path is no longer reachable because
     /// every caller is class-aware now.
     fn worst_pending_transaction_index_in_class(&self, class: MempoolClass) -> Option<usize> {
-        let base_fee_per_gas = self.next_base_fee_per_gas(self.latest_block());
+        let base_fee_per_gas = self.next_base_fee_per_gas(&self.latest_block());
         self.pending_transactions
             .iter()
             .enumerate()
@@ -5810,7 +5817,7 @@ mod tests {
 
         // select_validator_from_snapshot should return the validator
         let selected =
-            ProofOfStake::select_validator_from_snapshot(snapshot, 5, chain.latest_hash());
+            ProofOfStake::select_validator_from_snapshot(snapshot, 5, &chain.latest_hash());
         assert!(selected.is_some());
         assert_eq!(selected.unwrap().public_key, validator.public_key);
     }
@@ -6394,7 +6401,7 @@ mod tests {
         // refreshes the parent timestamp to ~now so the rank-0 window is
         // active for height 2.
         let leader_h1 = chain
-            .slot_leader_address(1, chain.latest_hash(), 0)
+            .slot_leader_address(1, &chain.latest_hash(), 0)
             .expect("slot leader at height 1");
         let addr_a = hash::address_bytes_from_public_key(&kp_a.public_key);
         let real_kp_h1 = if leader_h1 == addr_a { &kp_a } else { &kp_b };
@@ -6404,7 +6411,7 @@ mod tests {
         // Now identify the rank-0 leader at height 2 and pick the *other*
         // keypair as the imposter.
         let leader_h2 = chain
-            .slot_leader_address(2, chain.latest_hash(), 0)
+            .slot_leader_address(2, &chain.latest_hash(), 0)
             .expect("slot leader at height 2");
         let imposter_kp = if leader_h2 == addr_a { &kp_b } else { &kp_a };
 
@@ -6448,7 +6455,7 @@ mod tests {
         };
         let chain = Blockchain::from_genesis(genesis).unwrap();
         let leader_h1 = chain
-            .slot_leader_address(1, chain.latest_hash(), 0)
+            .slot_leader_address(1, &chain.latest_hash(), 0)
             .expect("height-1 leader");
         let backup_kp = if leader_h1 == addr_a { &kp_b } else { &kp_a };
         let err = chain
@@ -6600,7 +6607,7 @@ mod tests {
             let mut chain = Blockchain::with_storage(data_dir_str, Some(&genesis)).unwrap();
             for h in 1..=target_height {
                 let leader = chain
-                    .slot_leader_address(h, chain.latest_hash(), 0)
+                    .slot_leader_address(h, &chain.latest_hash(), 0)
                     .expect("slot leader exists");
                 let kp = if leader == addr_a { &kp_a } else { &kp_b };
                 let block = chain.create_block(kp).unwrap();

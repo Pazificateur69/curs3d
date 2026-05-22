@@ -427,7 +427,7 @@ async fn dispatch(chain: &Arc<Mutex<Blockchain>>, request: &Value) -> Value {
         }
         "eth_gasPrice" => {
             let chain = chain.lock().await;
-            let base = chain.next_base_fee_per_gas(chain.latest_block());
+            let base = chain.next_base_fee_per_gas(&chain.latest_block());
             rpc_success(id, json!(hex_u64(base)))
         }
         "eth_maxPriorityFeePerGas" => rpc_success(id, json!("0x3b9aca00")), // 1 gwei-equivalent default
@@ -773,7 +773,7 @@ fn dispatch_eth_call(chain: &Blockchain, params: &[Value]) -> Result<Vec<u8>, St
         k.copy_from_slice(addr);
         view.insert_contract(k, contract.clone());
     }
-    let base_fee = chain.next_base_fee_per_gas(chain.latest_block());
+    let base_fee = chain.next_base_fee_per_gas(&chain.latest_block());
     let outcome = crate::vm::evm::call(
         view,
         from_arr,
