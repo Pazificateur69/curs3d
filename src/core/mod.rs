@@ -5,5 +5,6 @@ pub mod chain;
 pub mod checkpoints;
 pub mod receipt;
 pub mod state_proof;
+pub mod state_root;
 pub mod transaction;
 pub mod types;

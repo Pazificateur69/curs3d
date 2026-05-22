@@ -11,7 +11,7 @@ use crate::consensus::{
     EpochSnapshot, EquivocationEvidence, FinalityTracker, FinalityVote, FinalizedBlock,
     ProofOfStake, allowed_backup_rank, slot_leader_at_rank,
 };
-use crate::core::block::{Block, EMPTY_STATE_ROOT_SEED};
+use crate::core::block::Block;
 use crate::core::blocktree::{BlockTree, BlockTreeError};
 use crate::core::checkpoints;
 use crate::core::receipt::{IndexedLogEntry, IndexedReceipt, LogFilter, Receipt, ReceiptLocation};
@@ -69,13 +69,10 @@ const PERSISTENCE_QUEUE_CAPACITY: usize = 8;
 const PERSISTENCE_SHUTDOWN_SIGNAL_TIMEOUT: Duration = Duration::from_secs(1);
 const PERSISTENCE_JOIN_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Protocol version that activates the `SparseMerkleTrie` state-root
-/// (replaces the linear-Merkle commitment used through v5). Bumping the
-/// state-root scheme is a consensus-affecting change so it ships under
-/// a hardfork. The dispatcher at `compute_state_root_at_protocol`
-/// selects between v5 and v6 based on the protocol version returned by
-/// `protocol_version_at_height(height)`.
-pub const V6_PROTOCOL_VERSION: u32 = 6;
+/// Re-export of [`crate::core::state_root::V6_PROTOCOL_VERSION`] so call
+/// sites inside `chain.rs` can keep using the short name without an
+/// extra import. The const moved to `state_root` as part of #29.
+pub use crate::core::state_root::V6_PROTOCOL_VERSION;
 
 /// Block height at which the v6 hardfork activates on the public
 /// testnet. Currently set to `u64::MAX` — the hardfork is DORMANT.
@@ -2613,146 +2610,29 @@ impl Blockchain {
         Ok(())
     }
 
+    // State-root computation lives in `crate::core::state_root` since #29
+    // sibling-extraction. These three methods are thin delegators kept on
+    // `Blockchain` so existing call sites (`Blockchain::compute_state_root_*`)
+    // continue to compile unchanged.
+
     #[allow(dead_code)]
     pub fn compute_state_root(accounts: &HashMap<Vec<u8>, AccountState>) -> Vec<u8> {
-        Self::compute_state_root_full(accounts, &HashMap::new())
+        crate::core::state_root::compute(accounts)
     }
 
-    /// State root for the current protocol baseline (v5). Equivalent to
-    /// `compute_state_root_at_protocol(.., 5)` — kept as the default
-    /// entry point so existing call sites work unchanged. After the v6
-    /// `SparseMerkleTrie` hardfork (gated by `V6_HARDFORK_HEIGHT`)
-    /// activates, call sites that know the height should switch to
-    /// `compute_state_root_at_protocol` and pass the protocol version
-    /// derived from that height. See `compute_state_root_v6_smt`.
     pub fn compute_state_root_full(
         accounts: &HashMap<Vec<u8>, AccountState>,
         contracts: &HashMap<Vec<u8>, ContractState>,
     ) -> Vec<u8> {
-        Self::compute_state_root_v5_merkle(accounts, contracts)
+        crate::core::state_root::compute_full(accounts, contracts)
     }
 
-    /// Dispatch state-root computation by protocol version. Versions
-    /// `<= 5` use the v5 linear-Merkle root (sorted leaves, one big
-    /// `merkle_root`); versions `>= 6` use the `SparseMerkleTrie` root
-    /// which gives O(log N) inclusion proofs of fixed depth and a
-    /// commitment that is stable under set permutations (so a snapshot
-    /// applied in any leaf order yields the same root).
     pub fn compute_state_root_at_protocol(
         accounts: &HashMap<Vec<u8>, AccountState>,
         contracts: &HashMap<Vec<u8>, ContractState>,
         protocol_version: u32,
     ) -> Vec<u8> {
-        if protocol_version >= V6_PROTOCOL_VERSION {
-            Self::compute_state_root_v6_smt(accounts, contracts)
-        } else {
-            Self::compute_state_root_v5_merkle(accounts, contracts)
-        }
-    }
-
-    fn compute_state_root_v5_merkle(
-        accounts: &HashMap<Vec<u8>, AccountState>,
-        contracts: &HashMap<Vec<u8>, ContractState>,
-    ) -> Vec<u8> {
-        if accounts.is_empty() && contracts.is_empty() {
-            return hash::sha3_hash(EMPTY_STATE_ROOT_SEED);
-        }
-
-        let leaves = Self::state_leaf_hashes(accounts, contracts);
-        hash::merkle_root(&leaves)
-    }
-
-    /// v6 state root: insert every account + contract into a
-    /// `SparseMerkleTrie` keyed by `SHA3(addr_with_kind_prefix)`, then
-    /// return the 32-byte trie root. The kind prefix (`0x00` for
-    /// accounts, `0x01` for contracts) prevents a collision where a
-    /// contract and an account share the same address-hash slot.
-    ///
-    /// The empty-state root matches `SparseMerkleTrie::root()` on an
-    /// empty trie, which is its own well-defined constant (not the
-    /// same as v5's `sha3(EMPTY_STATE_ROOT_SEED)`).
-    fn compute_state_root_v6_smt(
-        accounts: &HashMap<Vec<u8>, AccountState>,
-        contracts: &HashMap<Vec<u8>, ContractState>,
-    ) -> Vec<u8> {
-        let mut trie = crate::trie::SparseMerkleTrie::new();
-
-        let mut account_entries: Vec<(&Vec<u8>, &AccountState)> = accounts.iter().collect();
-        account_entries.sort_by_key(|(a, _)| *a);
-        for (address, state) in account_entries {
-            let mut prefixed = Vec::with_capacity(address.len() + 1);
-            prefixed.push(0x00);
-            prefixed.extend_from_slice(address);
-            let key = hash::sha3_hash(&prefixed);
-            let value = Self::account_leaf_hash(address, state);
-            trie.insert(key, value);
-        }
-
-        let mut contract_entries: Vec<(&Vec<u8>, &ContractState)> = contracts.iter().collect();
-        contract_entries.sort_by_key(|(a, _)| *a);
-        for (address, state) in contract_entries {
-            let mut prefixed = Vec::with_capacity(address.len() + 1);
-            prefixed.push(0x01);
-            prefixed.extend_from_slice(address);
-            let key = hash::sha3_hash(&prefixed);
-            let value = Self::contract_leaf_hash(address, state);
-            trie.insert(key, value);
-        }
-
-        trie.root()
-    }
-
-    fn account_leaf_hash(address: &[u8], state: &AccountState) -> Vec<u8> {
-        let encoded =
-            bincode::serialize(&(address, state)).expect("failed to serialize account leaf");
-        hash::sha3_hash(&encoded)
-    }
-
-    fn contract_storage_root(contract: &ContractState) -> Vec<u8> {
-        let mut storage_entries: Vec<(&Vec<u8>, &Vec<u8>)> = contract.storage.iter().collect();
-        storage_entries.sort_by_key(|(a, _)| *a);
-        let leaves: Vec<Vec<u8>> = storage_entries
-            .into_iter()
-            .map(|(key, value)| {
-                let encoded =
-                    bincode::serialize(&(key, value)).expect("failed to serialize storage leaf");
-                hash::sha3_hash(&encoded)
-            })
-            .collect();
-        hash::merkle_root(&leaves)
-    }
-
-    fn contract_leaf_hash(address: &[u8], state: &ContractState) -> Vec<u8> {
-        let storage_root = Self::contract_storage_root(state);
-        let code_hash = if state.code_hash.is_empty() {
-            hash::sha3_hash(&state.code)
-        } else {
-            state.code_hash.clone()
-        };
-        let encoded = bincode::serialize(&(address, code_hash, &state.owner, storage_root))
-            .expect("failed to serialize contract leaf");
-        hash::sha3_hash(&encoded)
-    }
-
-    fn state_leaf_hashes(
-        accounts: &HashMap<Vec<u8>, AccountState>,
-        contracts: &HashMap<Vec<u8>, ContractState>,
-    ) -> Vec<Vec<u8>> {
-        let mut leaves: Vec<Vec<u8>> = Vec::new();
-
-        let mut account_entries: Vec<(&Vec<u8>, &AccountState)> = accounts.iter().collect();
-        account_entries.sort_by_key(|(a, _)| *a);
-        for (address, state) in account_entries {
-            leaves.push(Self::account_leaf_hash(address, state));
-        }
-
-        let mut contract_entries: Vec<(&Vec<u8>, &ContractState)> = contracts.iter().collect();
-        contract_entries.sort_by_key(|(a, _)| *a);
-        for (address, state) in contract_entries {
-            leaves.push(Self::contract_leaf_hash(address, state));
-        }
-
-        leaves
+        crate::core::state_root::compute_at_protocol(accounts, contracts, protocol_version)
     }
 
     fn accounts_from_genesis(
@@ -2799,8 +2679,8 @@ impl Blockchain {
         let account_index = account_entries
             .iter()
             .position(|(entry_address, _)| entry_address.as_slice() == address)?;
-        let leaf_hash = Self::account_leaf_hash(address, &state);
-        let leaves = Self::state_leaf_hashes(&self.accounts, &self.contracts);
+        let leaf_hash = crate::core::state_root::account_leaf_hash(address, &state);
+        let leaves = crate::core::state_root::state_leaf_hashes(&self.accounts, &self.contracts);
 
         Some(AccountProof {
             address: address.to_vec(),
@@ -2814,7 +2694,8 @@ impl Blockchain {
 
     #[allow(dead_code)]
     pub fn verify_account_proof(proof: &AccountProof) -> bool {
-        let expected_leaf = Self::account_leaf_hash(&proof.address, &proof.state);
+        let expected_leaf =
+            crate::core::state_root::account_leaf_hash(&proof.address, &proof.state);
         expected_leaf == proof.leaf_hash
             && hash::verify_merkle_proof(
                 &proof.leaf_hash,
@@ -2853,8 +2734,10 @@ impl Blockchain {
             .collect();
         let storage_leaf_hash = storage_leaves[storage_position].clone();
         let storage_root = hash::merkle_root(&storage_leaves);
-        let contract_leaf_hash = Self::contract_leaf_hash(contract_address, contract);
-        let state_leaves = Self::state_leaf_hashes(&self.accounts, &self.contracts);
+        let contract_leaf_hash =
+            crate::core::state_root::contract_leaf_hash(contract_address, contract);
+        let state_leaves =
+            crate::core::state_root::state_leaf_hashes(&self.accounts, &self.contracts);
         let code_hash = if contract.code_hash.is_empty() {
             hash::sha3_hash(&contract.code)
         } else {
@@ -3336,7 +3219,7 @@ impl Blockchain {
                 projected_accounts.iter().collect();
             sorted_accounts.sort_by_key(|(a, _)| *a);
             for (addr, state) in sorted_accounts.iter().take(64) {
-                let leaf = Self::account_leaf_hash(addr, state);
+                let leaf = crate::core::state_root::account_leaf_hash(addr, state);
                 tracing::error!(
                     target: "audit",
                     event = "state_root_account_leaf",
@@ -3352,7 +3235,7 @@ impl Blockchain {
                 projected_contracts.iter().collect();
             sorted_contracts.sort_by_key(|(a, _)| *a);
             for (addr, state) in sorted_contracts.iter().take(64) {
-                let leaf = Self::contract_leaf_hash(addr, state);
+                let leaf = crate::core::state_root::contract_leaf_hash(addr, state);
                 tracing::error!(
                     target: "audit",
                     event = "state_root_contract_leaf",
